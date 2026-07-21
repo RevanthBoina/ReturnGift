@@ -1,0 +1,17 @@
+ReturnGift
+Copyright 2026 ReturnGift Project
+
+This product includes software originally developed as part of the
+PokeClaw project (https://github.com/agents-io/PokeClaw),
+Copyright (c) agents-io / Nicole, licensed under the Apache License,
+Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+
+This is a modified version. Per Apache License 2.0 Section 4(b), notice is
+given that files in this repository have been changed from the original:
+package structure, application identifiers, intent action names, UI strings,
+branding assets, and product architecture have all been substantially
+modified for the ReturnGift project (single on-device foundation model with
+LoRA-based Action Skills, no cloud fallback).
+
+The name "PokeClaw" and its logo are trademarks of Nicole / agents.io and
+are not used by, and do not endorse, this derivative product.
