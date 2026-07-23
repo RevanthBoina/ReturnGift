@@ -1,0 +1,32 @@
+base_model: google/functiongemma-270m-it
+bf16: false
+dataset_path: data/partitions/messaging.jsonl
+fp16: true
+gradient_accumulation_steps: 8
+gradient_checkpointing: true
+lora:
+  alpha: 32
+  dropout: 0.05
+  r: 16
+  target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+max_seq_length: 2048
+output_adapter_dir: adapters/messaging
+per_device_train_batch_size: 2
+skill_name: messaging
+system_prompt: "You are ReturnGift's Messaging Action Skill. Given a screen state and instruction, output exactly one tool call to compose, edit, or send a message. Preserve exact contact names and message content the user specified. Never invent recipients or content not given. Output format: {tool, params} only."
+training:
+  gradient_accumulation_steps: 4
+  learning_rate: 0.0002
+  load_in_16bit: true
+  logging_steps: 10
+  num_train_epochs: 3
+  per_device_train_batch_size: 4
+  save_strategy: epoch
+  warmup_ratio: 0.03

@@ -1,0 +1,22 @@
+# ReturnGift — Step 4 Fine-Tuning environment (Lightning AI)
+# Pin versions once you've confirmed they work in your Lightning Studio;
+# ranges left open here since Lightning environments are persistent (unlike Colab).
+ 
+torch>=2.3.0
+transformers>=4.42.0
+peft>=0.11.0
+accelerate>=0.31.0
+bitsandbytes>=0.43.0        # only used for optional 4-bit sanity checks, NOT for training load
+datasets>=2.19.0
+safetensors>=0.4.3
+sentencepiece
+pyyaml
+ 
+# QAT / export path (Section 4 + TO-DO: "16-bit base -> QAT int4 export")
+torchao>=0.3.0               # QAT quantizer used during export
+ai-edge-torch>=0.2.0          # ai-edge-torch -> TFLite -> .litertlm per TO-DO
+tensorflow>=2.16.0             # required by ai-edge-torch conversion path
+ 
+# Bookkeeping
+huggingface_hub>=0.23.0        # adapter versioning (v1, v2, v3...) per Section 7
+ 
