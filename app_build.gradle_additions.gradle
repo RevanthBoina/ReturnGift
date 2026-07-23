@@ -1,0 +1,43 @@
+// app/build.gradle additions for ReturnGift Orchestrator
+
+android {
+    // Package orchestrator assets as raw resources
+    sourceSets {
+        main {
+            assets.srcDirs += ['src/main/assets', 'orchestrator_assets']
+        }
+    }
+
+    // Ensure assets are not compressed (needed for mmap)
+    aaptOptions {
+        noCompress "bin", "tflite", "litertlm"
+    }
+}
+
+dependencies {
+    // LiteRT / AI Edge Torch for on-device inference
+    implementation "com.google.ai.edge.litert:litert:0.2.0"
+    implementation "com.google.ai.edge.litert:litert-support:0.2.0"
+    implementation "com.google.ai.edge.litert:litert-gpu-delegate:0.2.0"
+
+    // Gson for metadata parsing
+    implementation "com.google.code.gson:gson:2.10.1"
+
+    // Kotlin coroutines for async routing
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+}
+
+tasks.register("packageOrchestratorAssets", Copy) {
+    description "Copy compute_centroids.py outputs to APK assets"
+    group "build"
+
+    from("$projectDir/../orchestrator_assets") {
+        include "centroids.bin"
+        include "centroids_meta.json"
+    }
+    into "src/main/assets/orchestrator"
+}
+
+tasks.named("preBuild") {
+    dependsOn "packageOrchestratorAssets"
+}

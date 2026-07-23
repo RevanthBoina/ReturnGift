@@ -1,0 +1,24 @@
+{"id": "rt_msg_001", "screen_state": "<View><Text>Contacts</Text><Contact id='Alice'>Alice</Contact></View>", "instruction": "Send 'Hello' to Alice", "expected_route": "messaging"}
+{"id": "rt_msg_002", "screen_state": "<View><Text>Contacts</Text><Contact id='Bob'>Bob</Contact></View>", "instruction": "Message Bob saying 'Hi'", "expected_route": "messaging"}
+{"id": "rt_msg_003", "screen_state": "<View><Text>Chat</Text><Contact id='Carol'>Carol</Contact></View>", "instruction": "Reply to Carol with 'Okay'", "expected_route": "messaging"}
+{"id": "rt_msg_004", "screen_state": "<View><Text>Messages</Text><Contact id='Dave'>Dave</Contact></View>", "instruction": "Text Dave 'Running late'", "expected_route": "messaging"}
+{"id": "rt_msg_005", "screen_state": "<View><Text>WhatsApp</Text><Contact id='Eve'>Eve</Contact></View>", "instruction": "DM Eve 'Call me'", "expected_route": "messaging"}
+{"id": "rt_txn_001", "screen_state": "<View><Text>Shop</Text><Item id='Book123' name='AI for Dummies' price='15.00'/></View>", "instruction": "Purchase AI for Dummies for $15.00, please CONFIRM", "expected_route": "transactional"}
+{"id": "rt_txn_002", "screen_state": "<View><Text>Shop</Text><Item id='Banana' name='Banana' price='2.50'/></View>", "instruction": "Add Banana to my cart", "expected_route": "transactional"}
+{"id": "rt_txn_003", "screen_state": "<View><Text>Cart</Text><Item id='Book123' name='AI for Dummies' price='15.00'/></View>", "instruction": "Checkout now, CONFIRM", "expected_route": "transactional"}
+{"id": "rt_txn_004", "screen_state": "<View><Text>Booking</Text><Flight id='UA123' from='SFO' to='JFK' price='299.00'/></View>", "instruction": "Book this flight, CONFIRM", "expected_route": "transactional"}
+{"id": "rt_txn_005", "screen_state": "<View><Text>Restaurant</Text><Table id='T1' time='19:00' party='4'/></View>", "instruction": "Reserve table for 4 at 7pm, CONFIRM", "expected_route": "transactional"}
+{"id": "rt_ana_001", "screen_state": "<View><Chart id='SalesChart'><Bar id='bar1' value='10'/><Bar id='bar2' value='20'/></View>", "instruction": "Tap the bar showing 20", "expected_route": "analytical"}
+{"id": "rt_ana_002", "screen_state": "<View><Menu><Button id='save'>Save</Button><Button id='save-as'>Save As</Button></View>", "instruction": "Click the 'Save As' button", "expected_route": "analytical"}
+{"id": "rt_ana_003", "screen_state": "<View><Button id='btnYes'>Yes</Button><Button id='btnNo'>No</Button></View>", "instruction": "Tap on the No button", "expected_route": "analytical"}
+{"id": "rt_ana_004", "screen_state": "<View><List><Item id='item1'>First</Item><Item id='item2'>Second</Item></View>", "instruction": "Select the second item", "expected_route": "analytical"}
+{"id": "rt_ana_005", "screen_state": "<View><Form><Field id='email'>Email</Field><Button id='submit'>Submit</Button></View>", "instruction": "Press the Submit button", "expected_route": "analytical"}
+{"id": "rt_unres_001", "screen_state": "<View><Text>Home</Text></View>", "instruction": "What is the capital of France?", "expected_route": "unresolved"}
+{"id": "rt_unres_002", "screen_state": "<View><Text>Settings</Text></View>", "instruction": "Explain quantum computing", "expected_route": "unresolved"}
+{"id": "rt_unres_003", "screen_state": "<View><Text>Browser</Text></View>", "instruction": "Write a poem about cats", "expected_route": "unresolved"}
+{"id": "rt_unres_004", "screen_state": "<View><Text>Home</Text></View>", "instruction": "What's the weather tomorrow?", "expected_route": "unresolved"}
+{"id": "rt_unres_005", "screen_state": "<View><Text>Calculator</Text></View>", "instruction": "Calculate 15 * 23", "expected_route": "unresolved"}
+{"id": "rt_edge_001", "screen_state": "<View><Text>Shop</Text><Item id='Book' price='10'/></View>", "instruction": "Tell me about this book", "expected_route": "unresolved"}
+{"id": "rt_edge_002", "screen_state": "<View><Text>Chat</Text><Contact id='Alice'/></View>", "instruction": "Who is Alice?", "expected_route": "unresolved"}
+{"id": "rt_edge_003", "screen_state": "<View><Text>Calendar</Text><Event id='Meeting'/></View>", "instruction": "When is my meeting?", "expected_route": "analytical"}
+{"id": "rt_edge_004", "screen_state": "<View><Text>Maps</Text><Place id='Cafe'/></View>", "instruction": "Navigate to this cafe", "expected_route": "analytical"}
