@@ -139,6 +139,7 @@
     <string name="channel_msg_no_accessibility">ユーザー補助権限がないため、タスクを実行できません</string>
     <string name="channel_msg_task_in_progress">タスク実行中です。お待ちください</string>
     <string name="channel_msg_system_dialog_blocked">システムダイアログが画面を遮っている可能性があります。確認のうえ手動で操作してから再試行してください</string>
+    <string name="interrupt_task_paused">タスクが一時停止されました — 画面が予期せず変更されました。再開する準備ができたら「再開」をタップしてください。</string>
 
     <!-- アクセシビリティ -->
     <string name="cd_back_button">戻る</string>

@@ -18,4 +18,10 @@ interface AgentCallback {
     fun onComplete(round: Int, finalAnswer: String, totalTokens: Int, modelName: String? = null)
     fun onError(round: Int, error: Exception, totalTokens: Int)
     fun onSystemDialogBlocked(round: Int, totalTokens: Int)
+    /**
+     * Part C: an undoable tool just executed successfully.
+     * The UI should show a snackbar/toast with an Undo button for [UndoManager.UNDO_WINDOW_MS] ms.
+     * Calling [UndoManager.executeUndo] from a background thread executes the reverse action.
+     */
+    fun onUndoAvailable(toolDisplayName: String) {}
 }

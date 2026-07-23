@@ -139,6 +139,7 @@
     <string name="channel_msg_no_accessibility">缺少无障碍权限，无法执行任务</string>
     <string name="channel_msg_task_in_progress">有任务执行中，请稍候</string>
     <string name="channel_msg_system_dialog_blocked">可能有系统弹窗遮挡了屏幕，请检查并手动处理后重试</string>
+    <string name="interrupt_task_paused">任务已暂停 — 屏幕发生了意外变化。准备好后请点击「继续」。</string>
 
     <!-- 无障碍 -->
     <string name="cd_back_button">返回</string>

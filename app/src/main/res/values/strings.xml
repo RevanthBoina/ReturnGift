@@ -139,6 +139,7 @@
     <string name="channel_msg_no_accessibility">Accessibility permission missing, cannot execute task</string>
     <string name="channel_msg_task_in_progress">A task is already running, please wait</string>
     <string name="channel_msg_system_dialog_blocked">A system dialog may be blocking the screen. Please check and handle it manually, then try again.</string>
+    <string name="interrupt_task_paused">Task paused — screen changed unexpectedly. Tap Resume when you are ready.</string>
 
     <!-- Accessibility -->
     <string name="cd_back_button">Back</string>

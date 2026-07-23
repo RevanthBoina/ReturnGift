@@ -17,6 +17,9 @@ import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.tool.impl.GetScreenInfoTool
 import com.returngift.agent.tool.ToolResult
+import com.returngift.agent.agent.InterruptDetector
+import com.returngift.agent.agent.AllowListToolGate
+import com.returngift.agent.agent.UndoManager
 import com.returngift.agent.utils.XLog
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -515,6 +518,20 @@ class DefaultAgentService : AgentService {
 
         val enrichedPrompt = if (looksLikeTask) {
             try {
+                // Interrupt check before pre-warm screen capture
+                val prewarmService = ClawAccessibilityService.getInstance()
+                if (prewarmService != null) {
+                    val prewarmInterrupt = InterruptDetector.inspect(prewarmService)
+                    if (prewarmInterrupt is InterruptDetector.InterruptResult.PauseAndConfirm) {
+                        XLog.w(TAG, "Pre-warm interrupt PAUSE_AND_CONFIRM: ${prewarmInterrupt.description}")
+                        callback.onSystemDialogBlocked(0, 0)
+                        return
+                    } else if (prewarmInterrupt is InterruptDetector.InterruptResult.AutoDismissed) {
+                        XLog.i(TAG, "Pre-warm interrupt AUTO_DISMISSED: ${prewarmInterrupt.description}")
+                        try { prewarmService.pressBack() } catch (_: Exception) {}
+                        Thread.sleep(SCREEN_SETTLE_MS)
+                    }
+                }
                 val screenTool = ToolRegistry.getInstance().getTool("get_screen_info")
                 if (screenTool != null) {
                     val screenResult = screenTool.execute(emptyMap())
@@ -720,12 +737,31 @@ class DefaultAgentService : AgentService {
                 directDeviceDataGuard.recordToolAttempt(toolName)
                 emailComposeGuard.recordToolAttempt(toolName)
 
+                // ── Part B: allow-list gate ─────────────────────────────────────────
+                val allowListBlock = AllowListToolGate.check(
+                    ClawApplication.instance, toolName, params
+                )
+                if (allowListBlock != null) {
+                    val blockedResult = ToolResult.error(allowListBlock)
+                    callback.onToolResult(iterations, toolName, displayName, params.toString(), blockedResult)
+                    messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(blockedResult)))
+                    messages.add(UserMessage.from(allowListBlock))
+                    continue
+                }
+                // ── End allow-list gate ─────────────────────────────────────────────
+
                 val result = ToolRegistry.getInstance().executeTool(toolName, params)
                 val paramsString = if (params.isEmpty()) "" else params.toString()
                 callback.onToolResult(iterations, toolName, displayName, paramsString, result)
                 if (result.isSuccess) {
                     inAppSearchGuard.recordSuccessfulTool(toolName, params)
                     emailComposeGuard.recordSuccessfulTool(toolName)
+                    // ── Part C: record undoable action ──────────────────────────
+                    UndoManager.record(toolName, params, displayName)
+                    if (UndoManager.hasPending()) {
+                        callback.onUndoAvailable(displayName)
+                    }
+                    // ── End undo record ─────────────────────────────────────────
                 }
 
                 // System dialog blocking detected → notify user and stop task
@@ -748,6 +784,33 @@ class DefaultAgentService : AgentService {
                 val combinedResultData: String = if (toolName in ACTION_TOOLS) {
                     try {
                         Thread.sleep(SCREEN_SETTLE_MS) // let UI animate/settle
+
+                        // ── Interrupt check (Part A) ────────────────────────────────────────
+                        // Inspect the accessibility window stack BEFORE capturing screen_state
+                        // so a popup/call overlay is never mistaken for the target screen.
+                        val accessibilityService = ClawAccessibilityService.getInstance()
+                        if (accessibilityService != null) {
+                            val interruptResult = InterruptDetector.inspect(accessibilityService)
+                            when (interruptResult) {
+                                is InterruptDetector.InterruptResult.AutoDismissed -> {
+                                    XLog.i(TAG, "Interrupt AUTO_DISMISSED: ${interruptResult.description}")
+                                    // Press back to clear the overlay then let screen settle again
+                                    try { accessibilityService.pressBack() } catch (_: Exception) {}
+                                    Thread.sleep(SCREEN_SETTLE_MS)
+                                }
+                                is InterruptDetector.InterruptResult.PauseAndConfirm -> {
+                                    XLog.w(TAG, "Interrupt PAUSE_AND_CONFIRM: ${interruptResult.description}")
+                                    // Surface the system-dialog-blocked callback — same UX as the
+                                    // existing SYSTEM_DIALOG_BLOCKED path so the UI shows
+                                    // "task paused — screen changed unexpectedly"
+                                    callback.onSystemDialogBlocked(iterations, totalTokens)
+                                    return
+                                }
+                                is InterruptDetector.InterruptResult.Clean -> { /* proceed */ }
+                            }
+                        }
+                        // ── End interrupt check ─────────────────────────────────────────────
+
                         val screenTool = ToolRegistry.getInstance().getTool("get_screen_info")
                         val screenAfter = screenTool?.execute(emptyMap())
                         if (screenAfter != null && screenAfter.isSuccess && !screenAfter.data.isNullOrBlank()) {
