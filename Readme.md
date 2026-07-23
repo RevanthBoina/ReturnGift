@@ -75,4 +75,50 @@ python export_qat.py --config configs/analytical.yaml
 - No **golden-transcript regression check** yet (last TO-DO line) —
   that should run against each exported `.litertlm` before it's trusted,
   separately from this fine-tuning pipeline.
+
+##Current Status
+1. The Evaluation Suite (What we just built)
+These files ensure your models actually work and do not regress over time.
+
+golden_transcripts/eval_golden.py: The main testing engine. It loads your adapters, runs the synthetic test cases, and compares the output against your baselines.
+
+golden_transcripts/*.jsonl (messaging, analytical, transactional): Your curated "trap" cases and standard commands used to test the model's accuracy.
+
+results/*_deployed_baseline.json: The absolute source of truth for production. It tells the evaluation script exactly what performance to expect.
+
+2. Core Training & Deployment Pipeline
+The main engines for teaching and exporting your AI.
+
+train_adapter.py: The heaviest lifter. This script takes functiongemma-270m-it, applies LoRA (Low-Rank Adaptation), and trains it on your specific skills.
+
+data_prep.py & patch_data_prep.py: These format your raw data into the exact tokenized structures the model needs to learn effectively.
+
+export_qat.py & run_exports.sh: Handles exporting the model after training, likely merging the LoRA weights or applying Quantization (QAT) to make the model run faster and lighter in production.
+
+add_skills.py: A utility script to scaffold or register new skills into your pipeline if you decide to expand beyond messaging, transactional, and analytical.
+
+3. Configurations & Helpers
+These keep your main code clean and centralized.
+
+configs/*.yaml: Crucial files that hold the exact system_prompt for each skill. Both the training loop and the evaluation script read from these to ensure consistency.
+
+utils/model_utils.py: Handles loading the base model, adapters, and tokenizer.
+
+utils/data_utils.py: Handles dataset batching, padding, and data loaders.
+
+utils/training_utils.py: Manages the optimizer, loss calculations, and logging during the training loop.
+
+4. Environment Operations (The "Smart" Scripts)
+Training LLMs in cloud environments (like Lightning Studio) often causes Out-Of-Memory (OOM) crashes or storage bloat. These custom scripts are your safety net.
+
+smart_oom_fix.py & smart_monitor.py: Background scripts that watch GPU/CPU memory usage and clear cache or kill zombie processes before they crash your training run.
+
+smart_repair.py, smart_check.py, & super_audit.py: Diagnostics that verify file integrity, check for corrupted checkpoints, and ensure your studio environment is healthy.
+
+5. Environment Rules & Safety
+These ensure the code actually runs on a new machine.
+
+.gitignore: The shield we just created. It strictly prevents massive model weights (.safetensors) and datasets from being pushed, keeping your GitHub repo fast and within size limits.
+
+requirements.txt & constraints.lock.txt: Locks in the exact versions of PyTorch, Transformers, and other libraries (saving you from issues like the NumPy version conflict you experienced earlier).
  
