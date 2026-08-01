@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "description": "Device list for conservative CPU-first mode. Updates don't require code changes.",
+  "conservative_cpu": {
+    "manufacturers": [
+      "xiaomi",
+      "redmi",
+      "poco"
+    ],
+    "models": [
+      "xiaomi 15",
+      "mi 15",
+      "galaxy z fold4",
+      "sm-f936",
+      "z flip7",
+      "sm-f766"
+    ],
+    "hardware_hints": [
+      "mt",
+      "mediatek",
+      "dimensity"
+    ]
+  }
+}

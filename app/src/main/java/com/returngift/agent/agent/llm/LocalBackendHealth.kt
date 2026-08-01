@@ -3,8 +3,11 @@
 
 package com.returngift.agent.agent.llm
 
+import android.content.Context
 import android.os.Build
 import android.os.Process
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 
@@ -13,8 +16,11 @@ object LocalBackendHealth {
     private const val TAG = "LocalBackendHealth"
     private const val CRASH_MARKER_MAX_AGE_MS = 1000L * 60L * 60L * 24L * 30L
     private const val VERIFIED_GPU_CPU_SAFE_RETRY_COOLDOWN_MS = 1000L * 60L * 60L * 24L
-    private val CONSERVATIVE_CPU_MANUFACTURERS = setOf("xiaomi", "redmi", "poco")
-    private val CONSERVATIVE_CPU_MODELS = listOf(
+    private const val ASSET_NAME = "local_backend_health.json"
+
+    // Hardcoded fallback values (first-boot safety net until JSON loads)
+    private val HARDCODED_CONSERVATIVE_CPU_MANUFACTURERS = setOf("xiaomi", "redmi", "poco")
+    private val HARDCODED_CONSERVATIVE_CPU_MODELS = listOf(
         "xiaomi 15",
         "mi 15",
         "galaxy z fold4",
@@ -22,11 +28,112 @@ object LocalBackendHealth {
         "z flip7",
         "sm-f766",
     )
-    private val CONSERVATIVE_CPU_HARDWARE_HINTS = listOf(
+    private val HARDCODED_CONSERVATIVE_CPU_HARDWARE_HINTS = listOf(
         "mt",
         "mediatek",
         "dimensity",
     )
+
+    // Runtime-loaded values (from JSON asset, cached in memory)
+    @Volatile
+    private var conservativeCpuManufacturers: Set<String>? = null
+    @Volatile
+    private var conservativeCpuModels: List<String>? = null
+    @Volatile
+    private var conservativeCpuHardwareHints: List<String>? = null
+    @Volatile
+    private var jsonLoaded = false
+
+    // Lazy initialization flag (set once JSON loads)
+    private val JSON_LOADED_KEY = "local_backend_health_loaded"
+    private val JSON_MANUFACTURERS_KEY = "conservative_cpu_manufacturers"
+    private val JSON_MODELS_KEY = "conservative_cpu_models"
+    private val JSON_HARDWARE_HINTS_KEY = "conservative_cpu_hardware_hints"
+
+    /**
+     * Load conservative CPU lists from JSON asset.
+     * Falls back to hardcoded values if JSON is missing or malformed.
+     * Called lazily on first access; results cached in memory.
+     */
+    @Synchronized
+    fun loadConservativeCpuLists(context: Context) {
+        if (jsonLoaded && conservativeCpuManufacturers != null) return
+
+        // Try to load from cached KV values first
+        val cachedManufacturers = KVUtils.getString(JSON_MANUFACTURERS_KEY, null)
+        val cachedModels = KVUtils.getString(JSON_MODELS_KEY, null)
+        val cachedHints = KVUtils.getString(JSON_HARDWARE_HINTS_KEY, null)
+
+        if (cachedManufacturers != null && cachedModels != null && cachedHints != null) {
+            conservativeCpuManufacturers = cachedManufacturers.split(",").toSet()
+            conservativeCpuModels = cachedModels.split(",")
+            conservativeCpuHardwareHints = cachedHints.split(",")
+            jsonLoaded = true
+            XLog.i(TAG, "Loaded conservative CPU lists from KV cache")
+            return
+        }
+
+        // Load from asset
+        try {
+            val inputStream = context.assets.open(ASSET_NAME)
+            val json = inputStream.bufferedReader().use { it.readText() }
+            inputStream.close()
+
+            val gson = Gson()
+            val root = gson.fromJson(json, JsonObject::class.java)
+
+            val conservative = root.getAsJsonObject("conservative_cpu")
+            if (conservative != null) {
+                conservativeCpuManufacturers = conservative.getAsJsonArray("manufacturers")
+                    .map { it.asString.lowercase() }
+                    .toSet()
+                conservativeCpuModels = conservative.getAsJsonArray("models")
+                    .map { it.asString.lowercase() }
+                conservativeCpuHardwareHints = conservative.getAsJsonArray("hardware_hints")
+                    .map { it.asString.lowercase() }
+
+                // Cache in KV for next boot
+                KVUtils.putString(JSON_MANUFACTURERS_KEY,
+                    conservativeCpuManufacturers!!.joinToString(","))
+                KVUtils.putString(JSON_MODELS_KEY,
+                    conservativeCpuModels!!.joinToString(","))
+                KVUtils.putString(JSON_HARDWARE_HINTS_KEY,
+                    conservativeCpuHardwareHints!!.joinToString(","))
+                KVUtils.putBoolean(JSON_LOADED_KEY, true)
+
+                jsonLoaded = true
+                XLog.i(TAG, "Loaded conservative CPU lists from JSON asset")
+                return
+            }
+        } catch (e: Exception) {
+            XLog.w(TAG, "Failed to load $ASSET_NAME: ${e.message}")
+        }
+
+        // Fall back to hardcoded values
+        conservativeCpuManufacturers = HARDCODED_CONSERVATIVE_CPU_MANUFACTURERS
+        conservativeCpuModels = HARDCODED_CONSERVATIVE_CPU_MODELS
+        conservativeCpuHardwareHints = HARDCODED_CONSERVATIVE_CPU_HARDWARE_HINTS
+        jsonLoaded = true
+        XLog.i(TAG, "Using hardcoded conservative CPU lists (JSON unavailable)")
+    }
+
+    /** Get conservative CPU manufacturers list */
+    fun getConservativeCpuManufacturers(): Set<String> {
+        return conservativeCpuManufacturers ?: HARDCODED_CONSERVATIVE_CPU_MANUFACTURERS
+    }
+
+    /** Get conservative CPU models list */
+    fun getConservativeCpuModels(): List<String> {
+        return conservativeCpuModels ?: HARDCODED_CONSERVATIVE_CPU_MODELS
+    }
+
+    /** Get conservative CPU hardware hints list */
+    fun getConservativeCpuHardwareHints(): List<String> {
+        return conservativeCpuHardwareHints ?: HARDCODED_CONSERVATIVE_CPU_HARDWARE_HINTS
+    }
+
+    /** Check if JSON list was successfully loaded (vs hardcoded fallback) */
+    fun wasJsonListLoaded(): Boolean = jsonLoaded && conservativeCpuManufacturers != null
 
     fun currentDeviceKey(): String {
         val fingerprint = Build.FINGERPRINT?.trim().orEmpty()
@@ -255,9 +362,12 @@ object LocalBackendHealth {
     ): Boolean {
         if (hasVerifiedGpuSuccess) return false
         if (isCpuSafeModeEnabled) return false
-        if (manufacturer in CONSERVATIVE_CPU_MANUFACTURERS) return true
-        if (CONSERVATIVE_CPU_MODELS.any { model.contains(it) }) return true
-        return CONSERVATIVE_CPU_HARDWARE_HINTS.any { hint ->
+        val manufacturers = getConservativeCpuManufacturers()
+        val models = getConservativeCpuModels()
+        val hints = getConservativeCpuHardwareHints()
+        if (manufacturer in manufacturers) return true
+        if (models.any { model.contains(it) }) return true
+        return hints.any { hint ->
             hardware.contains(hint) || model.contains(hint)
         }
     }

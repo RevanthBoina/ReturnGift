@@ -1,10 +1,131 @@
 ﻿package com.returngift.agent.agent.llm
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalBackendHealthTest {
+
+    // Reference to hardcoded constants for test assertions
+    private val expectedManufacturers = setOf("xiaomi", "redmi", "poco")
+    private val expectedModels = listOf(
+        "xiaomi 15",
+        "mi 15",
+        "galaxy z fold4",
+        "sm-f936",
+        "z flip7",
+        "sm-f766",
+    )
+    private val expectedHints = listOf(
+        "mt",
+        "mediatek",
+        "dimensity",
+    )
+
+    @Test
+    fun `hardcoded conservative CPU manufacturers match expected values`() {
+        // Verify the fallback list contains expected manufacturers
+        val manufacturers = LocalBackendHealth.getConservativeCpuManufacturers()
+        assertTrue(manufacturers.contains("xiaomi"))
+        assertTrue(manufacturers.contains("redmi"))
+        assertTrue(manufacturers.contains("poco"))
+    }
+
+    @Test
+    fun `hardcoded conservative CPU models match expected values`() {
+        // Verify the fallback list contains expected models
+        val models = LocalBackendHealth.getConservativeCpuModels()
+        assertTrue(models.any { it.contains("xiaomi 15") })
+        assertTrue(models.any { it.contains("galaxy z fold4") })
+        assertTrue(models.any { it.contains("sm-f936") })
+    }
+
+    @Test
+    fun `hardcoded conservative CPU hardware hints match expected values`() {
+        // Verify the fallback list contains expected hardware hints
+        val hints = LocalBackendHealth.getConservativeCpuHardwareHints()
+        assertTrue(hints.contains("mt"))
+        assertTrue(hints.contains("mediatek"))
+        assertTrue(hints.contains("dimensity"))
+    }
+
+    @Test
+    fun `getConservativeCpuManufacturers returns hardcoded fallback when not loaded`() {
+        // Before JSON load, should return hardcoded values
+        val manufacturers = LocalBackendHealth.getConservativeCpuManufacturers()
+        assertEquals(expectedManufacturers, manufacturers)
+    }
+
+    @Test
+    fun `getConservativeCpuModels returns hardcoded fallback when not loaded`() {
+        // Before JSON load, should return hardcoded values
+        val models = LocalBackendHealth.getConservativeCpuModels()
+        assertEquals(expectedModels, models)
+    }
+
+    @Test
+    fun `getConservativeCpuHardwareHints returns hardcoded fallback when not loaded`() {
+        // Before JSON load, should return hardcoded values
+        val hints = LocalBackendHealth.getConservativeCpuHardwareHints()
+        assertEquals(expectedHints, hints)
+    }
+
+    @Test
+    fun `conservative CPU logic uses manufacturer from list`() {
+        // xiaomi should trigger conservative mode
+        assertTrue(
+            LocalBackendHealth.shouldConservativelyForceCpu(
+                manufacturer = "xiaomi",
+                model = "random model",
+                hardware = "somehardware",
+                hasVerifiedGpuSuccess = false,
+                isCpuSafeModeEnabled = false,
+            )
+        )
+    }
+
+    @Test
+    fun `conservative CPU logic uses model from list`() {
+        // Galaxy Z Fold4 model should trigger conservative mode
+        assertTrue(
+            LocalBackendHealth.shouldConservativelyForceCpu(
+                manufacturer = "samsung",
+                model = "galaxy z fold4",
+                hardware = "somehardware",
+                hasVerifiedGpuSuccess = false,
+                isCpuSafeModeEnabled = false,
+            )
+        )
+    }
+
+    @Test
+    fun `conservative CPU logic uses hardware hint from list`() {
+        // MediaTek hardware should trigger conservative mode
+        assertTrue(
+            LocalBackendHealth.shouldConservativelyForceCpu(
+                manufacturer = "google",
+                model = "pixel 9",
+                hardware = "mt6989",
+                hasVerifiedGpuSuccess = false,
+                isCpuSafeModeEnabled = false,
+            )
+        )
+    }
+
+    @Test
+    fun `conservative CPU logic does not trigger for unknown devices`() {
+        // Unknown manufacturer/model/hardware should not trigger conservative mode
+        assertFalse(
+            LocalBackendHealth.shouldConservativelyForceCpu(
+                manufacturer = "google",
+                model = "pixel 9",
+                hardware = "tensor",
+                hasVerifiedGpuSuccess = false,
+                isCpuSafeModeEnabled = false,
+            )
+        )
+    }
 
     @Test
     fun `promotes pending gpu init crash on same device within age window`() {
