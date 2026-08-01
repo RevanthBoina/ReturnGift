@@ -5,6 +5,7 @@ package com.returngift.agent.agent.skill
 
 import android.content.Context
 import com.returngift.agent.utils.XLog
+import com.returngift.agent.agent.skill.YamlSkillLoader
 
 /**
  * Registry of built-in and user-defined skills.
