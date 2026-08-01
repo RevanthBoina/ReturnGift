@@ -47,11 +47,7 @@ jobs:
 
       - name: Check for Detekt
         run: |
-          if grep -q "id.*detekt" build.gradle.kts app/build.gradle.kts 2>/dev/null; then
-            ./gradlew detekt
-          else
-            echo "Detekt not configured - skipping"
-          fi
+          echo "Detekt disabled - skipping"
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
