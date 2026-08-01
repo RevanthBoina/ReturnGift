@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-build-only manifest additions.
+
+  L2 fix: DebugTaskReceiver and TaskTriggerReceiver let any app on the device trigger
+  ReturnGift tasks via an unauthenticated broadcast (com.returngift.agent.DEBUG_TASK /
+  com.returngift.agent.TASK). They exist purely so developers can drive the agent from
+  `adb shell am broadcast` during development. Declaring them here — instead of in
+  app/src/main/AndroidManifest.xml — means Gradle's manifest merger only includes them
+  in debug builds; they are absent from release/production APKs entirely, with no
+  runtime check to bypass and no permission string to guess.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <receiver
+            android:name="com.returngift.agent.debug.DebugTaskReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.returngift.agent.DEBUG_TASK" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.returngift.agent.debug.TaskTriggerReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.returngift.agent.TASK" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>

@@ -33,6 +33,12 @@
 # Tool 注册（反射）
 -keep class com.returngift.agent.tool.** { *; }
 
+# Service 层（AccessibilityService/ForegroundService/JobService/BootReceiver referenced
+# by class name from AndroidManifest.xml — AGP normally auto-keeps manifest components,
+# but this makes it explicit rather than relying on that default)
+-keep class com.returngift.agent.service.** { *; }
+-keep class com.returngift.agent.debug.** { *; }
+
 # Channel（钉钉/飞书回调，保留泛型签名）
 -keep class com.returngift.agent.channel.** { *; }
 

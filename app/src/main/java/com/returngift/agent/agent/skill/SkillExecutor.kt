@@ -3,6 +3,7 @@
 
 package com.returngift.agent.agent.skill
 
+import com.returngift.agent.agent.SafetyInterceptor
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.utils.XLog
 
@@ -43,7 +44,12 @@ class SkillExecutor {
         
         XLog.i(TAG, "Executing skill: ${skill.id} with params: $params")
         SkillTelemetry.emitSkillStart(skill.id, taskText, routeUsed)
-        
+
+        // C3 fix: SafetyInterceptor.check() reads activeSkillId to look up the skill's
+        // YAML safety block (blocklist_patterns, risk_tier, confirmation_mode,
+        // never_retry_after). Without setting this, the interceptor is a permanent no-op.
+        SafetyInterceptor.activeSkillId = skill.id
+        try {
         val totalSteps = skill.steps.size
         var stepsUsed = 0
         var confirmationGiven = false
@@ -165,6 +171,9 @@ class SkillExecutor {
                 "route_used" to routeUsed
             )
         )
+        } finally {
+            SafetyInterceptor.resetSession()
+        }
     }
 
     /**

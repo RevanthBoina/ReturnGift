@@ -1,4 +1,3 @@
-import jdk.internal.net.http.common.Log.channel
 import org.jetbrains.kotlin.konan.properties.hasProperty
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -104,6 +103,28 @@ android {
                 "META-INF/LICENSE.txt",
                 "META-INF/NOTICE",
                 "META-INF/NOTICE.txt",
+            )
+        }
+    }
+}
+
+// L3 fix: previously, a missing local.properties / env signing config silently produced
+// an unsigned (or misconfigured) release build with no warning until Play Store rejection
+// or a signature mismatch on update. Fail fast and explicitly instead, but only when a
+// release-signing task is actually requested — debug builds must not be affected.
+gradle.taskGraph.whenReady {
+    val requestsReleaseSigning = allTasks.any { task ->
+        task.name.contains("Release") &&
+            (task.name.startsWith("assemble") || task.name.startsWith("bundle") || task.name.startsWith("package"))
+    }
+    if (requestsReleaseSigning) {
+        val releaseSigning = android.signingConfigs.getByName("release")
+        if (releaseSigning.storeFile == null) {
+            throw GradleException(
+                "Release build requested but no signing config is present.\n" +
+                "Set KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD as environment " +
+                "variables, or add them to local.properties, before building a release artifact.\n" +
+                "See RELEASING.md for details."
             )
         }
     }
