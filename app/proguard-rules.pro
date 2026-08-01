@@ -249,3 +249,10 @@
 # ============================================================
 -dontwarn jp.wasabeef.glide.**
 -keep class jp.wasabeef.glide.** { *; }
+
+# ============================================================
+# SnakeYAML (java.beans missing on Android - ignore)
+# ============================================================
+-dontwarn java.beans.**
+-dontwarn org.yaml.snakeyaml.introspector.**
+-keep class org.yaml.snakeyaml.** { *; }
