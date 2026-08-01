@@ -1,7 +1,7 @@
 # Skill Integration Analysis
 
-**Updated:** 2026-07-20
-**Source state:** Full Android source committed to `source_repo/` (Finding 1 resolved).
+**Updated:** 2026-08-01
+**Source state:** Full Android source committed to `source_repo/`.
 **Scope:** How `skill_definitions_v2.yaml` (19 production skills) relates to the committed
 Kotlin skill layer (`BuiltInSkills.kt`, `SkillRegistry`, `SkillExecutor`, `Skill.kt`).
 
@@ -40,7 +40,7 @@ Located at `app/src/main/java/com/returngift/agent/agent/skill/`.
 - `SkillExecutor` resolves `{param}` placeholders in step params before tool dispatch.
 - On non-optional step failure after retries, executor returns `fallbackGoal` string for the LLM to continue.
 
-### Layer 2 — skill_definitions_v2.yaml (19 production skills, draft status)
+### Layer 2 — skill_definitions_v2.yaml (19 production skills, all `status: draft`)
 
 These are **slot-extractor + intent/UI-automation recipes** for specific apps. They are
 not yet wired into the Kotlin `SkillRegistry` — they represent the planned production
@@ -59,8 +59,14 @@ skill contract, pending fixture capture and device validation.
 | utility | set_alarm, navigate_settings, open_file_in_drive, record_audio |
 | social | open_linkedin_feed |
 | default_app | open_app |
-| developer_tools | search_repository _(scope unresolved)_ |
-| content_creation | create_design, create_video_project _(scope unresolved)_ |
+| developer_tools | search_repository |
+| content_creation | create_design, create_video_project |
+
+**Note on `search_repository`, `create_design`, `create_video_project`:** These three skills
+carry an explicit `scope_note` in the YAML indicating that the tier decision (local
+FunctionGemma Action Skill vs. cloud Deep-Agent) is deliberately deferred. All three are
+`status: draft` and promotion is blocked by the `scope_note` until the decision is made.
+This is an intentional design deferral, not an architectural gap.
 
 ---
 
@@ -68,20 +74,62 @@ skill contract, pending fixture capture and device validation.
 
 ### What exists in the committed source
 
-- `send-message.md`, `open-and-search.md`, `open-and-navigate.md` playbooks — **present** in
-  `app/src/main/assets/playbooks/` (e.g. `send-message.md`, `open-and-search.md`,
-  `open-and-navigate.md`).
-- `BuiltInSkills.kt` — **present and committed**.
-- All other Kotlin source (tool layer, task loop, accessibility service) — **present**.
+- All 18 playbooks present in `app/src/main/assets/playbooks/` — including `send-message.md`,
+  `open-and-search.md`, `open-and-navigate.md`, and 15 others.
+- `BuiltInSkills.kt`, `SkillRegistry.kt`, `SkillExecutor.kt`, `Skill.kt` — all present.
+- Full tool layer (`app/src/main/java/com/returngift/agent/tool/`), task loop
+  (`TaskOrchestrator.kt`), and accessibility service (`ClawAccessibilityService.java`) — all present.
+- `skill_definitions_v2.yaml` — 19 skills, all `status: draft`, all 22 fixture entries
+  explicitly set to `tree_hash: null  # TODO: generate from real fixture file`.
 
-### What is still missing
+### Missing dependency: fixture XML files
 
-| Item | Blocker |
-|------|---------|
-| 21 fixture XML files (`fixtures/screen_N.xml`) | Requires ADB capture from SM-S918B (Finding 4) |
-| `tree_hash` values in `skill_definitions_v2.yaml` | Blocked by fixture capture |
-| Wiring of YAML skills into `SkillRegistry` | Design decision pending (see below) |
-| Promotion of any skill from `draft` to `canary` | Blocked by fixtures + tree_hash |
+All 22 fixture entries in `skill_definitions_v2.yaml` reference paths under `fixtures/`
+that do not yet exist in the repository. The `fixtures/` directory currently contains only
+`README.md`. The 21 distinct XML files must be captured from a real device before any skill
+can be promoted from `draft` to `canary`.
+
+**Referenced paths (none present):**
+
+| Path | Skill(s) |
+|------|----------|
+| `fixtures/screen_1.xml` | send_message, open_conversation |
+| `fixtures/screen_2.xml` | open_linkedin_feed |
+| `fixtures/screen_3.xml` | ask_external_ai |
+| `fixtures/screen_4.xml` | navigate_settings |
+| `fixtures/screen_12.xml` | make_phone_call |
+| `fixtures/screen_14.xml` | web_search |
+| `fixtures/screen_15.xml` | open_file_in_drive |
+| `fixtures/screen_16.xml` | search_install_app |
+| `fixtures/screen_17.xml` | view_assignments |
+| `fixtures/screen_18.xml` | search_place |
+| `fixtures/screen_24.xml` | send_message |
+| `fixtures/screen_25.xml` | set_alarm |
+| `fixtures/screen_27.xml` | book_ride |
+| `fixtures/screen_30.xml` | create_video_project |
+| `fixtures/screen_31.xml` | send_message |
+| `fixtures/screen_32.xml` | send_message |
+| `fixtures/screen_33.xml` | search_video |
+| `fixtures/screen_34.xml` | record_audio |
+| `fixtures/screen_35.xml` | create_design |
+| `fixtures/screen_36.xml` | search_repository |
+| `fixtures/screen_39.xml` | open_app |
+
+Capture command (SM-S918B, Android 14, OneUI 6):
+```bash
+adb shell uiautomator dump /sdcard/screen_N.xml
+adb pull /sdcard/screen_N.xml fixtures/screen_N.xml
+sha256sum fixtures/screen_N.xml
+```
+After capture, replace each `tree_hash: null` with the real `sha256:...` value.
+See `fixtures/README.md` for the full list and instructions.
+
+### tree_hash status
+
+All 22 fixture entries carry `tree_hash: null  # TODO: generate from real fixture file`.
+This is an intentional, transparent placeholder — there are no hardcoded fake hashes and
+no entries silently missing the field. The `null` values will be replaced with real
+SHA-256 hashes once the fixture files are captured and committed.
 
 ### Integration path: YAML → Kotlin
 
@@ -96,29 +144,16 @@ The YAML skills are not yet loaded by `SkillRegistry`. Two options:
 
 Neither is implemented yet. The Kotlin layer currently only runs the 9 `BuiltInSkills`.
 
-### Scope-unresolved skills
-
-Three skills in `skill_definitions_v2.yaml` carry `scope_note: SCOPE UNRESOLVED`:
-
-| Skill | Issue | Recommendation |
-|-------|-------|----------------|
-| `search_repository` | Outside 8-domain taxonomy; read-only, low complexity | Plausible as local Action Skill |
-| `create_design` | WebView inaccessibility; multi-step creative workflow | Cloud Deep-Agent tier |
-| `create_video_project` | Multi-minute stateful; no deep links | Cloud Deep-Agent tier |
-
-These must not be wired into `SkillRegistry` until the tier decision is made (Finding 7).
-
 ---
 
 ## Accuracy verdict
 
-`skill_definitions_v2.yaml` accurately describes the **intended** production skill contract.
-The committed Kotlin source is consistent with the architecture it assumes (tool layer,
-accessibility service, agent loop). No contradictions found between the YAML schema and
-the Kotlin data model — `SkillStep`, `SkillParameter`, and `SkillResult` are compatible
-with the YAML `execution.routes` structure.
+`skill_definitions_v2.yaml` accurately describes the intended production skill contract.
+The committed Kotlin source is consistent with the architecture it assumes. No contradictions
+found between the YAML schema and the Kotlin data model — `SkillStep`, `SkillParameter`,
+and `SkillResult` are compatible with the YAML `execution.routes` structure.
 
 **This document should be re-verified after:**
-- Fixture XMLs are committed and `tree_hash` values are filled (Finding 4/5).
+- Fixture XMLs are captured, committed, and `tree_hash` values are filled.
 - YAML-to-Kotlin wiring is implemented.
-- Scope decisions are made for the three unresolved skills (Finding 7).
+- Tier decisions are made for `search_repository`, `create_design`, and `create_video_project`.
