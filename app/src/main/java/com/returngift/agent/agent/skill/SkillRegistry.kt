@@ -3,6 +3,7 @@
 
 package com.returngift.agent.agent.skill
 
+import android.content.Context
 import com.returngift.agent.utils.XLog
 
 /**
@@ -13,6 +14,7 @@ object SkillRegistry {
 
     private const val TAG = "SkillRegistry"
     private val skills = mutableMapOf<String, Skill>()
+    private val yamlMeta = mutableMapOf<String, YamlSkill>()
 
     /**
      * Register a skill. Replaces existing skill with same ID.
@@ -77,5 +79,25 @@ object SkillRegistry {
         XLog.i(TAG, "Loaded ${skills.size} built-in skills")
     }
 
-    fun clear() = skills.clear()
+    /**
+     * Load YAML-defined skills from assets. Call after loadBuiltInSkills().
+     * YAML skills with the same id as a built-in will override the built-in.
+     */
+    fun loadYamlSkills(context: Context) {
+        val yamlSkills = YamlSkillLoader.loadAll(context)
+        var compiled = 0
+        for (yaml in yamlSkills) {
+            val skill = YamlSkillCompiler.compile(yaml) ?: continue
+            register(skill)
+            // Keep the raw YamlSkill for safety/routing metadata lookups
+            yamlMeta[yaml.skillId] = yaml
+            compiled++
+        }
+        XLog.i(TAG, "Compiled $compiled YAML skills (${yamlSkills.size} parsed)")
+    }
+
+    /** Returns the raw YamlSkill metadata for a skill id, if loaded from YAML. */
+    fun getYamlMeta(skillId: String): YamlSkill? = yamlMeta[skillId]
+
+    fun clear() { skills.clear(); yamlMeta.clear() }
 }

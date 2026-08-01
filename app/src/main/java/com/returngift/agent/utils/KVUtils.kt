@@ -170,6 +170,11 @@ object KVUtils {
     fun isExternalAutomationEnabled(): Boolean = getBoolean(KEY_EXTERNAL_AUTOMATION_ENABLED, false)
     fun setExternalAutomationEnabled(enabled: Boolean) = putBoolean(KEY_EXTERNAL_AUTOMATION_ENABLED, enabled)
 
+    // ==================== Cloud Deep Agent ====================
+    private const val KEY_CLOUD_DEEP_AGENT_ENABLED = "KEY_CLOUD_DEEP_AGENT_ENABLED"
+    fun isCloudDeepAgentEnabled(): Boolean = getBoolean(KEY_CLOUD_DEEP_AGENT_ENABLED, false)
+    fun setCloudDeepAgentEnabled(enabled: Boolean) = putBoolean(KEY_CLOUD_DEEP_AGENT_ENABLED, enabled)
+
     private const val KEY_PENDING_ACCESSIBILITY_RETURN = "KEY_PENDING_ACCESSIBILITY_RETURN"
     private const val KEY_PENDING_ACCESSIBILITY_RETURN_AT = "KEY_PENDING_ACCESSIBILITY_RETURN_AT"
     private const val KEY_PENDING_NOTIFICATION_ACCESS_RETURN = "KEY_PENDING_NOTIFICATION_ACCESS_RETURN"

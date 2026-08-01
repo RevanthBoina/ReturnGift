@@ -1,0 +1,78 @@
+schema_version: "2.1"
+skill_id: create_video_project
+version: "1.1.0"
+status: canary
+owner: "team-content"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 21
+
+taxonomy:
+  domain: content_creation
+  capability: write_local
+  risk_tier: 1
+  reversible: true
+  idempotent: false
+  est_duration_ms: 12000
+  est_steps: 6
+
+compatibility:
+  target_app:
+    package: com.camerasideas.instashot
+    tested_version_name: "2.061.1448"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  known_limitations:
+    - "Multi-minute stateful workflow — model as long-running task with checkpoints"
+    - "No deep links available"
+
+slots:
+  media_path:
+    type: string
+    required: false
+
+execution:
+  strategy: first_success
+  routes:
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.55
+      cost_ms: 10000
+      checkpoint_capable: true
+      steps:
+        - { id: launch, op: launch_app, package: com.camerasideas.instashot }
+        - { id: tap_video, op: tap, target: { by: text, matches: "(?i)video" } }
+        - { id: select_media, op: select_media, from: gallery, when: "slots.media_path != null" }
+        - { id: wait_editor, op: wait, for: screen_settled, timeout_ms: 5000 }
+
+recovery:
+  - on: project_interrupted
+    do: [checkpoint_save, notify_user("Video project saved. Resume from InShot.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 8]
+  terminal_message: "I couldn't start the video project."
+
+routing:
+  priority: 45
+  triggers:
+    - "create a new video in inshot"
+    - "start a video project in inshot"
+    - "edit a video using inshot"
+    - "make a new video project"
+    - "create a video for instagram"
+    - "open inshot video editor"
+  anti_triggers:
+    - "open inshot" -> open_app
+  required_entities: []
+  disambiguate_against: [open_app]
+
+output:
+  templates:
+    success: "Opened InShot for a new video project."
+    failed: "Could not start the video project."
+
+telemetry:
+  emit: [route_used, checkpoint_reached, outcome]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW (canary) — create_video_project.md playbook created

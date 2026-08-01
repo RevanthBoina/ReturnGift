@@ -7,6 +7,8 @@ import com.returngift.agent.agent.DefaultAgentService
 import com.returngift.agent.agent.llm.LocalBackendHealth
 import com.returngift.agent.base.BaseApp
 import com.returngift.agent.channel.ChannelManager
+import com.returngift.agent.server.CloudDeepAgentManager
+import com.returngift.agent.server.ConfigServerManager
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.utils.AppLogStore
 import com.returngift.agent.utils.KVUtils
@@ -41,6 +43,12 @@ class ClawApplication : BaseApp() {
         com.returngift.agent.agent.skill.SkillRegistry.loadBuiltInSkills()
         com.returngift.agent.agent.PlaybookManager.loadAll(this)
         XLog.e(TAG, "ClawApplication initialized, tools registered: ${ToolRegistry.getInstance().getAllTools().size}")
+
+        // Auto-start config server if enabled
+        ConfigServerManager.autoStartIfNeeded(this)
+
+        // Auto-start cloud deep agent service if enabled
+        CloudDeepAgentManager.autoStartIfNeeded(this)
 
         // Write network logs to file (set to true when debugging)
         DefaultAgentService.FILE_LOGGING_ENABLED = BuildConfig.DEBUG

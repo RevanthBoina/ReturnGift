@@ -1,0 +1,86 @@
+schema_version: "2.1"
+skill_id: search_repository
+version: "1.2.0"
+status: stable
+owner: "team-developer"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: developer_tools
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 2500
+  est_steps: 2
+
+compatibility:
+  target_app:
+    package: com.github.android
+    tested_version_name: "1.140.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+slots:
+  query:
+    type: string
+    required: true
+    max_len: 200
+
+execution:
+  strategy: first_success
+  routes:
+    - id: github_search_url
+      kind: intent
+      reliability: 0.92
+      cost_ms: 600
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://github.com/search?q={query|urlencode}&type=repositories"
+        package: com.github.android
+      verify:
+        - { assert: foreground_package, equals: com.github.android }
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 3500
+      steps:
+        - { id: launch, op: launch_app, package: com.github.android }
+        - { id: tap_search, op: tap, target: { by: content_desc, value: "Search" } }
+        - { id: type_query, op: type, target: { by: class, value: android.widget.EditText }, text: "{query}", method: ime_broadcast }
+        - { id: submit, op: press, key: KEYCODE_ENTER }
+
+recovery:
+  - on: not_signed_in
+    do: [abort, notify_user("Please sign in to GitHub first.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't search GitHub."
+
+routing:
+  priority: 55
+  triggers:
+    - "search github for {query}"
+    - "find {query} on github"
+    - "look up {query} repositories"
+    - "search for {query} repo"
+    - "github search {query}"
+    - "find code for {query} on github"
+  anti_triggers:
+    - "open github" -> open_app
+    - "search the web for {query}" -> web_search
+  required_entities: [query]
+  disambiguate_against: [web_search, open_app]
+
+output:
+  templates:
+    success: "Searching GitHub for \"{query}\"."
+
+telemetry:
+  emit: [route_used, outcome]
+
+# integration_notes:
+#   existing_playbook: open-and-search.md (PARTIAL — generic search)
+#   action: NEW — search_repository.md playbook created; open-and-search.md updated with github trigger

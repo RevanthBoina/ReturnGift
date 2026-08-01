@@ -1,0 +1,106 @@
+schema_version: "2.1"
+skill_id: navigate_settings
+version: "1.9.0"
+status: stable
+owner: "team-system"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: utility
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 1500
+  est_steps: 2
+
+compatibility:
+  target_app:
+    package: com.android.settings
+    tested_version_name: "14"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+slots:
+  setting_section:
+    type: enum
+    values: [wifi, bluetooth, display, sound, battery, apps, notifications, privacy, location, security, about, developer_options, date_time, language, storage, accessibility, accounts, network, nfc, hotspot]
+    required: false
+    normalize: [casefold, strip_spaces]
+    prompt_if_missing: "Which settings section?"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: settings_intent_lookup
+      kind: intent
+      reliability: 0.95
+      cost_ms: 400
+      intent_lookup:
+        wifi: { action: "android.settings.WIFI_SETTINGS" }
+        bluetooth: { action: "android.settings.BLUETOOTH_SETTINGS" }
+        display: { action: "android.settings.DISPLAY_SETTINGS" }
+        sound: { action: "android.settings.SOUND_SETTINGS" }
+        battery: { action: "android.settings.BATTERY_SAVER_SETTINGS" }
+        apps: { action: "android.settings.APPLICATION_SETTINGS" }
+        notifications: { action: "android.settings.APP_NOTIFICATION_SETTINGS" }
+        privacy: { action: "android.settings.PRIVACY_SETTINGS" }
+        location: { action: "android.settings.LOCATION_SOURCE_SETTINGS" }
+        security: { action: "android.settings.SECURITY_SETTINGS" }
+        about: { action: "android.settings.DEVICE_INFO_SETTINGS" }
+        developer_options: { action: "android.settings.APPLICATION_DEVELOPMENT_SETTINGS" }
+        date_time: { action: "android.settings.DATE_SETTINGS" }
+        language: { action: "android.settings.LOCALE_SETTINGS" }
+        storage: { action: "android.settings.INTERNAL_STORAGE_SETTINGS" }
+        accessibility: { action: "android.settings.ACCESSIBILITY_SETTINGS" }
+        accounts: { action: "android.settings.SYNC_SETTINGS" }
+        network: { action: "android.settings.AIRPLANE_MODE_SETTINGS" }
+        nfc: { action: "android.settings.NFC_SETTINGS" }
+        hotspot: { action: "android.settings.TETHER_SETTINGS" }
+      verify:
+        - { assert: foreground_package, equals: com.android.settings }
+
+    - id: ui_walk
+      kind: ui_automation
+      reliability: 0.60
+      cost_ms: 4000
+      steps:
+        - { id: launch, op: launch_app, package: com.android.settings }
+        - { id: search, op: tap, target: { by: content_desc, matches: "(?i)search" } }
+        - { id: type_section, op: type, target: { by: class, value: android.widget.EditText }, text: "{setting_section}", method: ime_broadcast }
+        - { id: tap_result, op: tap, target: { by: text, matches: "(?i){setting_section}", clickable: true } }
+
+recovery:
+  - on: setting_not_found
+    do: [notify_user("I couldn't find the \"{setting_section}\" setting.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't open that settings section."
+
+routing:
+  priority: 50
+  triggers:
+    - "open settings"
+    - "go to wifi settings"
+    - "open display settings"
+    - "navigate to {setting_section} settings"
+    - "open notification settings"
+    - "go to battery settings"
+    - "open about phone"
+  anti_triggers:
+    - "turn on wifi" -> toggle_setting
+    - "turn off bluetooth" -> toggle_setting
+  required_entities: []
+  disambiguate_against: [toggle_setting, open_app]
+
+output:
+  templates:
+    success: "Opened {setting_section} settings."
+
+telemetry:
+  emit: [route_used, outcome]
+
+# integration_notes:
+#   existing_playbook: open-and-navigate.md (PARTIAL — generic navigation)
+#   action: NEW — navigate_settings.md playbook created with intent_lookup table

@@ -1,0 +1,108 @@
+schema_version: "2.1"
+skill_id: search_place
+version: "2.0.0"
+status: stable
+owner: "team-navigation"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: navigation
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 3500
+  est_steps: 3
+
+compatibility:
+  target_app:
+    package: com.google.android.apps.maps
+    tested_version_name: "11.135.0100"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+
+slots:
+  place:
+    type: string
+    required: true
+    max_len: 200
+  destination:
+    type: string
+    required: false
+  mode:
+    type: enum
+    values: [driving, walking, transit, cycling]
+    default: driving
+
+execution:
+  strategy: first_success
+  routes:
+    - id: geo_intent
+      when: "slots.destination == null"
+      kind: intent
+      reliability: 0.95
+      cost_ms: 500
+      intent:
+        action: android.intent.action.VIEW
+        data: "geo:0,0?q={place|urlencode}"
+        package: com.google.android.apps.maps
+
+    - id: navigation_intent
+      when: "slots.destination != null"
+      kind: intent
+      reliability: 0.95
+      cost_ms: 500
+      intent:
+        action: android.intent.action.VIEW
+        data: "google.navigation:q={destination|urlencode}&mode={mode|first_char}"
+        package: com.google.android.apps.maps
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 4000
+      steps:
+        - { id: launch, op: launch_app, package: com.google.android.apps.maps }
+        - { id: tap_search, op: tap, target: sel.maps_search_bar }
+        - { id: type_place, op: type, target: { by: class, value: android.widget.EditText }, text: "{place}", method: ime_broadcast }
+        - { id: submit, op: press, key: KEYCODE_ENTER }
+
+recovery:
+  - on: location_disabled
+    do: [prompt_user("Enable location for better results?"), continue_without]
+  - on: no_results
+    do: [notify_user("No places found for \"{place}\".")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't find \"{place}\" on Maps."
+
+routing:
+  priority: 65
+  triggers:
+    - "navigate to {place}"
+    - "get directions to {place}"
+    - "find {place} on maps"
+    - "how do i get to {place}"
+    - "show me the route to {place}"
+    - "directions from {origin} to {destination}"
+    - "take me to {place}"
+    - "where is {place}"
+  anti_triggers:
+    - "book a ride to {place}" -> book_ride
+    - "open maps" -> open_app
+  required_entities: [place]
+  disambiguate_against: [book_ride, open_app]
+
+output:
+  templates:
+    success: "Showing {place} on Google Maps."
+    not_found: "Couldn't find \"{place}\" on Maps."
+
+telemetry:
+  emit: [route_used, outcome]
+
+# integration_notes:
+#   existing_playbook: open-and-navigate.md (PARTIAL — generic navigation)
+#   action: ENHANCED — open-and-navigate.md updated with search_place + open_app triggers

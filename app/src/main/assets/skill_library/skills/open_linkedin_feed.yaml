@@ -1,0 +1,79 @@
+schema_version: "2.1"
+skill_id: open_linkedin_feed
+version: "1.1.0"
+status: stable
+owner: "team-social"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: social
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 2000
+  est_steps: 2
+
+compatibility:
+  target_app:
+    package: com.linkedin.android
+    tested_version_name: "4.1.852"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  requires_auth: true
+
+slots: {}
+
+execution:
+  strategy: first_success
+  routes:
+    - id: linkedin_deeplink
+      kind: intent
+      reliability: 0.85
+      cost_ms: 500
+      intent:
+        action: android.intent.action.VIEW
+        data: "linkedin://feed"
+        package: com.linkedin.android
+
+    - id: ui_launch
+      kind: ui_automation
+      reliability: 0.75
+      cost_ms: 2500
+      steps:
+        - { id: launch, op: launch_app, package: com.linkedin.android }
+
+recovery:
+  - on: not_signed_in
+    do: [abort, notify_user("Please sign in to LinkedIn first.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 2]
+  terminal_message: "I couldn't open LinkedIn."
+
+routing:
+  priority: 40
+  triggers:
+    - "show my linkedin notifications"
+    - "open linkedin notifications"
+    - "check my linkedin feed"
+    - "what's new on linkedin"
+    - "open my linkedin activity"
+    - "check linkedin updates"
+  anti_triggers:
+    - "open linkedin" -> open_app
+    - "show system notifications" -> read_system_notifications
+  required_entities: []
+  disambiguate_against: [open_app, read_system_notifications]
+
+output:
+  templates:
+    success: "Opened LinkedIn feed."
+
+telemetry:
+  emit: [route_used, outcome]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW — open_linkedin_feed.md playbook created
+#   note: YAML skill_id was "open_notifications" in source — renamed to open_linkedin_feed to avoid confusion with system notifications
