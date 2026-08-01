@@ -1,0 +1,2967 @@
+# ===========================================================================
+# SKILL DEFINITIONS v2.1 — Production-Ready Schema
+# ===========================================================================
+# Implements the complete contract from the production review:
+# - Intent-first execution with UI fallback
+# - Resolution-independent selectors with ranked candidates
+# - Machine-readable grounding (not comments)
+# - Verification postconditions
+# - Recovery ladders (retry → alt selector → deep link → intent → ask user → escalate)
+# - Risk-tiered safety with confirmation gating
+# - Observability hooks
+#
+# Source: https://github.com/RevanthBoina/google-s-dataset/tree/main/screen_xml
+# Device: Samsung Galaxy SM-S918B (1080×2340, Android 14, OneUI 6)
+#
+# 270M MODEL CONSTRAINTS:
+# - Skills are NOT planners — they are slot extractors + paraphrasers
+# - Routing uses embedding retrieval + rules, not free-form LLM classification
+# - UI trees are pruned to numbered flat lists, never raw XML
+# - Deterministic step sequencing; LLM only for slot extraction + response
+# ===========================================================================
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GLOBAL INTERRUPTS (inherited by all skills)
+# ═══════════════════════════════════════════════════════════════════════════
+global_interrupts_v3:
+  handlers:
+    - id: runtime_permission
+      match:
+        package: com.google.android.permissioncontroller
+      handle:
+        op: tap
+        target:
+          by: resource_id
+          value: "com.android.permissioncontroller:id/permission_allow_button"
+      policy: allow_if_declared_in_skill
+
+    - id: android_system_anr
+      match:
+        text_matches: "(?i)isn'?t responding"
+      handle:
+        op: tap
+        text_matches: "(?i)wait"
+
+    - id: app_update_prompt
+      match:
+        text_matches: "(?i)update (now|available)"
+      handle:
+        op: tap
+        text_matches: "(?i)not now|later|skip"
+
+    - id: full_screen_ad
+      match:
+        any:
+          - resource_id_matches: ".*(interstitial|ad_close|close_ad).*"
+          - content_desc_matches: "(?i)close ad|dismiss ad"
+      handle:
+        op: tap
+        target: self
+      retries: 2
+
+    - id: rating_prompt
+      match:
+        text_matches: "(?i)rate (this|us)|enjoying|star rating"
+      handle:
+        op: tap
+        text_matches: "(?i)not now|no thanks|later"
+
+    - id: ime_covering_target
+      match:
+        ime_visible: true
+        target_occluded: true
+      handle:
+        op: press
+        key: KEYCODE_BACK
+
+    - id: keyguard_locked
+      match:
+        package: com.android.systemui
+        keyguard: true
+      handle:
+        op: abort
+        reason: device_locked
+      notify: "Device is locked. Please unlock to continue."
+
+    - id: location_services_disabled
+      match:
+        text_matches: "(?i)location (services|access) (disabled|off)|turn on location"
+      handle:
+        op: tap
+        text_matches: "(?i)enable|turn on|ok"
+      policy: ask_user_if_not_declared
+
+    - id: bluetooth_disabled_prompt
+      match:
+        text_matches: "(?i)turn on bluetooth|bluetooth is off"
+      handle:
+        op: tap
+        text_matches: "(?i)turn on|enable|ok"
+      policy: ask_user_if_not_declared
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SHARED SELECTORS (reused across skills)
+# ═══════════════════════════════════════════════════════════════════════════
+shared_selectors:
+  wa_search_icon:
+    candidates:
+      - { by: resource_id, value: "com.whatsapp:id/search_icon", conf: 0.95 }
+      - { by: content_desc, matches: "(?i)search", conf: 0.80 }
+  wa_search_field:
+    candidates:
+      - { by: resource_id, value: "com.whatsapp:id/search_text", conf: 0.95 }
+      - { by: resource_id, value: "com.whatsapp:id/search_input", conf: 0.85 }
+  wa_compose_box:
+    candidates:
+      - { by: resource_id, value: "com.whatsapp:id/entry", conf: 0.95 }
+      - { by: class, value: android.widget.EditText, ancestor: "com.whatsapp:id/conversation_emoji_search", conf: 0.60 }
+  wa_send_button:
+    candidates:
+      - { by: resource_id, value: "com.whatsapp:id/send", conf: 0.95 }
+      - { by: content_desc, matches: "(?i)send", clickable: true, conf: 0.80 }
+  wa_last_outgoing_bubble:
+    candidates:
+      - { by: resource_id, value: "com.whatsapp:id/message_text", last_of_type: true, conf: 0.85 }
+  wa_chat_list:
+    candidates:
+      - { by: resource_id, value: "android:id/list", conf: 0.95 }
+      - { by: resource_id, value: "com.whatsapp:id/conversation_list_view_host", conf: 0.90 }
+  wa_conversation_row:
+    multiple: true
+    candidates:
+      - { by: class, value: android.widget.Button, ancestor: "android:id/list", conf: 0.85 }
+  wa_contact_name:
+    candidates:
+      - { by: resource_id, value: "com.whatsapp:id/conversations_row_contact_name", conf: 0.95 }
+  wa_filter_all:
+    candidates:
+      - { by: content_desc, matches: "(?i)all filter.*selected", conf: 0.90 }
+  wa_filter_unread:
+    candidates:
+      - { by: content_id, value: "com.whatsapp:id/conversations_filter_debug_view_id_unread", conf: 0.95 }
+      - { by: content_desc, matches: "(?i)unread filter", conf: 0.80 }
+  maps_search_bar:
+    candidates:
+      - { by: resource_id, value: "com.google.android.apps.maps:id/search_omnibox_text", conf: 0.95 }
+      - { by: text, matches: "(?i)search here|where to", conf: 0.75 }
+  maps_directions_button:
+    candidates:
+      - { by: content_desc, matches: "(?i)directions", conf: 0.90 }
+      - { by: resource_id, value: "com.google.android.apps.maps:id/directions_fab", conf: 0.85 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 1: SEND_MESSAGE
+# Grounded on: screen_1.xml (WhatsApp), screen_24.xml (Messages),
+#              screen_31.xml (Telegram), screen_32.xml (Snapchat),
+#              screen_38.xml (Slack)
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: send_message
+version: "2.0.0"
+status: canary
+owner: "team-messaging"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 21
+
+taxonomy:
+  domain: communication
+  capability: communicate
+  risk_tier: 2
+  reversible: false
+  idempotent: false
+  est_duration_ms: 4500
+  est_steps: 6
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: preview_before_send
+  auto_send: false
+  never_retry_after: [send_tapped]
+  redact_in_logs: [body, recipient]
+  blocklist_patterns:
+    - "(?i)otp|one[- ]time password|cvv|pin code|password is"
+  requires_permissions: []
+
+compatibility:
+  target_app:
+    package: "{app|to_package}"
+    tested_packages:
+      - { pkg: com.whatsapp, version: "2.24.12.78" }
+      - { pkg: com.google.android.apps.messaging, version: "20240318_01" }
+      - { pkg: org.telegram.messenger, version: "10.11.1" }
+      - { pkg: com.snapchat.android, version: "12.82.0.44" }
+      - { pkg: com.Slack, version: "24.03.20.0" }
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone, pixel_stock_14]
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+  requires_auth: true
+
+grounding:
+  fixtures:
+    - id: wa_chat_list
+      path: fixtures/screen_1.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: "sha256:placeholder_wa_chat_list"
+    - id: messages_list
+      path: fixtures/screen_24.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+    - id: telegram_list
+      path: fixtures/screen_31.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+    - id: snapchat_feed
+      path: fixtures/screen_32.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+  screen_signatures:
+    wa_chat_list:
+      package_equals: com.whatsapp
+      require_all:
+        - { by: resource_id, value: "com.whatsapp:id/conversation_list_view_host" }
+      require_any:
+        - { by: content_desc, matches: "(?i)swipe down to reveal" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|verify|registration" }
+      min_confidence: 0.85
+    wa_chat_thread:
+      package_equals: com.whatsapp
+      require_all:
+        - { by: resource_id, value: "com.whatsapp:id/entry" }
+      require_any:
+        - { by: content_desc, matches: "(?i)type a message" }
+      min_confidence: 0.85
+    messages_conversation_list:
+      package_equals: com.google.android.apps.messaging
+      require_any:
+        - { by: resource_id, matches: "conversation_list" }
+      min_confidence: 0.80
+
+slots:
+  app:
+    type: enum
+    values: [whatsapp, telegram, snapchat, slack, sms]
+    required: true
+    default_from: user_prefs.default_messaging_app
+    inference_hints:
+      whatsapp: ["whatsapp", "wa", "whats app"]
+      telegram: ["telegram", "tg"]
+      snapchat: ["snapchat", "snap"]
+      slack: ["slack"]
+      sms: ["text", "sms", "message app", "messages"]
+  recipient:
+    type: contact
+    required: true
+    resolver: contacts_provider
+    on_multiple_matches: prompt_user
+    on_zero_matches: fallback_to_in_app_search
+    normalize: [trim, collapse_ws]
+  body:
+    type: string
+    required: true
+    max_len: 1000
+    prompt_if_missing: "What should I say to {recipient.display_name}?"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: wa_deeplink
+      when: "slots.app == 'whatsapp' and slots.recipient.e164 != null"
+      kind: intent
+      reliability: 0.94
+      cost_ms: 800
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://wa.me/{recipient.e164|strip_plus}?text={body|urlencode}"
+        package: com.whatsapp
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: wa_chat_thread, timeout_ms: 5000 }
+        - { op: assert_text_in, target: sel.wa_compose_box, equals: "{body}" }
+        - { op: confirm_with_user, render: "Send to {recipient.display_name}?" }
+        - { op: tap, target: sel.wa_send_button }
+      verify:
+        - { assert: node_exists, target: sel.wa_last_outgoing_bubble, contains: "{body|first_40}", timeout_ms: 4000 }
+        - { assert: not_exists, target: sel.wa_compose_box_nonempty }
+
+    - id: sms_intent
+      when: "slots.app == 'sms'"
+      kind: intent
+      reliability: 0.95
+      cost_ms: 500
+      intent:
+        action: android.intent.action.SENDTO
+        data: "smsto:{recipient.e164}"
+        extras: { sms_body: "{body}" }
+      then:
+        - { op: confirm_with_user, render: "Send SMS to {recipient.display_name}?" }
+        - { op: tap, target: { by: resource_id, value: "com.google.android.apps.messaging:id/send_button" } }
+      verify:
+        - { assert: node_exists, target: { by: text, matches: "{body|first_30}" }, timeout_ms: 3000 }
+
+    - id: telegram_deeplink
+      when: "slots.app == 'telegram' and slots.recipient.username != null"
+      kind: intent
+      reliability: 0.88
+      cost_ms: 1000
+      intent:
+        action: android.intent.action.VIEW
+        data: "tg://resolve?domain={recipient.username}"
+        package: org.telegram.messenger
+
+    - id: ui_generic
+      kind: ui_automation
+      reliability: 0.66
+      cost_ms: 5000
+      preconditions:
+        - device.unlocked
+        - app.installed("{app|to_package}")
+      steps:
+        - id: launch
+          op: launch_app
+          package: "{app|to_package}"
+          wait: { for: screen_signature, value: "{app}_list_screen", timeout_ms: 6000 }
+        - id: search_contact
+          op: tap
+          target: "sel.{app}_search_icon"
+        - id: type_name
+          op: type
+          target: "sel.{app}_search_field"
+          text: "{recipient.display_name}"
+          method: ime_broadcast
+        - id: wait_results
+          op: wait
+          for: results_settled
+          timeout_ms: 2500
+        - id: select_contact
+          op: tap
+          target: "sel.{app}_first_result"
+          guard: { text_similarity_to: "{recipient.display_name}", min: 0.80 }
+        - id: assert_thread
+          op: assert
+          that: on_screen
+          value: "{app}_chat_thread"
+        - id: type_message
+          op: type
+          target: "sel.{app}_compose_box"
+          text: "{body}"
+          method: ime_broadcast
+        - id: confirm
+          op: confirm_with_user
+        - id: send
+          op: tap
+          target: "sel.{app}_send_button"
+      postconditions:
+        - { assert: foreground_package, equals: "{app|to_package}" }
+        - { assert: node_exists, target: "sel.{app}_last_outgoing_bubble", timeout_ms: 4000 }
+
+selectors:
+  wa_compose_box_nonempty:
+    candidates:
+      - { by: resource_id, value: "com.whatsapp:id/entry", has_text: true, conf: 0.90 }
+
+recovery:
+  - on: selector_not_found
+    do: [rescan_after(600ms), scroll_and_retry(2), next_route]
+  - on: wrong_screen
+    do: [back(max=2), relaunch, next_route]
+  - on: auth_wall
+    do: [abort, notify_user("Please sign in to {app} first.")]
+  - on: wrong_recipient_selected
+    do: [back(1), abort, notify_user("I wasn't confident about the contact — cancelled.")]
+  - on: send_ambiguous
+    do: [do_not_retry, escalate_to_user("I may have sent it — please check {app}.")]
+  - on: app_not_installed
+    do: [delegate: search_install_app(query="{app}")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't send the message."
+
+routing:
+  priority: 80
+  triggers:
+    - "send a message to {contact} on {app}"
+    - "text {contact} saying {message}"
+    - "reply to {contact} with {message}"
+    - "send {message} to the {group} group"
+    - "message {contact} on {app}"
+    - "dm {contact} on slack"
+    - "send an sms to {contact}"
+    - "tell {contact} {message}"
+    - "snap {contact} a message"
+    - "forward my last message to {contact}"
+  anti_triggers:
+    - "open {contact}'s chat" -> open_conversation
+    - "show messages from {contact}" -> open_conversation
+    - "call {contact}" -> make_phone_call
+  required_entities: [recipient]
+  disambiguate_against: [open_conversation, make_phone_call]
+
+output:
+  schema:
+    sent: { type: boolean }
+    recipient: { type: string }
+    app: { type: string }
+  templates:
+    success: "Message sent to {recipient.display_name} via {app}."
+    failed: "Failed to send message to {recipient.display_name}."
+  speak_pii: false
+
+telemetry:
+  emit: [route_used, step_latency, selector_hit_rank, retries, outcome, confirmation]
+  redact: [body, recipient.e164]
+  capture_on_failure: { ui_dump: true, screenshot: redacted, last_n_steps: 5 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 2: OPEN_CONVERSATION
+# Grounded on: screen_1.xml — RecyclerView android:id/list, filter buttons
+# "All filter", "Unread filter, 2, unselected", content-desc on rows
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: open_conversation
+version: "1.3.0"
+status: stable
+owner: "team-messaging"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 21
+
+taxonomy:
+  domain: communication
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 2500
+  est_steps: 4
+
+compatibility:
+  target_app:
+    package: "{app|to_package}"
+    tested_packages:
+      - { pkg: com.whatsapp, version: "2.24.12.78" }
+      - { pkg: org.telegram.messenger, version: "10.11.1" }
+      - { pkg: com.snapchat.android, version: "12.82.0.44" }
+      - { pkg: com.Slack, version: "24.03.20.0" }
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+
+grounding:
+  fixtures:
+    - id: wa_chat_list
+      path: fixtures/screen_1.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    wa_chat_list:
+      package_equals: com.whatsapp
+      require_all:
+        - { by: resource_id, value: "com.whatsapp:id/conversation_list_view_host" }
+      require_any:
+        - { by: content_desc, matches: "(?i)swipe down to reveal" }
+      min_confidence: 0.85
+
+slots:
+  app:
+    type: enum
+    values: [whatsapp, telegram, snapchat, slack, sms]
+    required: true
+    default: whatsapp
+  contact:
+    type: contact
+    required: true
+    resolver: fuzzy_match_visible_text
+    resolver_threshold: 0.72
+    prompt_if_ambiguous: "Which chat? I see: {candidates}"
+  filter:
+    type: enum
+    values: [all, unread, favourites, groups]
+    default: all
+
+execution:
+  strategy: first_success
+  routes:
+    - id: deeplink_wa
+      when: "slots.app == 'whatsapp' and slots.contact.e164 != null"
+      kind: intent
+      reliability: 0.90
+      cost_ms: 600
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://wa.me/{contact.e164|strip_plus}"
+        package: com.whatsapp
+      verify:
+        - { assert: on_screen, value: wa_chat_thread }
+
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.75
+      cost_ms: 3000
+      steps:
+        - id: launch
+          op: launch_app
+          package: "{app|to_package}"
+          wait: { for: screen_signature, value: wa_chat_list, timeout_ms: 5000 }
+        - id: apply_filter
+          op: tap
+          target: "sel.wa_filter_{filter}"
+          when: "slots.filter != 'all'"
+          optional: true
+        - id: find_contact
+          op: scroll_find_tap
+          list: sel.wa_chat_list
+          match:
+            target: sel.wa_contact_name
+            text_similarity_to: "{contact.display_name}"
+            min: 0.75
+          max_swipes: 5
+        - id: assert_thread
+          op: assert
+          that: on_screen
+          value: wa_chat_thread
+      postconditions:
+        - { assert: on_screen, value: wa_chat_thread }
+
+recovery:
+  - on: contact_not_found_in_list
+    do: [scroll_and_retry(3), tap_search_and_type(contact.display_name)]
+  - on: selector_not_found
+    do: [rescan_after(600ms), next_route]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't find that conversation."
+
+routing:
+  priority: 75
+  triggers:
+    - "open my chat with {contact}"
+    - "show me {contact}'s conversation"
+    - "go to the {group} group chat"
+    - "open unread messages"
+    - "switch to the unread filter"
+    - "show my chats with {contact}"
+    - "navigate to {contact}'s chat"
+  anti_triggers:
+    - "send {message} to {contact}" -> send_message
+    - "call {contact}" -> make_phone_call
+  required_entities: [contact]
+  disambiguate_against: [send_message, make_phone_call]
+
+output:
+  schema:
+    opened: { type: boolean }
+    contact: { type: string }
+  templates:
+    success: "Opened conversation with {contact.display_name}."
+    not_found: "Couldn't find a conversation with {contact.display_name}."
+
+telemetry:
+  emit: [route_used, step_latency, filter_applied, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 3: MAKE_PHONE_CALL
+# Grounded on: screen_12.xml — com.samsung.android.dialer,
+# two_pane_container, navigation_rail_area, coordinator_layout
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: make_phone_call
+version: "2.1.0"
+status: stable
+owner: "team-communication"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: communication
+  capability: communicate
+  risk_tier: 2
+  reversible: false
+  idempotent: false
+  est_duration_ms: 1500
+  est_steps: 2
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: echo_number_before_call
+  blocklist_patterns: ["^0900", "^1900", "^900"]  # premium rate numbers
+  requires_permissions: [android.permission.CALL_PHONE]
+
+compatibility:
+  target_app:
+    package: com.samsung.android.dialer
+    tested_version_name: "14.1.00.8"
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone]
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: dialer_keypad
+      path: fixtures/screen_12.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+  screen_signatures:
+    dialer_keypad:
+      package_equals: com.samsung.android.dialer
+      require_all:
+        - { by: resource_id, value: "com.samsung.android.dialer:id/dialtacts_main_layout" }
+      require_any:
+        - { by: resource_id, value: "com.samsung.android.dialer:id/two_pane_container" }
+      min_confidence: 0.85
+
+slots:
+  contact:
+    type: contact
+    required: false
+    resolver: contacts_provider
+  phone_number:
+    type: string
+    required: false
+    pattern: "^[+]?[0-9\\s\\-()]{7,15}$"
+    normalize: [strip_whitespace, strip_dashes]
+
+execution:
+  strategy: first_success
+  routes:
+    - id: tel_intent
+      when: "slots.phone_number != null"
+      kind: intent
+      reliability: 0.98
+      cost_ms: 300
+      intent:
+        action: android.intent.action.VIEW
+        data: "tel:{phone_number}"
+      then:
+        - { op: confirm_with_user, render: "Call {phone_number}?" }
+        - { op: tap, target: { by: content_desc, matches: "(?i)call|dial" } }
+      verify:
+        - { assert: foreground_package, equals: com.samsung.android.dialer }
+
+    - id: contact_lookup
+      when: "slots.contact != null and slots.phone_number == null"
+      kind: intent
+      reliability: 0.90
+      cost_ms: 500
+      intent:
+        action: android.intent.action.VIEW
+        data: "tel:{contact.e164}"
+      then:
+        - { op: confirm_with_user, render: "Call {contact.display_name}?" }
+
+    - id: ui_dialpad
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 3000
+      steps:
+        - id: launch_dialer
+          op: launch_app
+          package: com.samsung.android.dialer
+          wait: { for: screen_signature, value: dialer_keypad, timeout_ms: 4000 }
+        - id: dial_number
+          op: type
+          target: { by: resource_id, value: "com.samsung.android.dialer:id/digits" }
+          text: "{phone_number}"
+        - id: confirm
+          op: confirm_with_user
+        - id: tap_call
+          op: tap
+          target: { by: content_desc, matches: "(?i)call" }
+      postconditions:
+        - { assert: foreground_package, equals: com.samsung.android.dialer }
+
+recovery:
+  - on: permission_denied
+    do: [request_permission(CALL_PHONE), retry_once]
+  - on: invalid_number
+    do: [abort, notify_user("The number doesn't look valid: {phone_number}")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't place the call."
+
+routing:
+  priority: 85
+  triggers:
+    - "call {contact}"
+    - "dial {phone_number}"
+    - "phone {contact}"
+    - "ring {contact}"
+    - "make a voice call to {contact}"
+    - "call the number {phone_number}"
+    - "give {contact} a call"
+    - "connect me to {contact}"
+  anti_triggers:
+    - "send a message to {contact}" -> send_message
+    - "video call {contact}" -> unsupported
+  required_entities: []
+
+output:
+  schema:
+    calling: { type: boolean }
+    target: { type: string }
+  templates:
+    success: "Calling {target}..."
+    failed: "Could not place the call."
+
+telemetry:
+  emit: [route_used, outcome, blocklist_hit]
+  redact: [phone_number]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 4: ASK_EXTERNAL_AI
+# Grounded on: screen_3.xml (ChatGPT), screen_7.xml (Grok),
+#              screen_8.xml (Perplexity), screen_19.xml (Gemini)
+# screen_3.xml: ComposeView-based UI, package com.openai.chatgpt
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: ask_external_ai
+version: "1.5.0"
+status: stable
+owner: "team-info"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 14
+
+taxonomy:
+  domain: info_academic
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 8000
+  est_steps: 4
+
+compatibility:
+  target_app:
+    package: "{app|to_package}"
+    tested_packages:
+      - { pkg: com.openai.chatgpt, version: "1.2024.191" }
+      - { pkg: com.x.ai, version: "1.0.8" }
+      - { pkg: ai.perplexity.app, version: "2.15.0" }
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+  requires_auth: true
+  degrades_gracefully_offline: false
+
+grounding:
+  fixtures:
+    - id: chatgpt_home
+      path: fixtures/screen_3.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+  screen_signatures:
+    chatgpt_home:
+      package_equals: com.openai.chatgpt
+      require_any:
+        - { by: class, value: androidx.compose.ui.platform.ComposeView }
+      require_none:
+        - { by: text, matches: "(?i)sign in|log in|subscribe" }
+      min_confidence: 0.75
+    chatgpt_conversation:
+      package_equals: com.openai.chatgpt
+      require_any:
+        - { by: text, matches: "(?i)chatgpt|message" }
+      min_confidence: 0.70
+
+slots:
+  query:
+    type: string
+    required: true
+    max_len: 2000
+  app:
+    type: enum
+    values: [chatgpt, grok, perplexity, gemini]
+    default: chatgpt
+    inference_hints:
+      chatgpt: ["chatgpt", "gpt", "open ai", "chat gpt"]
+      grok: ["grok", "x ai"]
+      perplexity: ["perplexity"]
+      gemini: ["gemini", "google ai", "bard"]
+
+execution:
+  strategy: first_success
+  routes:
+    - id: chatgpt_web
+      when: "slots.app == 'chatgpt'"
+      kind: intent
+      reliability: 0.85
+      cost_ms: 1200
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://chat.openai.com/?q={query|urlencode}"
+        package: com.openai.chatgpt
+      then:
+        - { op: wait, for: screen_signature, value: chatgpt_conversation, timeout_ms: 8000 }
+
+    - id: perplexity_web
+      when: "slots.app == 'perplexity'"
+      kind: intent
+      reliability: 0.85
+      cost_ms: 1000
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://www.perplexity.ai/search?q={query|urlencode}"
+        package: ai.perplexity.app
+
+    - id: ui_generic
+      kind: ui_automation
+      reliability: 0.60
+      cost_ms: 6000
+      steps:
+        - id: launch
+          op: launch_app
+          package: "{app|to_package}"
+          wait: { for: screen_signature, value: "{app}_home", timeout_ms: 5000 }
+        - id: find_input
+          op: tap
+          target: { by: class, value: android.widget.EditText, focusable: true }
+        - id: type_query
+          op: type
+          target: { by: class, value: android.widget.EditText }
+          text: "{query}"
+          method: ime_broadcast
+        - id: submit
+          op: tap
+          target: { by: content_desc, matches: "(?i)send|submit" }
+        - id: wait_response
+          op: wait
+          for: screen_settled
+          timeout_ms: 10000
+      postconditions:
+        - { assert: foreground_package, equals: "{app|to_package}" }
+
+recovery:
+  - on: auth_wall
+    do: [abort, notify_user("Please sign in to {app} first.")]
+  - on: rate_limited
+    do: [abort, notify_user("{app} rate limit reached. Try again later.")]
+  - on: app_not_installed
+    do: [delegate: search_install_app(query="{app}")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't get an answer from {app}."
+
+routing:
+  priority: 70
+  triggers:
+    - "ask chatgpt about {query}"
+    - "what does the ai say about {query}"
+    - "ask grok {query}"
+    - "search perplexity for {query}"
+    - "get gemini to explain {query}"
+    - "have ai summarize {topic}"
+    - "chat with gpt about {query}"
+    - "ask the assistant {query}"
+    - "prompt ai with {query}"
+    - "get an ai answer for {query}"
+  anti_triggers:
+    - "search the web for {query}" -> web_search
+    - "google {query}" -> web_search
+    - "open chatgpt" -> open_app
+  required_entities: [query]
+  disambiguate_against: [web_search, open_app]
+
+output:
+  schema:
+    response: { type: string }
+    source: { type: string }
+  templates:
+    success: "Here's what {app} says: {response|first_200}"
+    failed: "I couldn't get a response from {app}."
+
+telemetry:
+  emit: [route_used, latency_ms, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 5: WEB_SEARCH
+# Grounded on: screen_14.xml (Chrome), screen_6.xml (Brave),
+#              screen_9.xml (Samsung Internet), screen_20.xml (Google app)
+# screen_14.xml: com.android.chrome:id/feed_stream_recycler_view
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: web_search
+version: "1.8.0"
+status: stable
+owner: "team-info"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: info_academic
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 3000
+  est_steps: 2
+
+compatibility:
+  target_app:
+    package: "{browser|to_package}"
+    tested_packages:
+      - { pkg: com.android.chrome, version: "126.0.6478.122" }
+      - { pkg: com.brave.browser, version: "1.67.123" }
+      - { pkg: com.sec.android.app.sbrowser, version: "25.0.4.3" }
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: chrome_ntp
+      path: fixtures/screen_14.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    chrome_ntp:
+      package_equals: com.android.chrome
+      require_all:
+        - { by: resource_id, value: "com.android.chrome:id/coordinator" }
+      require_any:
+        - { by: resource_id, value: "com.android.chrome:id/feed_stream_recycler_view" }
+      min_confidence: 0.80
+
+slots:
+  query:
+    type: string
+    required: true
+    max_len: 500
+  browser:
+    type: enum
+    values: [chrome, brave, samsung_internet]
+    default: chrome
+    inference_hints:
+      chrome: ["chrome", "google chrome"]
+      brave: ["brave"]
+      samsung_internet: ["samsung browser", "internet"]
+
+execution:
+  strategy: first_success
+  routes:
+    - id: google_search_intent
+      kind: intent
+      reliability: 0.97
+      cost_ms: 400
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://www.google.com/search?q={query|urlencode}"
+        package: "{browser|to_package}"
+      verify:
+        - { assert: foreground_package, equals: "{browser|to_package}" }
+
+    - id: ui_fallback
+      kind: ui_automation
+      reliability: 0.65
+      cost_ms: 4000
+      steps:
+        - id: launch
+          op: launch_app
+          package: "{browser|to_package}"
+          wait: { for: screen_signature, value: chrome_ntp, timeout_ms: 4000 }
+        - id: tap_url
+          op: tap
+          target: { by: resource_id, value: "com.android.chrome:id/search_bar_text" }
+        - id: type_query
+          op: type
+          target: { by: class, value: android.widget.EditText }
+          text: "{query}"
+          method: ime_broadcast
+        - id: submit
+          op: press
+          key: KEYCODE_ENTER
+      postconditions:
+        - { assert: foreground_package, equals: "{browser|to_package}" }
+
+recovery:
+  - on: browser_not_installed
+    do: [switch_browser, fallback_to_web_intent]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't search the web."
+
+routing:
+  priority: 30  # LOWEST — only wins if no domain-specific skill matches
+  triggers:
+    - "search the web for {query}"
+    - "google {query}"
+    - "look up {query} online"
+    - "find information about {query}"
+    - "search for {query}"
+    - "browse {url}"
+    - "find {query} on the internet"
+    - "look up {query} on chrome"
+  anti_triggers:
+    - "search youtube for {query}" -> search_video
+    - "find {place} on maps" -> search_place
+    - "search github for {query}" -> search_repository
+    - "ask chatgpt about {query}" -> ask_external_ai
+    - "search the play store for {app}" -> search_install_app
+  required_entities: [query]
+  disambiguate_against: [search_video, search_place, search_repository, ask_external_ai]
+
+output:
+  schema:
+    results_shown: { type: boolean }
+    query: { type: string }
+  templates:
+    success: "Searching the web for \"{query}\"."
+
+telemetry:
+  emit: [route_used, browser_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 6: SEARCH_PLACE / GET_DIRECTIONS
+# Grounded on: screen_18.xml — com.google.android.apps.maps,
+# mainmap_container, map_frame, map_controls_container,
+# content-desc: "Layers", "Directions",
+# "Location services disabled. Enable location services to re-centre map."
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: search_place
+version: "2.0.0"
+status: stable
+owner: "team-navigation"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: navigation
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 3500
+  est_steps: 3
+
+compatibility:
+  target_app:
+    package: com.google.android.apps.maps
+    tested_version_name: "11.135.0100"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+
+grounding:
+  fixtures:
+    - id: maps_main
+      path: fixtures/screen_18.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+  screen_signatures:
+    maps_main:
+      package_equals: com.google.android.apps.maps
+      require_all:
+        - { by: resource_id, value: "com.google.android.apps.maps:id/mainmap_container" }
+      require_any:
+        - { by: content_desc, matches: "(?i)layers|directions" }
+      require_none:
+        - { by: text, matches: "(?i)sign in" }
+      min_confidence: 0.85
+
+slots:
+  place:
+    type: string
+    required: true
+    max_len: 200
+  origin:
+    type: string
+    required: false
+  destination:
+    type: string
+    required: false
+  mode:
+    type: enum
+    values: [driving, walking, transit, cycling]
+    default: driving
+
+execution:
+  strategy: first_success
+  routes:
+    - id: geo_intent
+      when: "slots.destination == null"
+      kind: intent
+      reliability: 0.95
+      cost_ms: 500
+      intent:
+        action: android.intent.action.VIEW
+        data: "geo:0,0?q={place|urlencode}"
+        package: com.google.android.apps.maps
+      verify:
+        - { assert: on_screen, value: maps_main }
+
+    - id: navigation_intent
+      when: "slots.destination != null"
+      kind: intent
+      reliability: 0.95
+      cost_ms: 500
+      intent:
+        action: android.intent.action.VIEW
+        data: "google.navigation:q={destination|urlencode}&mode={mode|first_char}"
+        package: com.google.android.apps.maps
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 4000
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.google.android.apps.maps
+          wait: { for: screen_signature, value: maps_main, timeout_ms: 5000 }
+        - id: handle_location_prompt
+          op: interrupt_check
+          interrupt: location_services_disabled
+        - id: tap_search
+          op: tap
+          target: sel.maps_search_bar
+        - id: type_place
+          op: type
+          target: { by: class, value: android.widget.EditText }
+          text: "{place}"
+          method: ime_broadcast
+        - id: submit
+          op: press
+          key: KEYCODE_ENTER
+        - id: wait_results
+          op: wait
+          for: screen_settled
+          timeout_ms: 5000
+      postconditions:
+        - { assert: foreground_package, equals: com.google.android.apps.maps }
+
+recovery:
+  - on: location_disabled
+    do: [prompt_user("Enable location for better results?"), continue_without]
+  - on: no_results
+    do: [notify_user("No places found for \"{place}\".")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't find \"{place}\" on Maps."
+
+routing:
+  priority: 65
+  triggers:
+    - "navigate to {place}"
+    - "get directions to {place}"
+    - "find {place} on maps"
+    - "how do i get to {place}"
+    - "show me the route to {place}"
+    - "search for {place} on google maps"
+    - "directions from {origin} to {destination}"
+    - "take me to {place}"
+    - "where is {place}"
+    - "navigate to {place} by {mode}"
+  anti_triggers:
+    - "book a ride to {place}" -> book_ride
+    - "open maps" -> open_app
+  required_entities: [place]
+  disambiguate_against: [book_ride, open_app]
+
+output:
+  schema:
+    found: { type: boolean }
+    place_name: { type: string }
+    address: { type: string }
+  templates:
+    success: "Showing {place} on Google Maps."
+    not_found: "Couldn't find \"{place}\" on Maps."
+
+telemetry:
+  emit: [route_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 7: BOOK_RIDE
+# Grounded on: screen_27.xml — com.rapido.passenger,
+# content-desc "Home Screen", "Where do you want to go?" button,
+# address_list_item0/1/2, current location TextView:
+# "Kvr Enclave, 4th Lane, Venugopalnagar, Koritepadu, Guntur,
+# Andhra Pradesh 522007, India"
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: book_ride
+version: "1.6.0"
+status: canary
+owner: "team-lifestyle"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 14
+
+taxonomy:
+  domain: health_lifestyle
+  capability: transact
+  risk_tier: 3
+  reversible: false
+  idempotent: false
+  est_duration_ms: 15000
+  est_steps: 8
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: two_step_echo
+  confirmation_fields: [destination, estimated_fare, pickup_location]
+  auto_send: false
+  never_retry_after: [ride_confirmed]
+  max_fare_inr: 500
+  rate_limit: 3  # per hour
+  requires_permissions: [android.permission.ACCESS_FINE_LOCATION]
+
+compatibility:
+  target_app:
+    package: com.rapido.passenger
+    tested_version_name: "9.45.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone]
+  form_factors: [phone]
+  locales: [en-IN]
+  requires_auth: true
+
+grounding:
+  fixtures:
+    - id: rapido_home
+      path: fixtures/screen_27.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+  screen_signatures:
+    rapido_home:
+      package_equals: com.rapido.passenger
+      require_all:
+        - { by: content_desc, matches: "(?i)home screen" }
+      require_any:
+        - { by: content_desc, matches: "(?i)where do you want to go" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|login|register" }
+      min_confidence: 0.85
+    rapido_destination_input:
+      package_equals: com.rapido.passenger
+      require_any:
+        - { by: content_desc, matches: "(?i)where do you want to go" }
+      min_confidence: 0.80
+
+slots:
+  destination:
+    type: string
+    required: true
+    max_len: 200
+    prompt_if_missing: "Where do you want to go?"
+  ride_type:
+    type: enum
+    values: [bike, auto, cab]
+    default: bike
+
+execution:
+  strategy: first_success
+  routes:
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.72
+      cost_ms: 12000
+      preconditions:
+        - device.unlocked
+        - app.installed(com.rapido.passenger)
+        - location_enabled
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.rapido.passenger
+          wait: { for: screen_signature, value: rapido_home, timeout_ms: 6000 }
+        - id: handle_location_prompt
+          op: interrupt_check
+          interrupt: location_services_disabled
+        - id: tap_destination
+          op: tap
+          target: { by: content_desc, matches: "(?i)where do you want to go" }
+          wait: { for: screen_signature, value: rapido_destination_input, timeout_ms: 3000 }
+        - id: type_destination
+          op: type
+          target: { by: class, value: android.widget.EditText, focusable: true }
+          text: "{destination}"
+          method: ime_broadcast
+        - id: wait_suggestions
+          op: wait
+          for: results_settled
+          timeout_ms: 3000
+        - id: select_top_result
+          op: tap
+          target: { by: resource_id, value: "address_list_item0" }
+          guard: { visible: true }
+        - id: wait_fare
+          op: wait
+          for: screen_settled
+          timeout_ms: 5000
+        - id: extract_fare
+          op: extract
+          fields:
+            fare: { by: text, matches: "₹[0-9]+" }
+            pickup: { by: text, matches: "(?i)pickup|current location" }
+          emit_as: ride_details
+        - id: confirm_step1
+          op: confirm_with_user
+          render: "Ride to {destination}. Estimated fare: {ride_details.fare}. Confirm?"
+          guard: { fare_under: 500 }
+        - id: confirm_step2
+          op: confirm_with_user
+          render: "Final confirm: Book ride to {destination} for {ride_details.fare}?"
+        - id: book
+          op: tap
+          target: { by: content_desc, matches: "(?i)confirm|book ride|confirm ride" }
+      postconditions:
+        - { assert: foreground_package, equals: com.rapido.passenger }
+        - { assert: node_exists, target: { by: text, matches: "(?i)ride confirmed|finding driver|driver on the way" }, timeout_ms: 8000 }
+
+recovery:
+  - on: location_disabled
+    do: [abort, notify_user("Please enable location services to book a ride.")]
+  - on: fare_exceeds_max
+    do: [abort, notify_user("Fare ₹{fare} exceeds ₹{max_fare} limit. Ride not booked.")]
+  - on: no_drivers
+    do: [notify_user("No drivers available right now. Try again later.")]
+  - on: selector_not_found
+    do: [rescan_after(1000ms), scroll_and_retry(2), next_route]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't book the ride."
+
+routing:
+  priority: 90
+  triggers:
+    - "book a rapido ride to {destination}"
+    - "get a ride to {destination}"
+    - "book a bike taxi to {destination}"
+    - "ride to {destination} on rapido"
+    - "hail a cab to {destination}"
+    - "take me to {destination} via rapido"
+    - "book an auto to {destination}"
+    - "order a rapido to {destination}"
+  anti_triggers:
+    - "navigate to {destination}" -> search_place
+    - "get directions to {destination}" -> search_place
+    - "open rapido" -> open_app
+  required_entities: [destination]
+  disambiguate_against: [search_place, open_app]
+
+output:
+  schema:
+    booked: { type: boolean }
+    destination: { type: string }
+    fare: { type: string }
+    driver_eta: { type: string }
+  templates:
+    success: "Ride booked to {destination}. Fare: {fare}. Driver arriving in {driver_eta}."
+    failed: "Could not book the ride."
+  speak_pii: false
+
+telemetry:
+  emit: [route_used, step_latency, fare_extracted, confirmation_steps, outcome]
+  redact: [pickup_location, exact_destination]
+  capture_on_failure: { ui_dump: true, screenshot: redacted, last_n_steps: 5 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 8: SEARCH_VIDEO
+# Grounded on: screen_33.xml — com.google.android.youtube,
+# player_view, inline_player_container, inline_playback_time_bar,
+# top_ui_controls, audio_toggle (desc "Tap to mute or unmute playback audio"),
+# caption_toggle, fab_container, navigation_bar_divider_frame
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: search_video
+version: "1.7.0"
+status: stable
+owner: "team-entertainment"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 21
+
+taxonomy:
+  domain: entertainment
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 4000
+  est_steps: 3
+
+compatibility:
+  target_app:
+    package: com.google.android.youtube
+    tested_version_name: "19.29.37"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: youtube_player
+      path: fixtures/screen_33.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    youtube_home:
+      package_equals: com.google.android.youtube
+      require_any:
+        - { by: resource_id, value: "com.google.android.youtube:id/navigation_bar_divider_frame" }
+      min_confidence: 0.80
+    youtube_playing:
+      package_equals: com.google.android.youtube
+      require_any:
+        - { by: resource_id, value: "com.google.android.youtube:id/player_view" }
+        - { by: content_desc, matches: "(?i)mute or unmute" }
+      min_confidence: 0.85
+
+slots:
+  query:
+    type: string
+    required: true
+    max_len: 200
+  play_immediately:
+    type: boolean
+    default: true
+
+execution:
+  strategy: first_success
+  routes:
+    - id: youtube_search_url
+      kind: intent
+      reliability: 0.95
+      cost_ms: 600
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://www.youtube.com/results?search_query={query|urlencode}"
+        package: com.google.android.youtube
+      then:
+        - { op: wait, for: screen_settled, timeout_ms: 4000 }
+        - { op: tap, target: { by: class, value: android.view.ViewGroup, nth: 1, in_list: true },
+            when: "slots.play_immediately" }
+      verify:
+        - { assert: on_screen, value: youtube_playing }
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 5000
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.google.android.youtube
+          wait: { for: screen_signature, value: youtube_home, timeout_ms: 5000 }
+        - id: tap_search
+          op: tap
+          target: { by: content_desc, matches: "(?i)search" }
+        - id: type_query
+          op: type
+          target: { by: class, value: android.widget.EditText }
+          text: "{query}"
+          method: ime_broadcast
+        - id: submit
+          op: press
+          key: KEYCODE_ENTER
+        - id: wait_results
+          op: wait
+          for: screen_settled
+          timeout_ms: 3000
+        - id: tap_first
+          op: tap
+          target: { by: class, value: android.view.ViewGroup, nth: 1, in_list: true }
+          when: "slots.play_immediately"
+      postconditions:
+        - { assert: foreground_package, equals: com.google.android.youtube }
+
+recovery:
+  - on: autoplay_blocked
+    do: [notify_user("Search results shown. Tap a video to play.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't search YouTube."
+
+routing:
+  priority: 55
+  triggers:
+    - "search youtube for {query}"
+    - "play {query} on youtube"
+    - "find videos about {query}"
+    - "watch {query}"
+    - "search for {query} on youtube"
+    - "show me youtube results for {query}"
+    - "look up {query} videos"
+    - "youtube search {query}"
+  anti_triggers:
+    - "search the web for {query}" -> web_search
+    - "open youtube" -> open_app
+    - "pause the video" -> control_playback
+    - "skip forward" -> control_playback
+  required_entities: [query]
+  disambiguate_against: [web_search, control_playback, open_app]
+
+output:
+  schema:
+    playing: { type: boolean }
+    video_title: { type: string }
+  templates:
+    success: "Playing \"{video_title}\" on YouTube."
+    search_only: "Showing YouTube results for \"{query}\"."
+
+telemetry:
+  emit: [route_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 9: SEARCH_INSTALL_APP
+# Grounded on: screen_16.xml — com.android.vending,
+# resource-ids obfuscated (0_resource_name_obfuscated),
+# ComposeView-based UI
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: search_install_app
+version: "1.4.0"
+status: stable
+owner: "team-system"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: app_management
+  capability: write_local
+  risk_tier: 2
+  reversible: true
+  idempotent: true
+  est_duration_ms: 8000
+  est_steps: 5
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: preview_developer_and_rating
+  blocklist_packages: ["com.malware.*", "com.trojan.*"]
+  requires_permissions: []
+
+compatibility:
+  target_app:
+    package: com.android.vending
+    tested_version_name: "41.5.25"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: play_store_home
+      path: fixtures/screen_16.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    play_store_home:
+      package_equals: com.android.vending
+      require_any:
+        - { by: class, value: androidx.compose.ui.platform.ComposeView }
+      min_confidence: 0.70
+
+slots:
+  app_name:
+    type: string
+    required: true
+    max_len: 100
+  action:
+    type: enum
+    values: [search, install]
+    default: search
+
+execution:
+  strategy: first_success
+  routes:
+    - id: market_search
+      kind: intent
+      reliability: 0.90
+      cost_ms: 800
+      intent:
+        action: android.intent.action.VIEW
+        data: "market://search?q={app_name|urlencode}"
+        package: com.android.vending
+      verify:
+        - { assert: foreground_package, equals: com.android.vending }
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.65
+      cost_ms: 6000
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.android.vending
+          wait: { for: screen_signature, value: play_store_home, timeout_ms: 5000 }
+        - id: tap_search
+          op: tap
+          target: { by: content_desc, matches: "(?i)search" }
+        - id: type_name
+          op: type
+          target: { by: class, value: android.widget.EditText }
+          text: "{app_name}"
+          method: ime_broadcast
+        - id: submit
+          op: press
+          key: KEYCODE_ENTER
+        - id: wait_results
+          op: wait
+          for: screen_settled
+          timeout_ms: 4000
+      postconditions:
+        - { assert: foreground_package, equals: com.android.vending }
+
+recovery:
+  - on: app_not_found
+    do: [notify_user("No results for \"{app_name}\" on Play Store.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't find \"{app_name}\" on the Play Store."
+
+routing:
+  priority: 60
+  triggers:
+    - "install {app_name} from the play store"
+    - "search for {app_name} on play store"
+    - "download {app_name}"
+    - "find and install {app_name}"
+    - "get {app_name} from the store"
+    - "install the app {app_name}"
+    - "find {app_name} on google play"
+  anti_triggers:
+    - "open {app_name}" -> open_app
+    - "search the web for {app_name}" -> web_search
+  required_entities: [app_name]
+  disambiguate_against: [open_app, web_search]
+
+output:
+  schema:
+    found: { type: boolean }
+    app_name: { type: string }
+    developer: { type: string }
+    rating: { type: float }
+  templates:
+    success: "Found \"{app_name}\" on Play Store. Tap Install to continue."
+    not_found: "Couldn't find \"{app_name}\"."
+
+telemetry:
+  emit: [route_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 10: SET_ALARM
+# Grounded on: screen_25.xml — com.sec.android.app.clockpackage,
+# alarm_main_layout, collapsing_toolbar, app_bar_viewpager,
+# suggest text: "Group related alarms", "Create group" button,
+# content-desc: "Dismiss suggestion"
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: set_alarm
+version: "2.2.0"
+status: stable
+owner: "team-utility"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: utility
+  capability: write_local
+  risk_tier: 1
+  reversible: true
+  idempotent: true
+  est_duration_ms: 800
+  est_steps: 1
+
+compatibility:
+  target_app:
+    package: com.sec.android.app.clockpackage
+    tested_version_name: "12.2.10.3"
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone]
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: clock_alarm_tab
+      path: fixtures/screen_25.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    clock_alarm_tab:
+      package_equals: com.sec.android.app.clockpackage
+      require_all:
+        - { by: resource_id, value: "com.sec.android.app.clockpackage:id/alarm_main_layout" }
+      min_confidence: 0.85
+
+slots:
+  time:
+    type: time
+    required: true
+    normalize: [parse_12h, parse_24h, parse_relative]
+    prompt_if_missing: "What time should I set the alarm for?"
+  label:
+    type: string
+    required: false
+    max_len: 64
+    default: "Alarm"
+  days:
+    type: array
+    items: enum[mon, tue, wed, thu, fri, sat, sun]
+    required: false
+    default: []
+  vibrate:
+    type: boolean
+    default: true
+
+execution:
+  strategy: first_success
+  routes:
+    - id: intent_skip_ui
+      kind: intent
+      reliability: 0.98
+      cost_ms: 300
+      intent:
+        action: android.intent.action.SET_ALARM
+        extras:
+          EXTRA_HOUR: "{time.hour}"
+          EXTRA_MINUTES: "{time.minute}"
+          EXTRA_MESSAGE: "{label}"
+          EXTRA_SKIP_UI: true
+          EXTRA_VIBRATE: "{vibrate}"
+          EXTRA_DAYS: "{days}"
+      verify:
+        - { assert: toast_or_snackbar, contains: "alarm", timeout_ms: 3000 }
+
+    - id: ui_fallback
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 5000
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.sec.android.app.clockpackage
+          wait: { for: screen_signature, value: clock_alarm_tab, timeout_ms: 4000 }
+        - id: tap_add
+          op: tap
+          target: { by: content_desc, matches: "(?i)add alarm|create alarm" }
+        - id: set_time
+          op: set_time_picker
+          hour: "{time.hour}"
+          minute: "{time.minute}"
+        - id: set_label
+          op: type
+          target: { by: resource_id, matches: ".*label.*|.*name.*" }
+          text: "{label}"
+          when: "slots.label != null"
+          optional: true
+        - id: save
+          op: tap
+          target: { by: content_desc, matches: "(?i)save|confirm|ok" }
+      postconditions:
+        - { assert: on_screen, value: clock_alarm_tab }
+
+recovery:
+  - on: time_parse_failed
+    do: [prompt_user("What time? Say something like '7:30 AM' or 'in 30 minutes'.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't set the alarm."
+
+routing:
+  priority: 75
+  triggers:
+    - "set an alarm for {time}"
+    - "wake me up at {time}"
+    - "set a {time} alarm"
+    - "create an alarm for {time}"
+    - "edit my {time} alarm"
+    - "set an alarm for {time} labeled {label}"
+    - "schedule a morning alarm for {time}"
+    - "turn on my {time} alarm"
+    - "alarm for {time} every {days}"
+  anti_triggers:
+    - "set a timer for {duration}" -> set_timer
+    - "open clock app" -> open_app
+    - "what time is it" -> read_time
+  required_entities: [time]
+  disambiguate_against: [set_timer, open_app]
+
+output:
+  schema:
+    set: { type: boolean }
+    time: { type: string }
+    label: { type: string }
+  templates:
+    success: "Alarm set for {time} ({label})."
+    failed: "Could not set the alarm."
+
+telemetry:
+  emit: [route_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 11: NAVIGATE_SETTINGS
+# Grounded on: screen_4.xml — com.android.settings,
+# text "Settings" in action bar (bounds [84,153][331,240]),
+# resource-ids: coordinator (ScrollView), app_bar, content_layout
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: navigate_settings
+version: "1.9.0"
+status: stable
+owner: "team-system"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: utility
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 1500
+  est_steps: 2
+
+compatibility:
+  target_app:
+    package: com.android.settings
+    tested_version_name: "14"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: settings_main
+      path: fixtures/screen_4.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    settings_main:
+      package_equals: com.android.settings
+      require_all:
+        - { by: text, value: "Settings" }
+      require_any:
+        - { by: resource_id, value: "com.android.settings:id/coordinator" }
+      min_confidence: 0.90
+
+slots:
+  setting_section:
+    type: enum
+    values:
+      - wifi
+      - bluetooth
+      - display
+      - sound
+      - battery
+      - apps
+      - notifications
+      - privacy
+      - location
+      - security
+      - about
+      - developer_options
+      - date_time
+      - language
+      - storage
+      - accessibility
+      - accounts
+      - network
+      - nfc
+      - hotspot
+    required: false
+    normalize: [casefold, strip_spaces]
+    prompt_if_missing: "Which settings section?"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: settings_intent_lookup
+      kind: intent
+      reliability: 0.95
+      cost_ms: 400
+      intent_lookup:
+        wifi: { action: "android.settings.WIFI_SETTINGS" }
+        bluetooth: { action: "android.settings.BLUETOOTH_SETTINGS" }
+        display: { action: "android.settings.DISPLAY_SETTINGS" }
+        sound: { action: "android.settings.SOUND_SETTINGS" }
+        battery: { action: "android.settings.BATTERY_SAVER_SETTINGS" }
+        apps: { action: "android.settings.APPLICATION_SETTINGS" }
+        notifications: { action: "android.settings.APP_NOTIFICATION_SETTINGS" }
+        privacy: { action: "android.settings.PRIVACY_SETTINGS" }
+        location: { action: "android.settings.LOCATION_SOURCE_SETTINGS" }
+        security: { action: "android.settings.SECURITY_SETTINGS" }
+        about: { action: "android.settings.DEVICE_INFO_SETTINGS" }
+        developer_options: { action: "android.settings.APPLICATION_DEVELOPMENT_SETTINGS" }
+        date_time: { action: "android.settings.DATE_SETTINGS" }
+        language: { action: "android.settings.LOCALE_SETTINGS" }
+        storage: { action: "android.settings.INTERNAL_STORAGE_SETTINGS" }
+        accessibility: { action: "android.settings.ACCESSIBILITY_SETTINGS" }
+        accounts: { action: "android.settings.SYNC_SETTINGS" }
+        network: { action: "android.settings.AIRPLANE_MODE_SETTINGS" }
+        nfc: { action: "android.settings.NFC_SETTINGS" }
+        hotspot: { action: "android.settings.TETHER_SETTINGS" }
+      verify:
+        - { assert: foreground_package, equals: com.android.settings }
+
+    - id: ui_walk
+      kind: ui_automation
+      reliability: 0.60
+      cost_ms: 4000
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.android.settings
+          wait: { for: screen_signature, value: settings_main, timeout_ms: 4000 }
+        - id: search
+          op: tap
+          target: { by: content_desc, matches: "(?i)search" }
+        - id: type_section
+          op: type
+          target: { by: class, value: android.widget.EditText }
+          text: "{setting_section}"
+          method: ime_broadcast
+        - id: tap_result
+          op: tap
+          target: { by: text, matches: "(?i){setting_section}", clickable: true }
+      postconditions:
+        - { assert: foreground_package, equals: com.android.settings }
+
+recovery:
+  - on: setting_not_found
+    do: [notify_user("I couldn't find the \"{setting_section}\" setting.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't open that settings section."
+
+routing:
+  priority: 50
+  triggers:
+    - "open settings"
+    - "go to wifi settings"
+    - "open display settings"
+    - "navigate to {setting_section} settings"
+    - "turn on bluetooth from settings"
+    - "open notification settings"
+    - "go to battery settings"
+    - "show me the sound settings"
+    - "open privacy settings"
+    - "open about phone"
+  anti_triggers:
+    - "turn on wifi" -> toggle_setting
+    - "turn off bluetooth" -> toggle_setting
+  required_entities: []
+  disambiguate_against: [toggle_setting, open_app]
+
+output:
+  schema:
+    opened: { type: boolean }
+    section: { type: string }
+  templates:
+    success: "Opened {setting_section} settings."
+
+telemetry:
+  emit: [route_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 12: SEARCH_REPOSITORY
+# Grounded on: screen_36.xml — com.github.android,
+# text "Home", content-desc "Search"/"Refresh"/"Create",
+# "My Work" section (com.github.android:id/title),
+# RecyclerView feed (com.github.android:id/recycler_view)
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: search_repository
+version: "1.2.0"
+status: stable
+owner: "team-developer"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: developer_tools
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 2500
+  est_steps: 2
+
+compatibility:
+  target_app:
+    package: com.github.android
+    tested_version_name: "1.140.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: github_home
+      path: fixtures/screen_36.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    github_home:
+      package_equals: com.github.android
+      require_any:
+        - { by: text, value: "Home" }
+        - { by: resource_id, value: "com.github.android:id/recycler_view" }
+      min_confidence: 0.85
+
+slots:
+  query:
+    type: string
+    required: true
+    max_len: 200
+
+execution:
+  strategy: first_success
+  routes:
+    - id: github_search_url
+      kind: intent
+      reliability: 0.92
+      cost_ms: 600
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://github.com/search?q={query|urlencode}&type=repositories"
+        package: com.github.android
+      verify:
+        - { assert: foreground_package, equals: com.github.android }
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 3500
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.github.android
+          wait: { for: screen_signature, value: github_home, timeout_ms: 4000 }
+        - id: tap_search
+          op: tap
+          target: { by: content_desc, value: "Search" }
+        - id: type_query
+          op: type
+          target: { by: class, value: android.widget.EditText }
+          text: "{query}"
+          method: ime_broadcast
+        - id: submit
+          op: press
+          key: KEYCODE_ENTER
+      postconditions:
+        - { assert: foreground_package, equals: com.github.android }
+
+recovery:
+  - on: not_signed_in
+    do: [abort, notify_user("Please sign in to GitHub first.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't search GitHub."
+
+routing:
+  priority: 55
+  triggers:
+    - "search github for {query}"
+    - "find {query} on github"
+    - "look up {query} repositories"
+    - "search for {query} repo"
+    - "github search {query}"
+    - "open {repository} on github"
+    - "search repos for {query}"
+    - "find code for {query} on github"
+  anti_triggers:
+    - "open github" -> open_app
+    - "search the web for {query}" -> web_search
+  required_entities: [query]
+  disambiguate_against: [web_search, open_app]
+
+output:
+  schema:
+    results_found: { type: boolean }
+    query: { type: string }
+  templates:
+    success: "Searching GitHub for \"{query}\"."
+
+telemetry:
+  emit: [route_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 13: CREATE_DESIGN
+# Grounded on: screen_35.xml — com.canva.editor,
+# com.canva.editor:id/webview_container, WebView-based UI,
+# accessibility IDs: canva-a11y-fallback-polite/assertive
+# NOTE: WebView → accessibility tree is often empty/opaque.
+# Mark as draft until web strategy is validated.
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: create_design
+version: "0.9.0"
+status: draft
+owner: "team-content"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 14
+
+taxonomy:
+  domain: content_creation
+  capability: write_local
+  risk_tier: 1
+  reversible: true
+  idempotent: false
+  est_duration_ms: 10000
+  est_steps: 5
+
+compatibility:
+  target_app:
+    package: com.canva.editor
+    tested_version_name: "2.245.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  requires_auth: true
+  known_limitations:
+    - "WebView-based UI — accessibility tree often empty/opaque"
+    - "May require web strategy (JS/DOM or DevTools) instead of uiautomator"
+
+grounding:
+  fixtures:
+    - id: canva_editor
+      path: fixtures/screen_35.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    canva_editor:
+      package_equals: com.canva.editor
+      require_any:
+        - { by: resource_id, value: "com.canva.editor:id/webview_container" }
+      min_confidence: 0.70
+
+slots:
+  template_type:
+    type: string
+    required: false
+    max_len: 100
+    default: "blank"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.50
+      cost_ms: 8000
+      known_issues:
+        - "WebView nodes may not be accessible — may need JS injection"
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.canva.editor
+          wait: { for: screen_signature, value: canva_editor, timeout_ms: 6000 }
+        - id: navigate_templates
+          op: tap
+          target: { by: text, matches: "(?i)create|new design" }
+          optional: true
+        - id: select_template
+          op: tap
+          target: { by: text, matches: "(?i){template_type}" }
+          when: "slots.template_type != 'blank'"
+      postconditions:
+        - { assert: foreground_package, equals: com.canva.editor }
+
+recovery:
+  - on: webview_not_accessible
+    do: [abort, notify_user("Canva's editor uses a web view that I can't interact with. Please create the design manually.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't create the design in Canva."
+
+routing:
+  priority: 45
+  triggers:
+    - "create a new design in canva"
+    - "make a {template_type} on canva"
+    - "start a new canva project"
+    - "design a {template_type} using canva"
+    - "open canva and create {template_type}"
+    - "new canva design for {template_type}"
+    - "make a social media post on canva"
+    - "create a presentation in canva"
+  anti_triggers:
+    - "open canva" -> open_app
+  required_entities: []
+  disambiguate_against: [open_app]
+
+output:
+  schema:
+    created: { type: boolean }
+    template_type: { type: string }
+  templates:
+    success: "Opened Canva to create a {template_type} design."
+    failed: "Could not create the design."
+
+telemetry:
+  emit: [route_used, webview_accessibility, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 14: OPEN_FILE_IN_DRIVE
+# Grounded on: screen_15.xml — com.google.android.apps.docs,
+# text "Search in Drive" in search_bar (EditText),
+# content-desc "More actions", nav_drawer (DrawerLayout),
+# appbar, toolbar_container
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: open_file_in_drive
+version: "1.3.0"
+status: stable
+owner: "team-productivity"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: utility
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 4000
+  est_steps: 4
+
+compatibility:
+  target_app:
+    package: com.google.android.apps.docs
+    tested_version_name: "2.24.232.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  requires_auth: true
+
+grounding:
+  fixtures:
+    - id: drive_home
+      path: fixtures/screen_15.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    drive_home:
+      package_equals: com.google.android.apps.docs
+      require_any:
+        - { by: resource_id, value: "com.google.android.apps.docs:id/search_bar" }
+        - { by: text, matches: "(?i)search in drive" }
+      min_confidence: 0.85
+
+slots:
+  filename:
+    type: string
+    required: true
+    max_len: 200
+    normalize: [trim, collapse_ws]
+    resolver: fuzzy_match_visible_text
+    resolver_threshold: 0.70
+    prompt_if_ambiguous: "Which file? I see: {candidates}"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: drive_search_url
+      kind: intent
+      reliability: 0.80
+      cost_ms: 800
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://drive.google.com/drive/search?q={filename|urlencode}"
+        package: com.google.android.apps.docs
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 4000
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.google.android.apps.docs
+          wait: { for: screen_signature, value: drive_home, timeout_ms: 5000 }
+        - id: tap_search
+          op: tap
+          target: { by: resource_id, value: "com.google.android.apps.docs:id/search_bar" }
+        - id: type_filename
+          op: type
+          target: { by: class, value: android.widget.EditText }
+          text: "{filename}"
+          method: ime_broadcast
+        - id: submit
+          op: press
+          key: KEYCODE_ENTER
+        - id: wait_results
+          op: wait
+          for: screen_settled
+          timeout_ms: 3000
+        - id: select_file
+          op: tap
+          target: { by: text, matches: "{filename}", clickable: true }
+          guard: { text_similarity_to: "{filename}", min: 0.70 }
+      postconditions:
+        - { assert: foreground_package, equals: com.google.android.apps.docs }
+
+recovery:
+  - on: file_not_found
+    do: [notify_user("No file matching \"{filename}\" found in Drive.")]
+  - on: multiple_matches
+    do: [prompt_user("Which file? I see: {candidates}")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't find \"{filename}\" in Drive."
+
+routing:
+  priority: 55
+  triggers:
+    - "open {filename} in drive"
+    - "find {filename} on google drive"
+    - "search drive for {filename}"
+    - "open my {filename} document"
+    - "show me {filename} from drive"
+    - "find the file {filename}"
+    - "open the document {filename}"
+    - "locate {filename} in my drive"
+  anti_triggers:
+    - "open drive" -> open_app
+    - "create a new document" -> create_document
+  required_entities: [filename]
+  disambiguate_against: [open_app, create_document]
+
+output:
+  schema:
+    found: { type: boolean }
+    filename: { type: string }
+  templates:
+    success: "Opened \"{filename}\" from Drive."
+    not_found: "Couldn't find \"{filename}\" in Drive."
+
+telemetry:
+  emit: [route_used, match_confidence, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 15: CREATE_VIDEO_PROJECT
+# Grounded on: screen_30.xml — com.camerasideas.instashot,
+# content-desc "InShot", pic_index, logo, btn_app_pro, btn_menu,
+# content_container, full_screen_fragment_container
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: create_video_project
+version: "1.1.0"
+status: canary
+owner: "team-content"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 21
+
+taxonomy:
+  domain: content_creation
+  capability: write_local
+  risk_tier: 1
+  reversible: true
+  idempotent: false
+  est_duration_ms: 12000
+  est_steps: 6
+
+compatibility:
+  target_app:
+    package: com.camerasideas.instashot
+    tested_version_name: "2.061.1448"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  known_limitations:
+    - "Multi-minute stateful workflow — model as long-running task with checkpoints"
+    - "No deep links available"
+
+grounding:
+  fixtures:
+    - id: inshot_home
+      path: fixtures/screen_30.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  screen_signatures:
+    inshot_home:
+      package_equals: com.camerasideas.instashot
+      require_any:
+        - { by: content_desc, value: "InShot" }
+        - { by: resource_id, value: "com.camerasideas.instashot:id/logo" }
+      min_confidence: 0.85
+
+slots:
+  media_path:
+    type: string
+    required: false
+
+execution:
+  strategy: first_success
+  routes:
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.55
+      cost_ms: 10000
+      checkpoint_capable: true
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.camerasideas.instashot
+          wait: { for: screen_signature, value: inshot_home, timeout_ms: 6000 }
+        - id: tap_video
+          op: tap
+          target: { by: text, matches: "(?i)video" }
+        - id: select_media
+          op: select_media
+          from: gallery
+          when: "slots.media_path != null"
+        - id: wait_editor
+          op: wait
+          for: screen_settled
+          timeout_ms: 5000
+      postconditions:
+        - { assert: foreground_package, equals: com.camerasideas.instashot }
+  abort_cleanup:
+    - op: press
+      key: KEYCODE_BACK
+      retries: 3
+    - op: tap
+      target: { by: text, matches: "(?i)discard|delete|confirm" }
+      optional: true
+
+recovery:
+  - on: project_interrupted
+    do: [checkpoint_save, notify_user("Video project saved. Resume from InShot.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 8]
+  terminal_message: "I couldn't start the video project."
+
+routing:
+  priority: 45
+  triggers:
+    - "create a new video in inshot"
+    - "start a video project in inshot"
+    - "edit a video using inshot"
+    - "open inshot and create a video"
+    - "make a new video project"
+    - "create a video for instagram"
+    - "open inshot video editor"
+    - "edit my latest video in inshot"
+  anti_triggers:
+    - "open inshot" -> open_app
+  required_entities: []
+  disambiguate_against: [open_app]
+
+output:
+  schema:
+    started: { type: boolean }
+    project_name: { type: string }
+  templates:
+    success: "Opened InShot for a new video project."
+    failed: "Could not start the video project."
+
+telemetry:
+  emit: [route_used, checkpoint_reached, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 16: OPEN_APP
+# Grounded on: screen_39/40.xml — com.sec.android.app.launcher
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: open_app
+version: "2.3.0"
+status: stable
+owner: "team-system"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 90
+
+taxonomy:
+  domain: default_app
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 1200
+  est_steps: 1
+
+compatibility:
+  target_app:
+    package: com.sec.android.app.launcher
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: launcher_home
+      path: fixtures/screen_39.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+
+slots:
+  app_name:
+    type: string
+    required: true
+    max_len: 100
+    resolver: package_manager_lookup
+    normalize: [casefold, strip_spaces]
+    prompt_if_missing: "Which app?"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: monkey_launch
+      kind: intent
+      reliability: 0.95
+      cost_ms: 400
+      shell: "monkey -p {app_name|to_package} -c LAUNCHER 1"
+      verify:
+        - { assert: foreground_package, equals: "{app_name|to_package}" }
+
+    - id: am_start
+      kind: intent
+      reliability: 0.90
+      cost_ms: 400
+      shell: "am start -n {app_name|to_package}/{app_name|main_activity}"
+      verify:
+        - { assert: foreground_package, equals: "{app_name|to_package}" }
+
+recovery:
+  - on: app_not_installed
+    do: [delegate: search_install_app(query="{app_name}")]
+  - on: app_crash
+    do: [retry_once, notify_user("{app_name} crashed.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 2]
+  terminal_message: "I couldn't open {app_name}."
+
+routing:
+  priority: 10  # LOWEST — anti_triggers on every domain skill
+  triggers:
+    - "open {app_name}"
+    - "launch {app_name}"
+    - "start {app_name}"
+    - "open the {app_name} app"
+    - "go to {app_name}"
+    - "switch to {app_name}"
+    - "bring up {app_name}"
+    - "run {app_name}"
+  anti_triggers:
+    - "open my chat with {contact}" -> open_conversation
+    - "search youtube for {query}" -> search_video
+    - "set an alarm for {time}" -> set_alarm
+    - "navigate to {place}" -> search_place
+    - "send {message} to {contact}" -> send_message
+    - "ask chatgpt about {query}" -> ask_external_ai
+  required_entities: [app_name]
+  disambiguate_against: [ALL_DOMAIN_SKILLS]
+
+output:
+  schema:
+    opened: { type: boolean }
+    app_name: { type: string }
+  templates:
+    success: "Opened {app_name}."
+    not_installed: "{app_name} isn't installed. Want me to search the Play Store?"
+
+telemetry:
+  emit: [route_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 17: OPEN_NOTIFICATIONS
+# Grounded on: screen_2.xml — LinkedIn (com.linkedin.android)
+# NOTE: Naming bug — "open_notifications" reads as system shade.
+# This skill = LinkedIn feed. System notifications = separate skill.
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: open_linkedin_feed
+version: "1.1.0"
+status: stable
+owner: "team-social"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: social
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 2000
+  est_steps: 2
+
+compatibility:
+  target_app:
+    package: com.linkedin.android
+    tested_version_name: "4.1.852"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  requires_auth: true
+
+grounding:
+  fixtures:
+    - id: linkedin_feed
+      path: fixtures/screen_2.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+
+slots: {}
+
+execution:
+  strategy: first_success
+  routes:
+    - id: linkedin_deeplink
+      kind: intent
+      reliability: 0.85
+      cost_ms: 500
+      intent:
+        action: android.intent.action.VIEW
+        data: "linkedin://feed"
+        package: com.linkedin.android
+
+    - id: ui_launch
+      kind: ui_automation
+      reliability: 0.75
+      cost_ms: 2500
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.linkedin.android
+          wait: { for: screen_settled, timeout_ms: 5000 }
+
+recovery:
+  - on: not_signed_in
+    do: [abort, notify_user("Please sign in to LinkedIn first.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 2]
+  terminal_message: "I couldn't open LinkedIn."
+
+routing:
+  priority: 40
+  triggers:
+    - "show my linkedin notifications"
+    - "open linkedin notifications"
+    - "check my linkedin feed"
+    - "what's new on linkedin"
+    - "open my linkedin activity"
+    - "check linkedin updates"
+    - "view linkedin alerts"
+  anti_triggers:
+    - "open linkedin" -> open_app
+    - "show system notifications" -> read_system_notifications
+  required_entities: []
+  disambiguate_against: [open_app, read_system_notifications]
+
+output:
+  schema:
+    opened: { type: boolean }
+  templates:
+    success: "Opened LinkedIn feed."
+
+telemetry:
+  emit: [route_used, outcome]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 18: RECORD_AUDIO
+# Grounded on: screen_34.xml — Voice Recorder,
+# ad overlay present (handled by global_interrupts)
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: record_audio
+version: "1.4.0"
+status: stable
+owner: "team-utility"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: utility
+  capability: write_local
+  risk_tier: 2
+  reversible: false
+  idempotent: false
+  est_duration_ms: 2000
+  est_steps: 3
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: echo_action
+  max_duration_seconds: 3600
+  requires_permissions: [android.permission.RECORD_AUDIO]
+  visible_indicator_required: true
+
+compatibility:
+  target_app:
+    package: com.sec.android.app.voicenote
+    tested_version_name: "21.2.10.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone]
+  form_factors: [phone]
+
+grounding:
+  fixtures:
+    - id: voice_recorder
+      path: fixtures/screen_34.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+  known_issues:
+    - "Ad overlay present in captured screen — handled by global_interrupts.full_screen_ad"
+
+slots:
+  max_duration:
+    type: integer
+    required: false
+    default: 300
+    min: 1
+    max: 3600
+
+execution:
+  strategy: first_success
+  routes:
+    - id: record_intent
+      kind: intent
+      reliability: 0.90
+      cost_ms: 500
+      intent:
+        action: "android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION"
+      then:
+        - { op: confirm_with_user, render: "Start recording audio?" }
+        - { op: interrupt_check, interrupt: full_screen_ad }
+
+    - id: ui_launch
+      kind: ui_automation
+      reliability: 0.65
+      cost_ms: 3000
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.sec.android.app.voicenote
+          wait: { for: screen_settled, timeout_ms: 5000 }
+        - id: dismiss_ad
+          op: interrupt_check
+          interrupt: full_screen_ad
+        - id: confirm
+          op: confirm_with_user
+        - id: tap_record
+          op: tap
+          target: { by: content_desc, matches: "(?i)record|start recording" }
+      postconditions:
+        - { assert: foreground_package, equals: com.sec.android.app.voicenote }
+
+recovery:
+  - on: permission_denied
+    do: [request_permission(RECORD_AUDIO), retry_once]
+  - on: ad_overlay
+    do: [handle_via_global_interrupt(full_screen_ad)]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't start recording."
+
+routing:
+  priority: 60
+  triggers:
+    - "start recording audio"
+    - "record a voice note"
+    - "open voice recorder"
+    - "begin recording"
+    - "record my voice"
+    - "start a new audio recording"
+    - "capture audio"
+    - "record a memo"
+    - "start voice recording"
+  anti_triggers:
+    - "open recorder" -> open_app
+    - "play the recording" -> play_audio
+  required_entities: []
+  disambiguate_against: [open_app, play_audio]
+
+output:
+  schema:
+    recording: { type: boolean }
+    max_duration: { type: integer }
+  templates:
+    success: "Recording started. Say 'stop recording' when done."
+    failed: "Could not start recording."
+
+telemetry:
+  emit: [route_used, ad_dismissed, permission_granted, outcome]
+  capture_on_failure: { ui_dump: true, screenshot: redacted }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SKILL 19: VIEW_ASSIGNMENTS
+# Grounded on: screen_17.xml — Google Classroom
+# (com.google.android.apps.classroom)
+# ═══════════════════════════════════════════════════════════════════════════
+---
+schema_version: "2.1"
+skill_id: view_assignments
+version: "1.4.0"
+status: stable
+owner: "team-productivity"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 14
+
+taxonomy:
+  domain: info_academic
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 2200
+  est_steps: 3
+
+compatibility:
+  target_app:
+    package: com.google.android.apps.classroom
+    tested_version_name: "9.0.301.20.90.6"
+    min_version_code: 90301000
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone, pixel_stock_14]
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+  requires_auth: true
+  degrades_gracefully_offline: false
+
+grounding:
+  fixtures:
+    - id: classroom_feed
+      path: fixtures/screen_17.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+  screen_signatures:
+    classroom_feed:
+      package_equals: com.google.android.apps.classroom
+      require_any:
+        - { by: resource_id, matches: "class_list|classroom" }
+        - { by: content_desc, matches: "(?i)classes|to-?do" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|add account" }
+      min_confidence: 0.80
+
+slots:
+  class_name:
+    type: string
+    required: false
+    max_len: 64
+    normalize: [trim, collapse_ws, casefold_compare]
+    resolver: fuzzy_match_visible_text
+    resolver_threshold: 0.72
+    prompt_if_ambiguous: "Which class? I see: {candidates}"
+  filter:
+    type: enum
+    values: [assigned, missing, done]
+    default: assigned
+
+execution:
+  strategy: first_success
+  routes:
+    - id: deeplink
+      kind: intent
+      reliability: 0.93
+      cost_ms: 700
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://classroom.google.com/u/0/a/not-turned-in/all"
+        package: com.google.android.apps.classroom
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      verify:
+        - { assert: on_screen, value: classroom_feed }
+
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.78
+      cost_ms: 3100
+      preconditions:
+        - device.unlocked
+        - app.installed(com.google.android.apps.classroom)
+      steps:
+        - id: launch
+          op: launch_app
+          package: com.google.android.apps.classroom
+          wait: { for: screen_signature, value: classroom_feed, timeout_ms: 6000 }
+        - id: open_todo
+          op: tap
+          target: sel.todo_tab
+          optional: true
+          skip_if: { on_screen: todo_list }
+        - id: filter
+          op: tap
+          target: sel.filter_chip
+          when: "slots.filter != 'assigned'"
+        - id: extract
+          op: extract
+          from: sel.assignment_rows
+          fields:
+            title: { by: resource_id, value: "…:id/assignment_title" }
+            due: { by: resource_id, value: "…:id/due_date" }
+            course: { by: resource_id, value: "…:id/course_name" }
+          limit: 10
+          emit_as: assignments
+      postconditions:
+        - { assert: foreground_package, equals: com.google.android.apps.classroom }
+        - { assert: extracted.assignments, min_count: 0 }
+
+selectors:
+  todo_tab:
+    require_visible: true
+    scroll_to_find: { container: sel.main_scroller, max_swipes: 3, direction: down }
+    candidates:
+      - { by: resource_id, value: "com.google.android.apps.classroom:id/todo_tab", conf: 0.95 }
+      - { by: content_desc, matches: "(?i)^to-?do$", clickable: true, conf: 0.85 }
+      - { by: text, matches: "(?i)^to-?do$", ancestor_clickable: true, conf: 0.70 }
+      - { by: nth_of_class, class: android.widget.TabWidget, index: 1, conf: 0.35 }
+  assignment_rows:
+    multiple: true
+    candidates:
+      - { by: resource_id, value: "…:id/assignment_row", conf: 0.95 }
+      - { by: class, value: androidx.recyclerview.widget.RecyclerView, child_of_scope: true, conf: 0.5 }
+
+recovery:
+  - on: selector_not_found
+    do: [rescan_after(600ms), scroll_and_retry(2), next_route]
+  - on: wrong_screen
+    do: [back(max=2), relaunch, next_route]
+  - on: auth_wall
+    do: [abort, notify_user("Sign in to Classroom first.")]
+  - on: app_not_installed
+    do: [delegate: search_install_app(query="Google Classroom")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't open your Classroom assignments."
+
+routing:
+  priority: 60
+  triggers:
+    - "show my assignments in classroom"
+    - "what assignments are due"
+    - "check my homework on classroom"
+    - "what's due this week"
+    - "classroom to-do list"
+    - "view pending assignments"
+    - "open classroom assignments"
+    - "check for new assignments"
+    - "view my classroom to-do list"
+    - "kya assignment due hai"
+  anti_triggers:
+    - "open classroom" -> open_app
+    - "submit assignment" -> unsupported
+    - "open {filename} in drive" -> open_file_in_drive
+  required_entities: []
+  disambiguate_against: [open_app, open_file_in_drive]
+
+output:
+  schema:
+    assignments: { type: array, items: [title, due, course] }
+    count: { type: integer }
+  templates:
+    success_n: "You have {count} assignments due. Next: {assignments[0].title}, due {assignments[0].due}."
+    success_0: "Nothing due in Classroom right now."
+    partial: "Opened Classroom, but I couldn't read the list."
+  speak_pii: false
+
+telemetry:
+  emit: [route_used, step_latency, selector_hit_rank, retries, outcome]
+  redact: [class_name]
+  capture_on_failure: { ui_dump: true, screenshot: redacted, last_n_steps: 5 }
