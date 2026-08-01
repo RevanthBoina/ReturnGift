@@ -1,0 +1,105 @@
+schema_version: "2.1"
+skill_id: view_assignments
+version: "1.4.0"
+status: stable
+owner: "team-productivity"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 14
+
+taxonomy:
+  domain: info_academic
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 2200
+  est_steps: 3
+
+compatibility:
+  target_app:
+    package: com.google.android.apps.classroom
+    tested_version_name: "9.0.301.20.90.6"
+    min_version_code: 90301000
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+  requires_auth: true
+  degrades_gracefully_offline: false
+
+slots:
+  class_name:
+    type: string
+    required: false
+    max_len: 64
+    normalize: [trim, collapse_ws, casefold_compare]
+    resolver: fuzzy_match_visible_text
+    resolver_threshold: 0.72
+    prompt_if_ambiguous: "Which class? I see: {candidates}"
+  filter:
+    type: enum
+    values: [assigned, missing, done]
+    default: assigned
+
+execution:
+  strategy: first_success
+  routes:
+    - id: deeplink
+      kind: intent
+      reliability: 0.93
+      cost_ms: 700
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://classroom.google.com/u/0/a/not-turned-in/all"
+        package: com.google.android.apps.classroom
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.78
+      cost_ms: 3100
+      steps:
+        - { id: launch, op: launch_app, package: com.google.android.apps.classroom }
+        - { id: open_todo, op: tap, target: sel.todo_tab, optional: true }
+        - { id: filter, op: tap, target: sel.filter_chip, when: "slots.filter != 'assigned'" }
+        - { id: extract, op: extract, from: sel.assignment_rows, fields: { title: { by: resource_id, value: "…:id/assignment_title" }, due: { by: resource_id, value: "…:id/due_date" }, course: { by: resource_id, value: "…:id/course_name" } }, limit: 10, emit_as: assignments }
+
+recovery:
+  - on: auth_wall
+    do: [abort, notify_user("Sign in to Classroom first.")]
+  - on: app_not_installed
+    do: [delegate: search_install_app(query="Google Classroom")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't open your Classroom assignments."
+
+routing:
+  priority: 60
+  triggers:
+    - "show my assignments in classroom"
+    - "what assignments are due"
+    - "check my homework on classroom"
+    - "what's due this week"
+    - "classroom to-do list"
+    - "view pending assignments"
+    - "open classroom assignments"
+    - "kya assignment due hai"
+  anti_triggers:
+    - "open classroom" -> open_app
+    - "open {filename} in drive" -> open_file_in_drive
+  required_entities: []
+  disambiguate_against: [open_app, open_file_in_drive]
+
+output:
+  templates:
+    success_n: "You have {count} assignments due. Next: {assignments[0].title}, due {assignments[0].due}."
+    success_0: "Nothing due in Classroom right now."
+    partial: "Opened Classroom, but I couldn't read the list."
+  speak_pii: false
+
+telemetry:
+  emit: [route_used, step_latency, outcome]
+  redact: [class_name]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW — view_assignments.md playbook created

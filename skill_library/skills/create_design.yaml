@@ -1,0 +1,81 @@
+schema_version: "2.1"
+skill_id: create_design
+version: "0.9.0"
+status: draft
+owner: "team-content"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 14
+
+taxonomy:
+  domain: content_creation
+  capability: write_local
+  risk_tier: 1
+  reversible: true
+  idempotent: false
+  est_duration_ms: 10000
+  est_steps: 5
+
+compatibility:
+  target_app:
+    package: com.canva.editor
+    tested_version_name: "2.245.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  requires_auth: true
+  known_limitations:
+    - "WebView-based UI — accessibility tree often empty/opaque"
+    - "May require web strategy (JS/DOM or DevTools) instead of uiautomator"
+
+slots:
+  template_type:
+    type: string
+    required: false
+    max_len: 100
+    default: "blank"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.50
+      cost_ms: 8000
+      known_issues:
+        - "WebView nodes may not be accessible — may need JS injection"
+      steps:
+        - { id: launch, op: launch_app, package: com.canva.editor }
+        - { id: navigate_templates, op: tap, target: { by: text, matches: "(?i)create|new design" }, optional: true }
+        - { id: select_template, op: tap, target: { by: text, matches: "(?i){template_type}" }, when: "slots.template_type != 'blank'" }
+
+recovery:
+  - on: webview_not_accessible
+    do: [abort, notify_user("Canva's editor uses a web view that I can't interact with. Please create the design manually.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't create the design in Canva."
+
+routing:
+  priority: 45
+  triggers:
+    - "create a new design in canva"
+    - "make a {template_type} on canva"
+    - "start a new canva project"
+    - "design a {template_type} using canva"
+    - "make a social media post on canva"
+    - "create a presentation in canva"
+  anti_triggers:
+    - "open canva" -> open_app
+  required_entities: []
+  disambiguate_against: [open_app]
+
+output:
+  templates:
+    success: "Opened Canva to create a {template_type} design."
+    failed: "Could not create the design."
+
+telemetry:
+  emit: [route_used, webview_accessibility, outcome]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW (draft) — create_design.md playbook created; marked draft due to WebView limitations

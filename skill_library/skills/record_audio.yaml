@@ -1,0 +1,99 @@
+schema_version: "2.1"
+skill_id: record_audio
+version: "1.4.0"
+status: stable
+owner: "team-utility"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: utility
+  capability: write_local
+  risk_tier: 2
+  reversible: false
+  idempotent: false
+  est_duration_ms: 2000
+  est_steps: 3
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: echo_action
+  max_duration_seconds: 3600
+  requires_permissions: [android.permission.RECORD_AUDIO]
+  visible_indicator_required: true
+
+compatibility:
+  target_app:
+    package: com.sec.android.app.voicenote
+    tested_version_name: "21.2.10.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone]
+  form_factors: [phone]
+
+slots:
+  max_duration:
+    type: integer
+    required: false
+    default: 300
+    min: 1
+    max: 3600
+
+execution:
+  strategy: first_success
+  routes:
+    - id: record_intent
+      kind: intent
+      reliability: 0.90
+      cost_ms: 500
+      intent:
+        action: "android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION"
+      then:
+        - { op: confirm_with_user, render: "Start recording audio?" }
+        - { op: interrupt_check, interrupt: full_screen_ad }
+
+    - id: ui_launch
+      kind: ui_automation
+      reliability: 0.65
+      cost_ms: 3000
+      steps:
+        - { id: launch, op: launch_app, package: com.sec.android.app.voicenote }
+        - { id: dismiss_ad, op: interrupt_check, interrupt: full_screen_ad }
+        - { id: confirm, op: confirm_with_user }
+        - { id: tap_record, op: tap, target: { by: content_desc, matches: "(?i)record|start recording" } }
+
+recovery:
+  - on: permission_denied
+    do: [request_permission(RECORD_AUDIO), retry_once]
+  - on: ad_overlay
+    do: [handle_via_global_interrupt(full_screen_ad)]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't start recording."
+
+routing:
+  priority: 60
+  triggers:
+    - "start recording audio"
+    - "record a voice note"
+    - "open voice recorder"
+    - "begin recording"
+    - "record my voice"
+    - "start a new audio recording"
+    - "record a memo"
+  anti_triggers:
+    - "open recorder" -> open_app
+    - "play the recording" -> play_audio
+  required_entities: []
+  disambiguate_against: [open_app, play_audio]
+
+output:
+  templates:
+    success: "Recording started. Say 'stop recording' when done."
+    failed: "Could not start recording."
+
+telemetry:
+  emit: [route_used, ad_dismissed, permission_granted, outcome]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW — record_audio.md playbook created

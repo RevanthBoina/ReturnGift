@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- ReturnGift launcher foreground — "RG" monogram on transparent background -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,34 L30,74 L38,74 L38,58 L44,58 L54,74 L64,74 L52,56 C57,54 60,49 60,44 C60,38 55,34 48,34 Z M38,42 L48,42 C51,42 52,44 52,46 C52,49 51,51 48,51 L38,51 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M68,34 L68,74 L80,74 C90,74 96,67 96,54 C96,41 90,34 80,34 Z M76,42 L80,42 C84,42 88,46 88,54 C88,62 84,66 80,66 L76,66 Z" />
+</vector>

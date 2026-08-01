@@ -1,0 +1,114 @@
+schema_version: "2.1"
+skill_id: ask_external_ai
+version: "1.5.0"
+status: stable
+owner: "team-info"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 14
+
+taxonomy:
+  domain: info_academic
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 8000
+  est_steps: 4
+
+compatibility:
+  target_app:
+    package: "{app|to_package}"
+    tested_packages:
+      - { pkg: com.openai.chatgpt, version: "1.2024.191" }
+      - { pkg: com.x.ai, version: "1.0.8" }
+      - { pkg: ai.perplexity.app, version: "2.15.0" }
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  requires_auth: true
+  degrades_gracefully_offline: false
+
+slots:
+  query:
+    type: string
+    required: true
+    max_len: 2000
+  app:
+    type: enum
+    values: [chatgpt, grok, perplexity, gemini]
+    default: chatgpt
+    inference_hints:
+      chatgpt: ["chatgpt", "gpt", "open ai", "chat gpt"]
+      grok: ["grok", "x ai"]
+      perplexity: ["perplexity"]
+      gemini: ["gemini", "google ai", "bard"]
+
+execution:
+  strategy: first_success
+  routes:
+    - id: chatgpt_web
+      when: "slots.app == 'chatgpt'"
+      kind: intent
+      reliability: 0.85
+      cost_ms: 1200
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://chat.openai.com/?q={query|urlencode}"
+        package: com.openai.chatgpt
+
+    - id: perplexity_web
+      when: "slots.app == 'perplexity'"
+      kind: intent
+      reliability: 0.85
+      cost_ms: 1000
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://www.perplexity.ai/search?q={query|urlencode}"
+        package: ai.perplexity.app
+
+    - id: ui_generic
+      kind: ui_automation
+      reliability: 0.60
+      cost_ms: 6000
+      steps:
+        - { id: launch, op: launch_app, package: "{app|to_package}" }
+        - { id: find_input, op: tap, target: { by: class, value: android.widget.EditText, focusable: true } }
+        - { id: type_query, op: type, target: { by: class, value: android.widget.EditText }, text: "{query}", method: ime_broadcast }
+        - { id: submit, op: tap, target: { by: content_desc, matches: "(?i)send|submit" } }
+
+recovery:
+  - on: auth_wall
+    do: [abort, notify_user("Please sign in to {app} first.")]
+  - on: app_not_installed
+    do: [delegate: search_install_app(query="{app}")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't get an answer from {app}."
+
+routing:
+  priority: 70
+  triggers:
+    - "ask chatgpt about {query}"
+    - "what does the ai say about {query}"
+    - "ask grok {query}"
+    - "search perplexity for {query}"
+    - "get gemini to explain {query}"
+    - "chat with gpt about {query}"
+    - "prompt ai with {query}"
+  anti_triggers:
+    - "search the web for {query}" -> web_search
+    - "google {query}" -> web_search
+    - "open chatgpt" -> open_app
+  required_entities: [query]
+  disambiguate_against: [web_search, open_app]
+
+output:
+  templates:
+    success: "Here's what {app} says: {response|first_200}"
+    failed: "I couldn't get a response from {app}."
+
+telemetry:
+  emit: [route_used, latency_ms, outcome]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW — ask_external_ai.md playbook created

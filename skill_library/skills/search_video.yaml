@@ -1,0 +1,91 @@
+schema_version: "2.1"
+skill_id: search_video
+version: "1.7.0"
+status: stable
+owner: "team-entertainment"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 21
+
+taxonomy:
+  domain: entertainment
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 4000
+  est_steps: 3
+
+compatibility:
+  target_app:
+    package: com.google.android.youtube
+    tested_version_name: "19.29.37"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+slots:
+  query:
+    type: string
+    required: true
+    max_len: 200
+  play_immediately:
+    type: boolean
+    default: true
+
+execution:
+  strategy: first_success
+  routes:
+    - id: youtube_search_url
+      kind: intent
+      reliability: 0.95
+      cost_ms: 600
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://www.youtube.com/results?search_query={query|urlencode}"
+        package: com.google.android.youtube
+      then:
+        - { op: wait, for: screen_settled, timeout_ms: 4000 }
+        - { op: tap, target: { by: class, value: android.view.ViewGroup, nth: 1, in_list: true }, when: "slots.play_immediately" }
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 5000
+      steps:
+        - { id: launch, op: launch_app, package: com.google.android.youtube }
+        - { id: tap_search, op: tap, target: { by: content_desc, matches: "(?i)search" } }
+        - { id: type_query, op: type, target: { by: class, value: android.widget.EditText }, text: "{query}", method: ime_broadcast }
+        - { id: submit, op: press, key: KEYCODE_ENTER }
+        - { id: tap_first, op: tap, target: { by: class, value: android.view.ViewGroup, nth: 1, in_list: true }, when: "slots.play_immediately" }
+
+recovery:
+  - on: autoplay_blocked
+    do: [notify_user("Search results shown. Tap a video to play.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't search YouTube."
+
+routing:
+  priority: 55
+  triggers:
+    - "search youtube for {query}"
+    - "play {query} on youtube"
+    - "find videos about {query}"
+    - "watch {query}"
+    - "youtube search {query}"
+  anti_triggers:
+    - "search the web for {query}" -> web_search
+    - "open youtube" -> open_app
+  required_entities: [query]
+  disambiguate_against: [web_search, open_app]
+
+output:
+  templates:
+    success: "Playing \"{video_title}\" on YouTube."
+    search_only: "Showing YouTube results for \"{query}\"."
+
+telemetry:
+  emit: [route_used, outcome]
+
+# integration_notes:
+#   existing_playbook: open-and-search.md (PARTIAL — generic search)
+#   action: ENHANCED — open-and-search.md updated with search_video trigger

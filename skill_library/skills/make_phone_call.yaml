@@ -1,0 +1,103 @@
+schema_version: "2.1"
+skill_id: make_phone_call
+version: "2.1.0"
+status: stable
+owner: "team-communication"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: communication
+  capability: communicate
+  risk_tier: 2
+  reversible: false
+  idempotent: false
+  est_duration_ms: 1500
+  est_steps: 2
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: echo_number_before_call
+  blocklist_patterns: ["^0900", "^1900", "^900"]
+  requires_permissions: [android.permission.CALL_PHONE]
+
+compatibility:
+  target_app:
+    package: com.samsung.android.dialer
+    tested_version_name: "14.1.00.8"
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone]
+  form_factors: [phone]
+
+slots:
+  contact:
+    type: contact
+    required: false
+    resolver: contacts_provider
+  phone_number:
+    type: string
+    required: false
+    pattern: "^[+]?[0-9\\s\\-()]{7,15}$"
+    normalize: [strip_whitespace, strip_dashes]
+
+execution:
+  strategy: first_success
+  routes:
+    - id: tel_intent
+      when: "slots.phone_number != null"
+      kind: intent
+      reliability: 0.98
+      cost_ms: 300
+      intent:
+        action: android.intent.action.VIEW
+        data: "tel:{phone_number}"
+      then:
+        - { op: confirm_with_user, render: "Call {phone_number}?" }
+        - { op: tap, target: { by: content_desc, matches: "(?i)call|dial" } }
+
+    - id: contact_lookup
+      when: "slots.contact != null and slots.phone_number == null"
+      kind: intent
+      reliability: 0.90
+      cost_ms: 500
+      intent:
+        action: android.intent.action.VIEW
+        data: "tel:{contact.e164}"
+      then:
+        - { op: confirm_with_user, render: "Call {contact.display_name}?" }
+
+recovery:
+  - on: permission_denied
+    do: [request_permission(CALL_PHONE), retry_once]
+  - on: invalid_number
+    do: [abort, notify_user("The number doesn't look valid: {phone_number}")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't place the call."
+
+routing:
+  priority: 85
+  triggers:
+    - "call {contact}"
+    - "dial {phone_number}"
+    - "phone {contact}"
+    - "ring {contact}"
+    - "make a voice call to {contact}"
+    - "give {contact} a call"
+  anti_triggers:
+    - "send a message to {contact}" -> send_message
+    - "video call {contact}" -> unsupported
+  required_entities: []
+
+output:
+  templates:
+    success: "Calling {target}..."
+    failed: "Could not place the call."
+
+telemetry:
+  emit: [route_used, outcome, blocklist_hit]
+  redact: [phone_number]
+
+# integration_notes:
+#   existing_playbook: none (MakeCallTool.java exists as low-level tool)
+#   action: NEW — make_phone_call.md playbook created, YAML skill wraps MakeCallTool with safety gates

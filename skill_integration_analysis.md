@@ -1,50 +1,124 @@
 # Skill Integration Analysis
 
-## 19 YAML Skills → Existing Project Mapping
+**Updated:** 2026-07-20
+**Source state:** Full Android source committed to `source_repo/` (Finding 1 resolved).
+**Scope:** How `skill_definitions_v2.yaml` (19 production skills) relates to the committed
+Kotlin skill layer (`BuiltInSkills.kt`, `SkillRegistry`, `SkillExecutor`, `Skill.kt`).
 
-| # | YAML Skill ID | Status | Existing Equivalent | Action |
-|---|--------------|--------|---------------------|--------|
-| 1 | send_message | EXACT | playbook: send_message.md | Keep playbook, enhance with YAML detail |
-| 2 | open_conversation | PARTIAL | playbook: send_message (triggers overlap) | Create new playbook |
-| 3 | make_phone_call | MISSING | none | Create new playbook |
-| 4 | ask_external_ai | MISSING | none | Create new playbook |
-| 5 | web_search | PARTIAL | playbook: open_and_search.md | Enhance existing playbook |
-| 6 | search_place | PARTIAL | playbook: open_and_navigate.md | Enhance existing playbook |
-| 7 | book_ride | MISSING | none | Create new playbook |
-| 8 | search_video | PARTIAL | playbook: open_and_search.md | Enhance existing playbook |
-| 9 | search_install_app | MISSING | none | Create new playbook |
-| 10 | set_alarm | MISSING | none | Create new playbook |
-| 11 | navigate_settings | MISSING | none | Create new playbook |
-| 12 | search_repository | MISSING | none | Create new playbook |
-| 13 | create_design | MISSING | none | Create new playbook (draft status) |
-| 14 | open_file_in_drive | MISSING | none | Create new playbook |
-| 15 | create_video_project | MISSING | none | Create new playbook (draft) |
-| 16 | open_app | EXACT | playbook: open_and_navigate.md | Keep playbook, enhance triggers |
-| 17 | open_linkedin_feed | MISSING | none | Create new playbook |
-| 18 | record_audio | MISSING | none | Create new playbook |
-| 19 | view_assignments | MISSING | none | Create new playbook |
+---
 
-## New Playbooks to Create (12):
-- open_conversation.md
-- make_phone_call.md
-- ask_external_ai.md
-- book_ride.md
-- search_install_app.md
-- set_alarm.md
-- navigate_settings.md
-- search_repository.md
-- create_design.md
-- open_file_in_drive.md
-- create_video_project.md
-- open_linkedin_feed.md
-- record_audio.md
-- view_assignments.md
+## Two distinct skill layers
 
-## Playbooks to Enhance (3):
-- send_message.md (add intent routes, verification)
-- open_and_search.md (add web_search, search_video, search_repo triggers)
-- open_and_navigate.md (add search_place, open_app triggers)
+### Layer 1 — Kotlin BuiltInSkills (committed, operational)
 
-## Built-in Skills to Consider (for deterministic execution):
-- Some YAML skills have UI automation routes that could become BuiltInSkills.kt entries
-- But playbooks are the primary mechanism for local LLM
+Located at `app/src/main/java/com/returngift/agent/agent/skill/`.
+
+| File | Role |
+|------|------|
+| `Skill.kt` | Data model: `Skill`, `SkillStep`, `SkillParameter`, `SkillResult`, `SkillCategory` |
+| `SkillRegistry.kt` | In-memory registry; `loadBuiltInSkills()` called at startup; trigger-pattern matching |
+| `SkillExecutor.kt` | Deterministic step runner; retries; falls back to LLM agent loop on failure |
+| `BuiltInSkills.kt` | 9 app-agnostic utility skills (see table below) |
+
+**Registered built-in skills:**
+
+| Skill ID | Category | Steps saved | Trigger patterns |
+|----------|----------|-------------|-----------------|
+| `search_in_app` | INPUT | 5 | _(none — too ambiguous, agent loop preferred)_ |
+| `submit_form` | INPUT | 4 | submit, send message, press send |
+| `dismiss_popup` | DISMISS | 3 | dismiss, close popup, close dialog |
+| `scroll_and_read` | GENERAL | 10 | read the page, scroll and read, read all content |
+| `copy_screen_text` | GENERAL | 3 | copy text, extract text, read screen |
+| `accept_permission` | DISMISS | 3 | accept permission, allow permission, grant access |
+| `swipe_gesture` | NAVIGATION | 2 | _(none — too ambiguous, agent loop preferred)_ |
+| `go_back` | NAVIGATION | 1 | go back, press back, navigate back |
+| `wait_for_content` | GENERAL | 5 | wait for content, wait for loading, wait for response |
+
+**Key design decisions in the Kotlin layer:**
+- Compound tasks (`and`, `then`, `after`) bypass skill matching and go straight to the agent loop.
+- `userFacing: Boolean` controls whether a skill appears in the Task UI (currently all built-ins have `userFacing = false`).
+- `SkillExecutor` resolves `{param}` placeholders in step params before tool dispatch.
+- On non-optional step failure after retries, executor returns `fallbackGoal` string for the LLM to continue.
+
+### Layer 2 — skill_definitions_v2.yaml (19 production skills, draft status)
+
+These are **slot-extractor + intent/UI-automation recipes** for specific apps. They are
+not yet wired into the Kotlin `SkillRegistry` — they represent the planned production
+skill contract, pending fixture capture and device validation.
+
+**Coverage by domain:**
+
+| Domain | Skills |
+|--------|--------|
+| communication | send_message, open_conversation, make_phone_call |
+| info_academic | ask_external_ai, web_search, view_assignments |
+| navigation | search_place |
+| health_lifestyle | book_ride |
+| entertainment | search_video |
+| app_management | search_install_app |
+| utility | set_alarm, navigate_settings, open_file_in_drive, record_audio |
+| social | open_linkedin_feed |
+| default_app | open_app |
+| developer_tools | search_repository _(scope unresolved)_ |
+| content_creation | create_design, create_video_project _(scope unresolved)_ |
+
+---
+
+## Gap analysis
+
+### What exists in the committed source
+
+- `send-message.md`, `open-and-search.md`, `open-and-navigate.md` playbooks — **present** in
+  `app/src/main/assets/playbooks/` (e.g. `send-message.md`, `open-and-search.md`,
+  `open-and-navigate.md`).
+- `BuiltInSkills.kt` — **present and committed**.
+- All other Kotlin source (tool layer, task loop, accessibility service) — **present**.
+
+### What is still missing
+
+| Item | Blocker |
+|------|---------|
+| 21 fixture XML files (`fixtures/screen_N.xml`) | Requires ADB capture from SM-S918B (Finding 4) |
+| `tree_hash` values in `skill_definitions_v2.yaml` | Blocked by fixture capture |
+| Wiring of YAML skills into `SkillRegistry` | Design decision pending (see below) |
+| Promotion of any skill from `draft` to `canary` | Blocked by fixtures + tree_hash |
+
+### Integration path: YAML → Kotlin
+
+The YAML skills are not yet loaded by `SkillRegistry`. Two options:
+
+1. **Parse YAML at runtime** — load `skill_definitions_v2.yaml` from assets, convert each
+   skill's `execution.routes` into `SkillStep` sequences, register via `SkillRegistry.register()`.
+   Pros: single source of truth. Cons: YAML parsing overhead at startup; schema mismatch risk.
+
+2. **Generate Kotlin from YAML** — build-time codegen step produces typed `Skill` objects
+   from the YAML. Pros: type-safe, zero runtime parsing. Cons: adds build step.
+
+Neither is implemented yet. The Kotlin layer currently only runs the 9 `BuiltInSkills`.
+
+### Scope-unresolved skills
+
+Three skills in `skill_definitions_v2.yaml` carry `scope_note: SCOPE UNRESOLVED`:
+
+| Skill | Issue | Recommendation |
+|-------|-------|----------------|
+| `search_repository` | Outside 8-domain taxonomy; read-only, low complexity | Plausible as local Action Skill |
+| `create_design` | WebView inaccessibility; multi-step creative workflow | Cloud Deep-Agent tier |
+| `create_video_project` | Multi-minute stateful; no deep links | Cloud Deep-Agent tier |
+
+These must not be wired into `SkillRegistry` until the tier decision is made (Finding 7).
+
+---
+
+## Accuracy verdict
+
+`skill_definitions_v2.yaml` accurately describes the **intended** production skill contract.
+The committed Kotlin source is consistent with the architecture it assumes (tool layer,
+accessibility service, agent loop). No contradictions found between the YAML schema and
+the Kotlin data model — `SkillStep`, `SkillParameter`, and `SkillResult` are compatible
+with the YAML `execution.routes` structure.
+
+**This document should be re-verified after:**
+- Fixture XMLs are committed and `tree_hash` values are filled (Finding 4/5).
+- YAML-to-Kotlin wiring is implemented.
+- Scope decisions are made for the three unresolved skills (Finding 7).

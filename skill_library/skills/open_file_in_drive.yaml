@@ -1,0 +1,93 @@
+schema_version: "2.1"
+skill_id: open_file_in_drive
+version: "1.3.0"
+status: stable
+owner: "team-productivity"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: utility
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 4000
+  est_steps: 4
+
+compatibility:
+  target_app:
+    package: com.google.android.apps.docs
+    tested_version_name: "2.24.232.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  requires_auth: true
+
+slots:
+  filename:
+    type: string
+    required: true
+    max_len: 200
+    normalize: [trim, collapse_ws]
+    resolver: fuzzy_match_visible_text
+    resolver_threshold: 0.70
+    prompt_if_ambiguous: "Which file? I see: {candidates}"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: drive_search_url
+      kind: intent
+      reliability: 0.80
+      cost_ms: 800
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://drive.google.com/drive/search?q={filename|urlencode}"
+        package: com.google.android.apps.docs
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 4000
+      steps:
+        - { id: launch, op: launch_app, package: com.google.android.apps.docs }
+        - { id: tap_search, op: tap, target: { by: resource_id, value: "com.google.android.apps.docs:id/search_bar" } }
+        - { id: type_filename, op: type, target: { by: class, value: android.widget.EditText }, text: "{filename}", method: ime_broadcast }
+        - { id: submit, op: press, key: KEYCODE_ENTER }
+        - { id: select_file, op: tap, target: { by: text, matches: "{filename}", clickable: true }, guard: { text_similarity_to: "{filename}", min: 0.70 } }
+
+recovery:
+  - on: file_not_found
+    do: [notify_user("No file matching \"{filename}\" found in Drive.")]
+  - on: multiple_matches
+    do: [prompt_user("Which file? I see: {candidates}")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't find \"{filename}\" in Drive."
+
+routing:
+  priority: 55
+  triggers:
+    - "open {filename} in drive"
+    - "find {filename} on google drive"
+    - "search drive for {filename}"
+    - "open my {filename} document"
+    - "show me {filename} from drive"
+    - "locate {filename} in my drive"
+  anti_triggers:
+    - "open drive" -> open_app
+    - "create a new document" -> create_document
+  required_entities: [filename]
+  disambiguate_against: [open_app, create_document]
+
+output:
+  templates:
+    success: "Opened \"{filename}\" from Drive."
+    not_found: "Couldn't find \"{filename}\" in Drive."
+
+telemetry:
+  emit: [route_used, match_confidence, outcome]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW — open_file_in_drive.md playbook created

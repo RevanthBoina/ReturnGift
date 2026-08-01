@@ -1,0 +1,151 @@
+schema_version: "2.1"
+skill_id: send_message
+version: "2.0.0"
+status: canary
+owner: "team-messaging"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 21
+
+taxonomy:
+  domain: communication
+  capability: communicate
+  risk_tier: 2
+  reversible: false
+  idempotent: false
+  est_duration_ms: 4500
+  est_steps: 6
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: preview_before_send
+  auto_send: false
+  never_retry_after: [send_tapped]
+  redact_in_logs: [body, recipient]
+  blocklist_patterns:
+    - "(?i)otp|one[- ]time password|cvv|pin code|password is"
+
+compatibility:
+  target_app:
+    package: "{app|to_package}"
+    tested_packages:
+      - { pkg: com.whatsapp, version: "2.24.12.78" }
+      - { pkg: com.google.android.apps.messaging, version: "20240318_01" }
+      - { pkg: org.telegram.messenger, version: "10.11.1" }
+      - { pkg: com.snapchat.android, version: "12.82.0.44" }
+      - { pkg: com.Slack, version: "24.03.20.0" }
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+  requires_auth: true
+
+slots:
+  app:
+    type: enum
+    values: [whatsapp, telegram, snapchat, slack, sms]
+    required: true
+    default_from: user_prefs.default_messaging_app
+    inference_hints:
+      whatsapp: ["whatsapp", "wa", "whats app"]
+      telegram: ["telegram", "tg"]
+      snapchat: ["snapchat", "snap"]
+      slack: ["slack"]
+      sms: ["text", "sms", "message app", "messages"]
+  recipient:
+    type: contact
+    required: true
+    resolver: contacts_provider
+    on_multiple_matches: prompt_user
+    on_zero_matches: fallback_to_in_app_search
+  body:
+    type: string
+    required: true
+    max_len: 1000
+    prompt_if_missing: "What should I say to {recipient.display_name}?"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: wa_deeplink
+      when: "slots.app == 'whatsapp' and slots.recipient.e164 != null"
+      kind: intent
+      reliability: 0.94
+      cost_ms: 800
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://wa.me/{recipient.e164|strip_plus}?text={body|urlencode}"
+        package: com.whatsapp
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: wa_chat_thread, timeout_ms: 5000 }
+        - { op: confirm_with_user, render: "Send to {recipient.display_name}?" }
+        - { op: tap, target: sel.wa_send_button }
+      verify:
+        - { assert: node_exists, target: sel.wa_last_outgoing_bubble, contains: "{body|first_40}", timeout_ms: 4000 }
+
+    - id: sms_intent
+      when: "slots.app == 'sms'"
+      kind: intent
+      reliability: 0.95
+      cost_ms: 500
+      intent:
+        action: android.intent.action.SENDTO
+        data: "smsto:{recipient.e164}"
+        extras: { sms_body: "{body}" }
+      then:
+        - { op: confirm_with_user, render: "Send SMS to {recipient.display_name}?" }
+        - { op: tap, target: { by: resource_id, value: "com.google.android.apps.messaging:id/send_button" } }
+
+    - id: ui_generic
+      kind: ui_automation
+      reliability: 0.66
+      cost_ms: 5000
+      steps:
+        - { id: launch, op: launch_app, package: "{app|to_package}" }
+        - { id: search_contact, op: tap, target: "sel.{app}_search_icon" }
+        - { id: type_name, op: type, target: "sel.{app}_search_field", text: "{recipient.display_name}", method: ime_broadcast }
+        - { id: select_contact, op: tap, target: "sel.{app}_first_result", guard: { text_similarity_to: "{recipient.display_name}", min: 0.80 } }
+        - { id: type_message, op: type, target: "sel.{app}_compose_box", text: "{body}", method: ime_broadcast }
+        - { id: confirm, op: confirm_with_user }
+        - { id: send, op: tap, target: "sel.{app}_send_button" }
+
+recovery:
+  - on: selector_not_found
+    do: [rescan_after(600ms), scroll_and_retry(2), next_route]
+  - on: auth_wall
+    do: [abort, notify_user("Please sign in to {app} first.")]
+  - on: app_not_installed
+    do: [delegate: search_install_app(query="{app}")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't send the message."
+
+routing:
+  priority: 80
+  triggers:
+    - "send a message to {contact} on {app}"
+    - "text {contact} saying {message}"
+    - "reply to {contact} with {message}"
+    - "message {contact} on {app}"
+    - "dm {contact} on slack"
+    - "send an sms to {contact}"
+    - "tell {contact} {message}"
+    - "snap {contact} a message"
+  anti_triggers:
+    - "open {contact}'s chat" -> open_conversation
+    - "call {contact}" -> make_phone_call
+  required_entities: [recipient]
+  disambiguate_against: [open_conversation, make_phone_call]
+
+output:
+  templates:
+    success: "Message sent to {recipient.display_name} via {app}."
+    failed: "Failed to send message to {recipient.display_name}."
+  speak_pii: false
+
+telemetry:
+  emit: [route_used, step_latency, outcome, confirmation]
+  redact: [body, recipient.e164]
+
+# integration_notes:
+#   existing_playbook: send-message.md (EXACT match — playbook kept, YAML adds intent routes + verification)
+#   action: ENHANCED — playbook preserved, YAML skill adds deeplink routes and safety gates

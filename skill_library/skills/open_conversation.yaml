@@ -1,0 +1,102 @@
+schema_version: "2.1"
+skill_id: open_conversation
+version: "1.3.0"
+status: stable
+owner: "team-messaging"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 21
+
+taxonomy:
+  domain: communication
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 2500
+  est_steps: 4
+
+compatibility:
+  target_app:
+    package: "{app|to_package}"
+    tested_packages:
+      - { pkg: com.whatsapp, version: "2.24.12.78" }
+      - { pkg: org.telegram.messenger, version: "10.11.1" }
+      - { pkg: com.snapchat.android, version: "12.82.0.44" }
+      - { pkg: com.Slack, version: "24.03.20.0" }
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  locales: [en-US, en-IN]
+
+slots:
+  app:
+    type: enum
+    values: [whatsapp, telegram, snapchat, slack, sms]
+    required: true
+    default: whatsapp
+  contact:
+    type: contact
+    required: true
+    resolver: fuzzy_match_visible_text
+    resolver_threshold: 0.72
+    prompt_if_ambiguous: "Which chat? I see: {candidates}"
+  filter:
+    type: enum
+    values: [all, unread, favourites, groups]
+    default: all
+
+execution:
+  strategy: first_success
+  routes:
+    - id: deeplink_wa
+      when: "slots.app == 'whatsapp' and slots.contact.e164 != null"
+      kind: intent
+      reliability: 0.90
+      cost_ms: 600
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://wa.me/{contact.e164|strip_plus}"
+        package: com.whatsapp
+      verify:
+        - { assert: on_screen, value: wa_chat_thread }
+
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.75
+      cost_ms: 3000
+      steps:
+        - { id: launch, op: launch_app, package: "{app|to_package}" }
+        - { id: apply_filter, op: tap, target: "sel.wa_filter_{filter}", when: "slots.filter != 'all'", optional: true }
+        - { id: find_contact, op: scroll_find_tap, list: sel.wa_chat_list, match: { target: sel.wa_contact_name, text_similarity_to: "{contact.display_name}", min: 0.75 }, max_swipes: 5 }
+
+recovery:
+  - on: contact_not_found_in_list
+    do: [scroll_and_retry(3), tap_search_and_type(contact.display_name)]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't find that conversation."
+
+routing:
+  priority: 75
+  triggers:
+    - "open my chat with {contact}"
+    - "show me {contact}'s conversation"
+    - "go to the {group} group chat"
+    - "open unread messages"
+    - "navigate to {contact}'s chat"
+  anti_triggers:
+    - "send {message} to {contact}" -> send_message
+    - "call {contact}" -> make_phone_call
+  required_entities: [contact]
+  disambiguate_against: [send_message, make_phone_call]
+
+output:
+  templates:
+    success: "Opened conversation with {contact.display_name}."
+    not_found: "Couldn't find a conversation with {contact.display_name}."
+
+telemetry:
+  emit: [route_used, filter_applied, outcome]
+
+# integration_notes:
+#   existing_playbook: none (PARTIAL overlap with send-message.md triggers)
+#   action: NEW — open_conversation.md playbook created, YAML skill registered
