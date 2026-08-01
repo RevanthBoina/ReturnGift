@@ -232,7 +232,11 @@ androidComponents {
         variant.outputs.forEach { output ->
             if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
                 val versionName = android.defaultConfig.versionName ?: "0.0.0"
-                val fileName = "ReturnGift_v${versionName}_${getDateTime()}.apk"
+                val fileName = if (variant.buildType == "release") {
+                    "ReturnGift-release.apk"
+                } else {
+                    "ReturnGift_v${versionName}_${getDateTime()}.apk"
+                }
                 println("output file name: $fileName")
                 output.outputFileName.set(fileName)
             }
