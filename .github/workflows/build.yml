@@ -34,6 +34,13 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
 
+      - name: Run wiring tests (C2/C3 regression guard)
+        run: |
+          echo "=== Running SkillRegistry wiring tests (C2: YAML skills loaded at startup) ==="
+          ./gradlew testDebugUnitTest --tests "*SkillRegistryWiringTest" || exit 1
+          echo "=== Running SafetyInterceptor wiring tests (C3: safety checks enforced) ==="
+          ./gradlew testDebugUnitTest --tests "*SafetyInterceptorWiringTest" || exit 1
+
       - name: Run Android Lint
         run: ./gradlew lintDebug
         continue-on-error: true
