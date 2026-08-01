@@ -118,11 +118,11 @@ private fun loadConservativeList(key: String, fallback: List<String>): List<Stri
         if (jsonLoaded && conservativeCpuManufacturers != null) return
 
         // Try to load from cached KV values first
-        val cachedManufacturers = KVUtils.getString(JSON_MANUFACTURERS_KEY, null)
-        val cachedModels = KVUtils.getString(JSON_MODELS_KEY, null)
-        val cachedHints = KVUtils.getString(JSON_HARDWARE_HINTS_KEY, null)
+        val cachedManufacturers = KVUtils.getString(JSON_MANUFACTURERS_KEY, "")
+        val cachedModels = KVUtils.getString(JSON_MODELS_KEY, "")
+        val cachedHints = KVUtils.getString(JSON_HARDWARE_HINTS_KEY, "")
 
-        if (cachedManufacturers != null && cachedModels != null && cachedHints != null) {
+        if (cachedManufacturers.isNotEmpty() && cachedModels.isNotEmpty() && cachedHints.isNotEmpty()) {
             conservativeCpuManufacturers = cachedManufacturers.split(",").toSet()
             conservativeCpuModels = cachedModels.split(",")
             conservativeCpuHardwareHints = cachedHints.split(",")
