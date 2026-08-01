@@ -30,10 +30,10 @@
     </style>
 
     <!-- 启动页专用主题：冷启动 Window 直接显示纯色背景，无白屏无系统 Logo -->
-    <style name="Theme.ReturnGift.Splash" parent="Theme.ReturnGift">
+    <style name="Theme.ReturnGift.Splash" parent="Theme.SplashScreen">
         <item name="android:windowBackground">@color/colorBgPrimary</item>
-        <!-- Android 12+ 禁用系统 SplashScreen 的图标 -->
-        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
-        <item name="android:windowSplashScreenBackground">@color/colorBgPrimary</item>
+        <item name="windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="windowSplashScreenBackground">@color/colorBgPrimary</item>
+        <item name="postSplashScreenTheme">@style/Theme.ReturnGift</item>
     </style>
 </resources>

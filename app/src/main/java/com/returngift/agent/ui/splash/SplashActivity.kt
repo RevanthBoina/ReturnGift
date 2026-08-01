@@ -6,6 +6,7 @@ package com.returngift.agent.ui.splash
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.returngift.agent.R
 import com.returngift.agent.base.BaseActivity
 import com.returngift.agent.ui.chat.ComposeChatActivity
@@ -17,6 +18,7 @@ class SplashActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installSplashScreen()
         setContentView(R.layout.activity_splash)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
