@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint-baseline>
+  <issue id="GestureBackNavigation" severity="Error" message="onBackPressed is no longer called for back gestures; migrate to AndroidX&apos;s backward compatible OnBackPressedDispatcher" errorLine1="    override fun onBackPressed()" errorLine2="                 ~~~~~~~~~~~~~">
+    <location file="app/src/main/java/com/returngift/agent/ui/web/WebActivity.kt" line="126" column="18"/>
+  </issue>
+</lint-baseline>

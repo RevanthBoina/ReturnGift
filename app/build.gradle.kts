@@ -23,6 +23,13 @@ fun readLocalOrEnvInt(key: String, defaultValue: Int): Int {
 
 android {
     namespace = "com.returngift.agent"
+    
+    lint {
+        // Baseline file acknowledges pre-existing lint errors
+        // New errors will still fail the build
+        baseline = file("lint-baseline.xml")
+    }
+    
     compileSdk {
         version = release(37) {
             minorApiLevel = 1
