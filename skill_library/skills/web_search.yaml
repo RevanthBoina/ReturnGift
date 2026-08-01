@@ -1,0 +1,99 @@
+schema_version: "2.1"
+skill_id: web_search
+version: "1.8.0"
+status: stable
+owner: "team-info"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: info_academic
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 3000
+  est_steps: 2
+
+compatibility:
+  target_app:
+    package: "{browser|to_package}"
+    tested_packages:
+      - { pkg: com.android.chrome, version: "126.0.6478.122" }
+      - { pkg: com.brave.browser, version: "1.67.123" }
+      - { pkg: com.sec.android.app.sbrowser, version: "25.0.4.3" }
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+slots:
+  query:
+    type: string
+    required: true
+    max_len: 500
+  browser:
+    type: enum
+    values: [chrome, brave, samsung_internet]
+    default: chrome
+    inference_hints:
+      chrome: ["chrome", "google chrome"]
+      brave: ["brave"]
+      samsung_internet: ["samsung browser", "internet"]
+
+execution:
+  strategy: first_success
+  routes:
+    - id: google_search_intent
+      kind: intent
+      reliability: 0.97
+      cost_ms: 400
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://www.google.com/search?q={query|urlencode}"
+        package: "{browser|to_package}"
+      verify:
+        - { assert: foreground_package, equals: "{browser|to_package}" }
+
+    - id: ui_fallback
+      kind: ui_automation
+      reliability: 0.65
+      cost_ms: 4000
+      steps:
+        - { id: launch, op: launch_app, package: "{browser|to_package}" }
+        - { id: tap_url, op: tap, target: { by: resource_id, value: "com.android.chrome:id/search_bar_text" } }
+        - { id: type_query, op: type, target: { by: class, value: android.widget.EditText }, text: "{query}", method: ime_broadcast }
+        - { id: submit, op: press, key: KEYCODE_ENTER }
+
+recovery:
+  - on: browser_not_installed
+    do: [switch_browser, fallback_to_web_intent]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't search the web."
+
+routing:
+  priority: 30
+  triggers:
+    - "search the web for {query}"
+    - "google {query}"
+    - "look up {query} online"
+    - "find information about {query}"
+    - "browse {url}"
+  anti_triggers:
+    - "search youtube for {query}" -> search_video
+    - "find {place} on maps" -> search_place
+    - "search github for {query}" -> search_repository
+    - "ask chatgpt about {query}" -> ask_external_ai
+    - "search the play store for {app}" -> search_install_app
+  required_entities: [query]
+  disambiguate_against: [search_video, search_place, search_repository, ask_external_ai]
+
+output:
+  templates:
+    success: "Searching the web for \"{query}\"."
+
+telemetry:
+  emit: [route_used, browser_used, outcome]
+
+# integration_notes:
+#   existing_playbook: open-and-search.md (PARTIAL — generic search)
+#   action: ENHANCED — open-and-search.md updated with web_search + search_video + search_repository triggers

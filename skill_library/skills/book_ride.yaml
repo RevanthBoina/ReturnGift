@@ -1,0 +1,107 @@
+schema_version: "2.1"
+skill_id: book_ride
+version: "1.6.0"
+status: canary
+owner: "team-lifestyle"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 14
+
+taxonomy:
+  domain: health_lifestyle
+  capability: transact
+  risk_tier: 3
+  reversible: false
+  idempotent: false
+  est_duration_ms: 15000
+  est_steps: 8
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: two_step_echo
+  confirmation_fields: [destination, estimated_fare, pickup_location]
+  auto_send: false
+  never_retry_after: [ride_confirmed]
+  max_fare_inr: 500
+  rate_limit: 3
+  requires_permissions: [android.permission.ACCESS_FINE_LOCATION]
+
+compatibility:
+  target_app:
+    package: com.rapido.passenger
+    tested_version_name: "9.45.0"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+  locales: [en-IN]
+  requires_auth: true
+
+slots:
+  destination:
+    type: string
+    required: true
+    max_len: 200
+    prompt_if_missing: "Where do you want to go?"
+  ride_type:
+    type: enum
+    values: [bike, auto, cab]
+    default: bike
+
+execution:
+  strategy: first_success
+  routes:
+    - id: ui_plan
+      kind: ui_automation
+      reliability: 0.72
+      cost_ms: 12000
+      preconditions:
+        - device.unlocked
+        - app.installed(com.rapido.passenger)
+        - location_enabled
+      steps:
+        - { id: launch, op: launch_app, package: com.rapido.passenger }
+        - { id: tap_destination, op: tap, target: { by: content_desc, matches: "(?i)where do you want to go" } }
+        - { id: type_destination, op: type, target: { by: class, value: android.widget.EditText, focusable: true }, text: "{destination}", method: ime_broadcast }
+        - { id: select_top_result, op: tap, target: { by: resource_id, value: "address_list_item0" } }
+        - { id: extract_fare, op: extract, fields: { fare: { by: text, matches: "₹[0-9]+" } }, emit_as: ride_details }
+        - { id: confirm_step1, op: confirm_with_user, render: "Ride to {destination}. Estimated fare: {ride_details.fare}. Confirm?", guard: { fare_under: 500 } }
+        - { id: confirm_step2, op: confirm_with_user, render: "Final confirm: Book ride to {destination} for {ride_details.fare}?" }
+        - { id: book, op: tap, target: { by: content_desc, matches: "(?i)confirm|book ride" } }
+
+recovery:
+  - on: location_disabled
+    do: [abort, notify_user("Please enable location services to book a ride.")]
+  - on: fare_exceeds_max
+    do: [abort, notify_user("Fare ₹{fare} exceeds ₹{max_fare} limit. Ride not booked.")]
+  - on: no_drivers
+    do: [notify_user("No drivers available right now. Try again later.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 6]
+  terminal_message: "I couldn't book the ride."
+
+routing:
+  priority: 90
+  triggers:
+    - "book a rapido ride to {destination}"
+    - "get a ride to {destination}"
+    - "book a bike taxi to {destination}"
+    - "ride to {destination} on rapido"
+    - "book an auto to {destination}"
+    - "order a rapido to {destination}"
+  anti_triggers:
+    - "navigate to {destination}" -> search_place
+    - "open rapido" -> open_app
+  required_entities: [destination]
+  disambiguate_against: [search_place, open_app]
+
+output:
+  templates:
+    success: "Ride booked to {destination}. Fare: {fare}. Driver arriving in {driver_eta}."
+    failed: "Could not book the ride."
+  speak_pii: false
+
+telemetry:
+  emit: [route_used, fare_extracted, confirmation_steps, outcome]
+  redact: [pickup_location, exact_destination]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW — book_ride.md playbook created

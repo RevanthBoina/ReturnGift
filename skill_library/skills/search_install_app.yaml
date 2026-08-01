@@ -1,0 +1,95 @@
+schema_version: "2.1"
+skill_id: search_install_app
+version: "1.4.0"
+status: stable
+owner: "team-system"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: app_management
+  capability: write_local
+  risk_tier: 2
+  reversible: true
+  idempotent: true
+  est_duration_ms: 8000
+  est_steps: 5
+
+safety:
+  requires_confirmation: true
+  confirmation_mode: preview_developer_and_rating
+  blocklist_packages: ["com.malware.*", "com.trojan.*"]
+
+compatibility:
+  target_app:
+    package: com.android.vending
+    tested_version_name: "41.5.25"
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+slots:
+  app_name:
+    type: string
+    required: true
+    max_len: 100
+  action:
+    type: enum
+    values: [search, install]
+    default: search
+
+execution:
+  strategy: first_success
+  routes:
+    - id: market_search
+      kind: intent
+      reliability: 0.90
+      cost_ms: 800
+      intent:
+        action: android.intent.action.VIEW
+        data: "market://search?q={app_name|urlencode}"
+        package: com.android.vending
+      verify:
+        - { assert: foreground_package, equals: com.android.vending }
+
+    - id: ui_search
+      kind: ui_automation
+      reliability: 0.65
+      cost_ms: 6000
+      steps:
+        - { id: launch, op: launch_app, package: com.android.vending }
+        - { id: tap_search, op: tap, target: { by: content_desc, matches: "(?i)search" } }
+        - { id: type_name, op: type, target: { by: class, value: android.widget.EditText }, text: "{app_name}", method: ime_broadcast }
+        - { id: submit, op: press, key: KEYCODE_ENTER }
+
+recovery:
+  - on: app_not_found
+    do: [notify_user("No results for \"{app_name}\" on Play Store.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't find \"{app_name}\" on the Play Store."
+
+routing:
+  priority: 60
+  triggers:
+    - "install {app_name} from the play store"
+    - "search for {app_name} on play store"
+    - "download {app_name}"
+    - "find and install {app_name}"
+    - "find {app_name} on google play"
+  anti_triggers:
+    - "open {app_name}" -> open_app
+    - "search the web for {app_name}" -> web_search
+  required_entities: [app_name]
+  disambiguate_against: [open_app, web_search]
+
+output:
+  templates:
+    success: "Found \"{app_name}\" on Play Store. Tap Install to continue."
+    not_found: "Couldn't find \"{app_name}\"."
+
+telemetry:
+  emit: [route_used, outcome]
+
+# integration_notes:
+#   existing_playbook: none (SearchAppInStoreTool.java exists as low-level tool)
+#   action: NEW — search_install_app.md playbook created, YAML skill wraps SearchAppInStoreTool

@@ -6,6 +6,9 @@ triggers:
   - "find"
   - "look up"
   - "look for"
+  - "google"
+  - "youtube search"
+  - "search github"
 ---
 
 When the user wants to search for something in an app:
@@ -18,8 +21,14 @@ When the user wants to search for something in an app:
 6. **get_screen_info** → read the results
 7. **finish** → call finish(summary="[describe what you found]")
 
+App routing by query type:
+- "search the web" / "google [query]" → com.android.chrome (URL: google.com/search?q=...)
+- "search youtube" / "play [query] on youtube" → com.google.android.youtube
+- "search github" / "find repo" → com.github.android
+- "search play store" / "find app" → com.android.vending (use search-install-app playbook instead)
+
 If the user says "search [app] for [query]":
-- app = the app name (YouTube, Chrome, Play Store, etc.)
+- app = the app name (YouTube, Chrome, GitHub, etc.)
 - query = what to search for
 
 IMPORTANT: Always open the app FIRST (step 1). Never type into the current screen without opening the target app.

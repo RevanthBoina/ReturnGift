@@ -42,7 +42,7 @@ The agent reads the accessibility tree (live UI state), picks tools, executes, o
 
 ## Attribution
 
-ReturnGift is derived from the ReturnGift project. See `NOTICE` for full upstream attribution as required by Apache License 2.0.
+ReturnGift is a derivative of [PokeClaw](https://github.com/agents-io/PokeClaw) by Nicole / agents.io, licensed under Apache License 2.0. See `NOTICE` for full upstream attribution as required by Apache License 2.0.
 
 
 

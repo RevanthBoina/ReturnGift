@@ -1,0 +1,106 @@
+schema_version: "2.1"
+skill_id: set_alarm
+version: "2.2.0"
+status: stable
+owner: "team-utility"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 30
+
+taxonomy:
+  domain: utility
+  capability: write_local
+  risk_tier: 1
+  reversible: true
+  idempotent: true
+  est_duration_ms: 800
+  est_steps: 1
+
+compatibility:
+  target_app:
+    package: com.sec.android.app.clockpackage
+    tested_version_name: "12.2.10.3"
+  android: { min_sdk: 29, max_sdk: 35 }
+  device_profiles: [samsung_oneui_6_phone]
+  form_factors: [phone]
+
+slots:
+  time:
+    type: time
+    required: true
+    normalize: [parse_12h, parse_24h, parse_relative]
+    prompt_if_missing: "What time should I set the alarm for?"
+  label:
+    type: string
+    required: false
+    max_len: 64
+    default: "Alarm"
+  days:
+    type: array
+    items: enum[mon, tue, wed, thu, fri, sat, sun]
+    required: false
+    default: []
+  vibrate:
+    type: boolean
+    default: true
+
+execution:
+  strategy: first_success
+  routes:
+    - id: intent_skip_ui
+      kind: intent
+      reliability: 0.98
+      cost_ms: 300
+      intent:
+        action: android.intent.action.SET_ALARM
+        extras:
+          EXTRA_HOUR: "{time.hour}"
+          EXTRA_MINUTES: "{time.minute}"
+          EXTRA_MESSAGE: "{label}"
+          EXTRA_SKIP_UI: true
+          EXTRA_VIBRATE: "{vibrate}"
+          EXTRA_DAYS: "{days}"
+      verify:
+        - { assert: toast_or_snackbar, contains: "alarm", timeout_ms: 3000 }
+
+    - id: ui_fallback
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 5000
+      steps:
+        - { id: launch, op: launch_app, package: com.sec.android.app.clockpackage }
+        - { id: tap_add, op: tap, target: { by: content_desc, matches: "(?i)add alarm|create alarm" } }
+        - { id: set_time, op: set_time_picker, hour: "{time.hour}", minute: "{time.minute}" }
+        - { id: save, op: tap, target: { by: content_desc, matches: "(?i)save|confirm|ok" } }
+
+recovery:
+  - on: time_parse_failed
+    do: [prompt_user("What time? Say something like '7:30 AM' or 'in 30 minutes'.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 4]
+  terminal_message: "I couldn't set the alarm."
+
+routing:
+  priority: 75
+  triggers:
+    - "set an alarm for {time}"
+    - "wake me up at {time}"
+    - "set a {time} alarm"
+    - "create an alarm for {time}"
+    - "alarm for {time} every {days}"
+  anti_triggers:
+    - "set a timer for {duration}" -> set_timer
+    - "open clock app" -> open_app
+  required_entities: [time]
+  disambiguate_against: [set_timer, open_app]
+
+output:
+  templates:
+    success: "Alarm set for {time} ({label})."
+    failed: "Could not set the alarm."
+
+telemetry:
+  emit: [route_used, outcome]
+
+# integration_notes:
+#   existing_playbook: none
+#   action: NEW — set_alarm.md playbook created

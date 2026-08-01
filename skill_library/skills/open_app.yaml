@@ -1,0 +1,91 @@
+schema_version: "2.1"
+skill_id: open_app
+version: "2.3.0"
+status: stable
+owner: "team-system"
+last_validated_utc: "2026-07-20T10:00:00Z"
+staleness_sla_days: 90
+
+taxonomy:
+  domain: default_app
+  capability: read
+  risk_tier: 0
+  reversible: true
+  idempotent: true
+  est_duration_ms: 1200
+  est_steps: 1
+
+compatibility:
+  target_app:
+    package: com.sec.android.app.launcher
+  android: { min_sdk: 29, max_sdk: 35 }
+  form_factors: [phone]
+
+slots:
+  app_name:
+    type: string
+    required: true
+    max_len: 100
+    resolver: package_manager_lookup
+    normalize: [casefold, strip_spaces]
+    prompt_if_missing: "Which app?"
+
+execution:
+  strategy: first_success
+  routes:
+    - id: monkey_launch
+      kind: intent
+      reliability: 0.95
+      cost_ms: 400
+      shell: "monkey -p {app_name|to_package} -c LAUNCHER 1"
+      verify:
+        - { assert: foreground_package, equals: "{app_name|to_package}" }
+
+    - id: am_start
+      kind: intent
+      reliability: 0.90
+      cost_ms: 400
+      shell: "am start -n {app_name|to_package}/{app_name|main_activity}"
+      verify:
+        - { assert: foreground_package, equals: "{app_name|to_package}" }
+
+recovery:
+  - on: app_not_installed
+    do: [delegate: search_install_app(query="{app_name}")]
+  - on: app_crash
+    do: [retry_once, notify_user("{app_name} crashed.")]
+  - on: all_routes_failed
+    do: [escalate: llm_open_loop, budget_steps: 2]
+  terminal_message: "I couldn't open {app_name}."
+
+routing:
+  priority: 10
+  triggers:
+    - "open {app_name}"
+    - "launch {app_name}"
+    - "start {app_name}"
+    - "open the {app_name} app"
+    - "go to {app_name}"
+    - "switch to {app_name}"
+    - "run {app_name}"
+  anti_triggers:
+    - "open my chat with {contact}" -> open_conversation
+    - "search youtube for {query}" -> search_video
+    - "set an alarm for {time}" -> set_alarm
+    - "navigate to {place}" -> search_place
+    - "send {message} to {contact}" -> send_message
+    - "ask chatgpt about {query}" -> ask_external_ai
+  required_entities: [app_name]
+  disambiguate_against: [ALL_DOMAIN_SKILLS]
+
+output:
+  templates:
+    success: "Opened {app_name}."
+    not_installed: "{app_name} isn't installed. Want me to search the Play Store?"
+
+telemetry:
+  emit: [route_used, outcome]
+
+# integration_notes:
+#   existing_playbook: open-and-navigate.md (EXACT match — open_app triggers)
+#   action: ENHANCED — open-and-navigate.md triggers updated; YAML adds package_manager_lookup + anti_triggers

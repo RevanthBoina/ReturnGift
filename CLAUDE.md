@@ -4,18 +4,27 @@
 
 ReturnGift is a private/internal Android mobile-agent harness built on a single on-device foundation model with LoRA-based Action Skills. There is no cloud fallback mode. All task execution runs on-device via LiteRT-LM.
 
-→ See `README.md` for the current architecture direction.
+→ See `README.md` for the current architecture direction and full repository structure.
 
 ## Project Files
 
 | File | What | When to update |
 |------|------|----------------|
-| `README.md` | Architecture direction, project plan | When direction changes |
-| `AI_INDEX.md` | Repo map for coding agents | When files or directories move |
+| `README.md` | Architecture direction, full repo structure | When direction or structure changes |
+| `docs/AI_INDEX.md` | Repo map for coding agents | When files or directories move |
 | `CLAUDE.md` | Project rules | When workflow/rules change |
 | `QA_CHECKLIST.md` | E2E test cases + debug changelog | Every code change |
 | `RELEASING.md` | Signing and release workflow | When the release process changes |
 | `BACKLOG.md` | Features, bugs, ideas with priority | When new items come in or items get done |
+
+## Repository Structure Rules
+
+- **agent-core/** — pure Kotlin/JVM, zero `android.*` imports. All agent logic lives here.
+- **app/** — Android shell only. Wires agent-core into platform. No business logic.
+- **skill_library/** — YAML skill definitions + Python lifecycle pipeline. No Kotlin.
+- **docs/** — documentation only. No code. ADRs in `docs/adr/`, specs in `docs/specs/`.
+- **scripts/** — shell scripts only. No app logic.
+- Do NOT add new root-level directories without updating `README.md` and `docs/AI_INDEX.md`.
 
 ## QA-First Development (MANDATORY)
 
@@ -48,4 +57,4 @@ Every code path must be traceable through logcat alone.
 
 ## Architecture Note
 
-ReturnGift runs a single on-device foundation model with LoRA-based Action Skills — no cloud routing, no dual-mode switching. New tool-primitive *sequences* are handled as SkillOpt Skill docs (markdown), not LoRA retrains. The harness layer (Accessibility, tools, task loop) is generic and device-resident.
+ReturnGift runs a single on-device foundation model with LoRA-based Action Skills — no cloud routing, no dual-mode switching. New tool-primitive *sequences* are handled as SkillOpt Skill docs (markdown playbooks in `app/src/main/assets/playbooks/`) + YAML definitions in `skill_library/skills/`, not LoRA retrains. The harness layer (Accessibility, tools, task loop) is generic and device-resident.

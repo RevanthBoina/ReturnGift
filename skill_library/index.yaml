@@ -1,0 +1,221 @@
+# skill_library/index.yaml
+# Master index of all skills in the library.
+# Each entry maps skill_id → file path + metadata for fast lookup and semantic retrieval.
+# Updated automatically by SkillLibraryLoader on each skill registration.
+
+schema_version: "1.0"
+generated_utc: "2026-07-20T10:00:00Z"
+
+skills:
+  - skill_id: send_message
+    file: skills/send_message.yaml
+    version: "2.0.0"
+    status: canary
+    domain: communication
+    risk_tier: 2
+    tags: [messaging, whatsapp, telegram, sms, slack, snapchat]
+    existing_playbook: send-message.md
+    integration_action: ENHANCED
+
+  - skill_id: open_conversation
+    file: skills/open_conversation.yaml
+    version: "1.3.0"
+    status: stable
+    domain: communication
+    risk_tier: 0
+    tags: [messaging, chat, whatsapp, telegram]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: open-conversation.md
+
+  - skill_id: make_phone_call
+    file: skills/make_phone_call.yaml
+    version: "2.1.0"
+    status: stable
+    domain: communication
+    risk_tier: 2
+    tags: [phone, call, dialer]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: make-phone-call.md
+
+  - skill_id: ask_external_ai
+    file: skills/ask_external_ai.yaml
+    version: "1.5.0"
+    status: stable
+    domain: info_academic
+    risk_tier: 0
+    tags: [ai, chatgpt, grok, perplexity, gemini]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: ask-external-ai.md
+
+  - skill_id: web_search
+    file: skills/web_search.yaml
+    version: "1.8.0"
+    status: stable
+    domain: info_academic
+    risk_tier: 0
+    tags: [search, browser, chrome, google]
+    existing_playbook: open-and-search.md
+    integration_action: ENHANCED
+
+  - skill_id: search_place
+    file: skills/search_place.yaml
+    version: "2.0.0"
+    status: stable
+    domain: navigation
+    risk_tier: 0
+    tags: [maps, navigation, directions, google-maps]
+    existing_playbook: open-and-navigate.md
+    integration_action: ENHANCED
+
+  - skill_id: book_ride
+    file: skills/book_ride.yaml
+    version: "1.6.0"
+    status: canary
+    domain: health_lifestyle
+    risk_tier: 3
+    tags: [ride, rapido, taxi, auto, bike]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: book-ride.md
+
+  - skill_id: search_video
+    file: skills/search_video.yaml
+    version: "1.7.0"
+    status: stable
+    domain: entertainment
+    risk_tier: 0
+    tags: [youtube, video, search, play]
+    existing_playbook: open-and-search.md
+    integration_action: ENHANCED
+
+  - skill_id: search_install_app
+    file: skills/search_install_app.yaml
+    version: "1.4.0"
+    status: stable
+    domain: app_management
+    risk_tier: 2
+    tags: [play-store, install, download, app]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: search-install-app.md
+
+  - skill_id: set_alarm
+    file: skills/set_alarm.yaml
+    version: "2.2.0"
+    status: stable
+    domain: utility
+    risk_tier: 1
+    tags: [alarm, clock, wake-up, reminder]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: set-alarm.md
+
+  - skill_id: navigate_settings
+    file: skills/navigate_settings.yaml
+    version: "1.9.0"
+    status: stable
+    domain: utility
+    risk_tier: 0
+    tags: [settings, wifi, bluetooth, display, battery]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: navigate-settings.md
+
+  - skill_id: search_repository
+    file: skills/search_repository.yaml
+    version: "1.2.0"
+    status: stable
+    domain: developer_tools
+    risk_tier: 0
+    tags: [github, repository, code, search]
+    existing_playbook: open-and-search.md
+    integration_action: ENHANCED
+
+  - skill_id: create_design
+    file: skills/create_design.yaml
+    version: "0.9.0"
+    status: draft
+    domain: content_creation
+    risk_tier: 1
+    tags: [canva, design, template, social-media]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: create-design.md
+    notes: "Draft — WebView accessibility limitations"
+
+  - skill_id: open_file_in_drive
+    file: skills/open_file_in_drive.yaml
+    version: "1.3.0"
+    status: stable
+    domain: utility
+    risk_tier: 0
+    tags: [drive, google-drive, document, file]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: open-file-in-drive.md
+
+  - skill_id: create_video_project
+    file: skills/create_video_project.yaml
+    version: "1.1.0"
+    status: canary
+    domain: content_creation
+    risk_tier: 1
+    tags: [inshot, video, edit, instagram]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: create-video-project.md
+
+  - skill_id: open_app
+    file: skills/open_app.yaml
+    version: "2.3.0"
+    status: stable
+    domain: default_app
+    risk_tier: 0
+    tags: [launch, open, app, general]
+    existing_playbook: open-and-navigate.md
+    integration_action: ENHANCED
+
+  - skill_id: open_linkedin_feed
+    file: skills/open_linkedin_feed.yaml
+    version: "1.1.0"
+    status: stable
+    domain: social
+    risk_tier: 0
+    tags: [linkedin, feed, social, notifications]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: open-linkedin-feed.md
+    notes: "Renamed from open_notifications to avoid confusion with system notifications"
+
+  - skill_id: record_audio
+    file: skills/record_audio.yaml
+    version: "1.4.0"
+    status: stable
+    domain: utility
+    risk_tier: 2
+    tags: [audio, record, voice-note, microphone]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: record-audio.md
+
+  - skill_id: view_assignments
+    file: skills/view_assignments.yaml
+    version: "1.4.0"
+    status: stable
+    domain: info_academic
+    risk_tier: 0
+    tags: [classroom, assignments, homework, google-classroom]
+    existing_playbook: null
+    integration_action: NEW
+    new_playbook: view-assignments.md
+
+# Summary:
+#   total: 19
+#   new: 14
+#   enhanced: 5 (send_message, web_search, search_place, search_video/search_repository via open-and-search, open_app via open-and-navigate)
+#   skipped: 0
+#   draft: 1 (create_design — WebView limitation)
+#   canary: 2 (book_ride, create_video_project)
