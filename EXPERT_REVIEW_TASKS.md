@@ -125,3 +125,13 @@ are multi-step stateful workflows closer to the cloud Deep-Agent tier.
 | 5 | tree_hash placeholder + missing hashes | PARTIAL — nulls set, real hashes need fixtures |
 | 6 | Status labels overstate readiness | COMPLETE — all relabeled draft |
 | 7 | Three scope-drift skills | COMPLETE — scope_note added, decision pending |
+
+---
+
+## Push log
+
+| Commit | Branch | Pushed UTC | Files changed | Notes |
+|--------|--------|-----------|---------------|-------|
+| `c3a8b47` | `master` | 2026-08-01T06:39:00Z | 48 files, +6266 −9 | All expert-review work: EXPERT_REVIEW_TASKS.md, skill_definitions_v2.yaml, skill_integration_analysis.md, fixtures/README.md, 15 playbooks, skill_library/ |
+
+Repo: https://github.com/RevanthBoina/ReturnGift
