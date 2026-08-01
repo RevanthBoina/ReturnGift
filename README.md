@@ -581,10 +581,6 @@ See [BACKLOG.md](BACKLOG.md) for current priorities. Key upcoming features:
 
 ---
 
-## Acknowledgements
-
-ReturnGift is a derivative of [PokeClaw](https://github.com/agents-io/PokeClaw) by Nicole / agents.io, licensed under Apache License 2.0. See [NOTICE](NOTICE) for full upstream attribution.
-
 ### Technology Stack
 
 - **LiteRT-LM** — On-device LLM inference (Google AI Edge)
