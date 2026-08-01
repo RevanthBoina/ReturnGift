@@ -1,6 +1,14 @@
 {
-  "_comment": "M5: Conservative CPU device heuristics. Drop this file in app/src/main/assets/ to override defaults without code changes. Keys are optional — missing keys fall back to hardcoded defaults.",
-  "conservative_cpu_manufacturers": ["xiaomi", "redmi", "poco"],
+  "version": 1,
+  "description": "Device list for conservative CPU-first mode. Updates don't require code changes.",
+  "_comment": "Missing keys fall back to hardcoded defaults.",
+
+  "conservative_cpu_manufacturers": [
+    "xiaomi",
+    "redmi",
+    "poco"
+  ],
+
   "conservative_cpu_models": [
     "xiaomi 15",
     "mi 15",
@@ -9,5 +17,10 @@
     "z flip7",
     "sm-f766"
   ],
-  "conservative_cpu_hardware_hints": ["mt", "mediatek", "dimensity"]
+
+  "conservative_cpu_hardware_hints": [
+    "mt",
+    "mediatek",
+    "dimensity"
+  ]
 }
