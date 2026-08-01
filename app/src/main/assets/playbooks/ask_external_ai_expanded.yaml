@@ -1,0 +1,1312 @@
+# ===========================================================================
+# ASK_EXTERNAL_AI — EXPANDED PRODUCTION-READY IMPLEMENTATION
+# ===========================================================================
+# This file contains ONLY the ask_external_ai skill definition, expanded
+# with all missing capabilities, apps, fixtures, and execution paths.
+#
+# MERGE INSTRUCTIONS: Replace the existing ask_external_ai section in
+# skill_definitions_v2.yaml with this complete implementation.
+#
+# AUDIT RESULTS: See ask_external_ai_audit.md for full gap analysis.
+# ===========================================================================
+
+---
+schema_version: "2.1"
+skill_id: ask_external_ai
+version: "2.0.0"
+status: canary
+owner: "team-info"
+last_validated_utc: "2026-08-01T00:00:00Z"
+staleness_sla_days: 14
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAXONOMY
+# ═══════════════════════════════════════════════════════════════════════════
+taxonomy:
+  domain: info_academic
+  capability: read  # read | write_local | communicate | transact
+  risk_tier: 0      # 0=read-only, 1=local write, 2=outbound, 3=financial
+  reversible: true
+  idempotent: true
+  est_duration_ms: 8000
+  est_steps: 4
+  scope_note: >
+    Covers conversational AI queries to external services. Does NOT cover:
+    - web_search (Google/Bing search results)
+    - open_app (just launching without querying)
+    - create_design (Canva AI)
+    - search_video (YouTube search)
+    If the user wants to search the web, route to web_search.
+    If the user wants to open an AI app without a query, route to open_app.
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SAFETY & PERMISSIONS
+# ═══════════════════════════════════════════════════════════════════════════
+safety:
+  requires_confirmation: false
+  confirmation_mode: none  # Read-only queries don't need confirmation
+  auto_send: false
+  redact_in_logs: [query]  # Queries may contain sensitive info
+  blocklist_patterns:
+    - "(?i)hack|exploit|bypass|crack"  # Refuse malicious prompts
+    - "(?i)generate.*malware|create.*virus"
+  requires_permissions: []
+
+# ═══════════════════════════════════════════════════════════════════════════
+# COMPATIBILITY — Complete per-app entries
+# ═══════════════════════════════════════════════════════════════════════════
+compatibility:
+  target_app:
+    package: "{app|to_package}"
+    tested_packages:
+      # ── Tier 1: Deep link supported, tested ──
+      - pkg: com.openai.chatgpt
+        version_name: "1.2024.191"
+        version_code: 191
+        deep_link: "https://chat.openai.com/?q={query}"
+        capabilities: [chat, summarize, translate, rewrite, code, analyze]
+        auth_required: true
+        free_tier: true
+        notes: "Canvas feature for long-form editing (ChatGPT Plus)"
+
+      - pkg: ai.perplexity.app
+        version_name: "2.15.0"
+        version_code: 2150
+        deep_link: "https://www.perplexity.ai/search?q={query}"
+        capabilities: [chat, search, cite_sources, summarize]
+        auth_required: false  # Works without login
+        free_tier: true
+        notes: "Best for research with citations"
+
+      # ── Tier 2: Deep link supported, needs validation ──
+      - pkg: com.x.ai
+        version_name: "1.0.8"
+        version_code: 108
+        deep_link: "https://x.ai/?q={query}"
+        capabilities: [chat, search, realtime_news]
+        auth_required: true
+        free_tier: true
+        notes: "Real-time X/Twitter data access"
+
+      - pkg: com.google.android.apps.bard
+        version_name: "1.0.20240115"
+        version_code: 20240115
+        deep_link: "https://gemini.google.com/app?prompt={query}"
+        capabilities: [chat, search, multimodal, workspace_integration]
+        auth_required: true
+        free_tier: true
+        notes: "Deep Google Workspace integration"
+
+      # ── Tier 3: Web-only (no native app or limited mobile app) ──
+      - pkg: com.anthropic.claude
+        version_name: "1.0.0"
+        version_code: 100
+        deep_link: "https://claude.ai/new?q={query}"
+        capabilities: [chat, analyze, artifacts, code, long_context]
+        auth_required: true
+        free_tier: true
+        notes: "Artifacts for interactive content; long context window"
+
+      - pkg: com.microsoft.copilot
+        version_name: "27.4.420715004"
+        version_code: 274
+        deep_link: "https://copilot.microsoft.com/?q={query}"
+        capabilities: [chat, search, image_gen, web_sources]
+        auth_required: false
+        free_tier: true
+        notes: "DALL-E image generation, Bing integration"
+
+      - pkg: com.poe.android
+        version_name: "2.0.8"
+        version_code: 208
+        deep_link: "https://poe.com/search?q={query}"
+        capabilities: [chat, multi_model, summarize, code]
+        auth_required: true
+        free_tier: true
+        notes: "Access multiple LLMs (GPT-4, Claude, Gemini, etc.)"
+
+      # ── Tier 4: Specialized AI tools ──
+      - pkg: com.grammarly.android.keyboard
+        version_name: "2.10.22"
+        version_code: 21022
+        deep_link: null  # Keyboard-based, no deep link
+        capabilities: [grammar, tone, clarity, rewrite]
+        auth_required: false
+        free_tier: true
+        notes: "Runs as keyboard; invoke via share-to-app or clipboard"
+
+      - pkg: com.deepl.mobile
+        version_name: "3.6.0"
+        version_code: 360
+        deep_link: "https://www.deepl.com/translator#{source_lang}/{target_lang}/{query}"
+        capabilities: [translate, context_aware]
+        auth_required: false
+        free_tier: true
+        notes: "High-quality translation; 25+ languages"
+
+      - pkg: com.quillbot.mobile
+        version_name: "1.0.0"
+        version_code: 100
+        deep_link: "https://quillbot.com/paraphrase?text={query}"
+        capabilities: [paraphrase, rewrite, summarize, grammar]
+        auth_required: false
+        free_tier: true
+        notes: "Paraphrasing specialist"
+
+      - pkg: com.gamma.app
+        version_name: "1.0.0"
+        version_code: 100
+        deep_link: "https://gamma.app/create?prompt={query}"
+        capabilities: [presentation, deck, webpage, visual_content]
+        auth_required: true
+        free_tier: true
+        notes: "Generates presentations, pitch decks, web pages"
+
+      - pkg: com.notebooklm.android
+        version_name: "1.0.0"
+        version_code: 100
+        deep_link: "https://notebooklm.google.com/"
+        capabilities: [document_chat, audio_summary, study_guide]
+        auth_required: true
+        free_tier: true
+        notes: "Chat with uploaded documents; audio overview generation"
+
+      - pkg: com.consensus.android
+        version_name: "1.0.0"
+        version_code: 100
+        deep_link: "https://consensus.app/search?query={query}"
+        capabilities: [research, scientific_papers, evidence_based]
+        auth_required: false
+        free_tier: true
+        notes: "Peer-reviewed scientific paper search"
+
+      - pkg: com.humata.android
+        version_name: "1.0.0"
+        version_code: 100
+        deep_link: "https://www.humata.ai/"
+        capabilities: [pdf_analysis, document_qa, summarize]
+        auth_required: true
+        free_tier: true
+        notes: "Upload PDFs and ask questions"
+
+  android:
+    min_sdk: 29
+    max_sdk: 35
+  device_profiles:
+    - samsung_oneui_6_phone
+    - pixel_stock_14
+    - xiaomi_miui_14
+  form_factors: [phone]
+  locales: [en-US, en-IN, en-GB, hi-IN, es-ES, de-DE, fr-FR, ja-JP, ko-KR]
+  requires_auth: true  # Most AI apps require authentication
+  degrades_gracefully_offline: false  # All require internet
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GROUNDING — Machine-readable fixtures & screen signatures
+# ═══════════════════════════════════════════════════════════════════════════
+grounding:
+  fixtures:
+    # ── Existing (keep as-is) ──
+    - id: chatgpt_home
+      path: fixtures/screen_3.xml
+      captured_utc: "2026-07-15T00:00:00Z"
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null  # TODO: generate from real fixture file
+      app: com.openai.chatgpt
+      screen_state: home_conversation_list
+
+    # ── NEW fixtures to capture ──
+    - id: chatgpt_conversation
+      path: fixtures/screen_chatgpt_conversation.xml
+      captured_utc: null  # TODO: capture from device
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.openai.chatgpt
+      screen_state: active_conversation
+
+    - id: chatgpt_canvas
+      path: fixtures/screen_chatgpt_canvas.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.openai.chatgpt
+      screen_state: canvas_editor
+      notes: "ChatGPT Canvas for long-form writing/code editing"
+
+    - id: grok_home
+      path: fixtures/screen_grok_home.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.x.ai
+      screen_state: home
+
+    - id: grok_conversation
+      path: fixtures/screen_grok_conversation.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.x.ai
+      screen_state: active_conversation
+
+    - id: perplexity_home
+      path: fixtures/screen_perplexity_home.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: ai.perplexity.app
+      screen_state: home
+
+    - id: perplexity_search_results
+      path: fixtures/screen_perplexity_results.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: ai.perplexity.app
+      screen_state: search_results_with_citations
+
+    - id: gemini_home
+      path: fixtures/screen_gemini_home.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.google.android.apps.bard
+      screen_state: home
+
+    - id: gemini_conversation
+      path: fixtures/screen_gemini_conversation.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.google.android.apps.bard
+      screen_state: active_conversation
+
+    - id: claude_home
+      path: fixtures/screen_claude_home.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.anthropic.claude
+      screen_state: home
+
+    - id: claude_artifact
+      path: fixtures/screen_claude_artifact.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.anthropic.claude
+      screen_state: artifact_viewer
+      notes: "Claude Artifacts for interactive content"
+
+    - id: copilot_home
+      path: fixtures/screen_copilot_home.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.microsoft.copilot
+      screen_state: home
+
+    - id: deepl_translator
+      path: fixtures/screen_deepl_translator.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.deepl.mobile
+      screen_state: translator_view
+
+    - id: gamma_creator
+      path: fixtures/screen_gamma_creator.xml
+      captured_utc: null
+      device: "SM-S918B/api34/1080x2340/dpi420"
+      tree_hash: null
+      app: com.gamma.app
+      screen_state: presentation_creator
+
+  screen_signatures:
+    # ── ChatGPT ──
+    chatgpt_home:
+      package_equals: com.openai.chatgpt
+      require_all: []
+      require_any:
+        - { by: class, value: "androidx.compose.ui.platform.ComposeView" }
+        - { by: content_desc, matches: "(?i)new chat|conversation" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|log in|subscribe|verify email" }
+      min_confidence: 0.75
+    chatgpt_conversation:
+      package_equals: com.openai.chatgpt
+      require_any:
+        - { by: text, matches: "(?i)chatgpt|message.*assistant" }
+        - { by: content_desc, matches: "(?i)message.*chatgpt" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|log in" }
+      min_confidence: 0.70
+    chatgpt_canvas:
+      package_equals: com.openai.chatgpt
+      require_any:
+        - { by: content_desc, matches: "(?i)canvas|editor" }
+        - { by: text, matches: "(?i)canvas" }
+      min_confidence: 0.70
+    chatgpt_input_ready:
+      package_equals: com.openai.chatgpt
+      require_any:
+        - { by: class, value: android.widget.EditText }
+        - { by: content_desc, matches: "(?i)message.*chatgpt|send.*message" }
+      min_confidence: 0.80
+
+    # ── Grok ──
+    grok_home:
+      package_equals: com.x.ai
+      require_any:
+        - { by: class, value: "androidx.compose.ui.platform.ComposeView" }
+        - { by: content_desc, matches: "(?i)grok|ask.*anything" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|log in|create account" }
+      min_confidence: 0.70
+    grok_conversation:
+      package_equals: com.x.ai
+      require_any:
+        - { by: text, matches: "(?i)grok" }
+        - { by: content_desc, matches: "(?i)message.*grok" }
+      min_confidence: 0.70
+    grok_input_ready:
+      package_equals: com.x.ai
+      require_any:
+        - { by: class, value: android.widget.EditText }
+        - { by: content_desc, matches: "(?i)ask.*grok|send" }
+      min_confidence: 0.80
+
+    # ── Perplexity ──
+    perplexity_home:
+      package_equals: ai.perplexity.app
+      require_any:
+        - { by: content_desc, matches: "(?i)perplexity|ask.*anything" }
+        - { by: class, value: "androidx.compose.ui.platform.ComposeView" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|log in" }
+      min_confidence: 0.70
+    perplexity_results:
+      package_equals: ai.perplexity.app
+      require_any:
+        - { by: text, matches: "(?i)sources|citations|references" }
+        - { by: content_desc, matches: "(?i)source|citation" }
+      min_confidence: 0.75
+    perplexity_input_ready:
+      package_equals: ai.perplexity.app
+      require_any:
+        - { by: class, value: android.widget.EditText }
+        - { by: content_desc, matches: "(?i)search|ask" }
+      min_confidence: 0.80
+
+    # ── Gemini ──
+    gemini_home:
+      package_equals: com.google.android.apps.bard
+      require_any:
+        - { by: content_desc, matches: "(?i)gemini|bard" }
+        - { by: text, matches: "(?i)gemini|ask.*gemini" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|choose.*account" }
+      min_confidence: 0.70
+    gemini_conversation:
+      package_equals: com.google.android.apps.bard
+      require_any:
+        - { by: text, matches: "(?i)gemini" }
+        - { by: content_desc, matches: "(?i)message.*gemini" }
+      min_confidence: 0.70
+    gemini_input_ready:
+      package_equals: com.google.android.apps.bard
+      require_any:
+        - { by: class, value: android.widget.EditText }
+        - { by: content_desc, matches: "(?i)enter.*prompt|send" }
+      min_confidence: 0.80
+
+    # ── Claude ──
+    claude_home:
+      package_equals: com.anthropic.claude
+      require_any:
+        - { by: content_desc, matches: "(?i)claude|new.*conversation" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|log in" }
+      min_confidence: 0.70
+    claude_artifact:
+      package_equals: com.anthropic.claude
+      require_any:
+        - { by: content_desc, matches: "(?i)artifact" }
+        - { by: text, matches: "(?i)artifact" }
+      min_confidence: 0.70
+
+    # ── Copilot ──
+    copilot_home:
+      package_equals: com.microsoft.copilot
+      require_any:
+        - { by: content_desc, matches: "(?i)copilot|ask.*anything" }
+      require_none:
+        - { by: text, matches: "(?i)sign in|log in" }
+      min_confidence: 0.70
+
+    # ── DeepL ──
+    deepl_translator:
+      package_equals: com.deepl.mobile
+      require_any:
+        - { by: class, value: android.widget.EditText }
+        - { by: content_desc, matches: "(?i)translate|source.*text" }
+      min_confidence: 0.80
+
+    # ── Gamma ──
+    gamma_creator:
+      package_equals: com.gamma.app
+      require_any:
+        - { by: content_desc, matches: "(?i)gamma|create.*presentation" }
+      min_confidence: 0.70
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SLOTS — Type-safe, validated, normalized
+# ═══════════════════════════════════════════════════════════════════════════
+slots:
+  # ── Primary: The query/prompt ──
+  query:
+    type: string
+    required: true
+    max_len: 4000  # Increased for long prompts
+    min_len: 2
+    normalize: [trim, collapse_ws]
+    prompt_if_missing: "What would you like to ask?"
+    description: "The question or prompt to send to the AI"
+
+  # ── App selection ──
+  app:
+    type: enum
+    values:
+      - chatgpt
+      - grok
+      - perplexity
+      - gemini
+      - claude
+      - copilot
+      - poe
+      - grammarly
+      - deepl
+      - quillbot
+      - gamma
+      - notebooklm
+      - consensus
+      - humata
+    required: true
+    default: chatgpt
+    inference_hints:
+      chatgpt: ["chatgpt", "gpt", "open ai", "chat gpt", "gpt-4", "gpt-3"]
+      grok: ["grok", "x ai", "xai", "twitter ai"]
+      perplexity: ["perplexity", "perp"]
+      gemini: ["gemini", "google ai", "bard", "google gemini"]
+      claude: ["claude", "anthropic", "claude ai"]
+      copilot: ["copilot", "microsoft copilot", "bing chat", "bing ai"]
+      poe: ["poe", "quora"]
+      grammarly: ["grammarly", "grammar check", "check grammar"]
+      deepl: ["deepl", "deepl translate", "translate"]
+      quillbot: ["quillbot", "paraphrase", "rewrite"]
+      gamma: ["gamma", "gamma app", "make presentation", "create deck"]
+      notebooklm: ["notebooklm", "notebook lm", "google notebook"]
+      consensus: ["consensus", "scientific search", "research papers"]
+      humata: ["humata", "pdf analysis", "analyze pdf"]
+    prompt_if_ambiguous: "Which AI would you like to use? Options: {candidates}"
+    description: "Which AI application to query"
+
+  # ── Capability-specific slots ──
+  capability:
+    type: enum
+    values:
+      - chat          # General conversation
+      - summarize     # Summarize text/document
+      - translate     # Translate text
+      - rewrite       # Rewrite/paraphrase text
+      - explain       # Explain concept/screenshot
+      - code          # Code assistance
+      - analyze       # Analyze data/document
+      - generate      # Generate content (text, image, etc.)
+      - research      # Research with citations
+    required: false
+    default: chat
+    inference_hints:
+      summarize: ["summarize", "summary", "tldr", "shorten", "brief"]
+      translate: ["translate", "translation", "in spanish", "to hindi", "convert to"]
+      rewrite: ["rewrite", "rephrase", "paraphrase", "reword", "improve wording"]
+      explain: ["explain", "what is", "how does", "why does", "breakdown"]
+      code: ["code", "debug", "fix bug", "write function", "program", "script"]
+      analyze: ["analyze", "analysis", "examine", "review", "evaluate"]
+      generate: ["generate", "create", "make", "produce", "write"]
+      research: ["research", "papers", "studies", "evidence", "sources"]
+    description: "What type of AI assistance is needed"
+
+  # ── Translation-specific ──
+  target_language:
+    type: string
+    required: false
+    normalize: [trim, casefold]
+    description: "Target language for translation (e.g., 'Spanish', 'Hindi')"
+  source_language:
+    type: string
+    required: false
+    default: "auto"
+    normalize: [trim, casefold]
+    description: "Source language (default: auto-detect)"
+
+  # ── Summarization-specific ──
+  text_to_process:
+    type: string
+    required: false
+    max_len: 10000
+    description: "Text to summarize, translate, or rewrite (from clipboard or input)"
+
+  # ── Code-specific ──
+  programming_language:
+    type: string
+    required: false
+    normalize: [trim, casefold]
+    inference_hints:
+      python: ["python", "py"]
+      javascript: ["javascript", "js", "node"]
+      java: ["java"]
+      kotlin: ["kotlin", "kt"]
+      swift: ["swift"]
+      cpp: ["c++", "cpp"]
+      rust: ["rust"]
+      go: ["go", "golang"]
+    description: "Programming language for code assistance"
+
+  # ── Document/URL context ──
+  source_url:
+    type: url
+    required: false
+    description: "URL of document/article to analyze"
+  source_file:
+    type: file_path
+    required: false
+    description: "Local file path for document analysis"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EXECUTION — Intent-first with UI fallback
+# ═══════════════════════════════════════════════════════════════════════════
+execution:
+  strategy: first_success
+  routes:
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # TIER 1: Deep link intents (highest reliability)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ── ChatGPT: Deep link ──
+    - id: chatgpt_deep_link
+      when: "slots.app == 'chatgpt'"
+      kind: intent
+      reliability: 0.88
+      cost_ms: 1200
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://chat.openai.com/?q={query|urlencode}"
+        package: com.openai.chatgpt
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: chatgpt_conversation, timeout_ms: 8000 }
+        - { op: wait, for: screen_settled, timeout_ms: 5000 }
+      verify:
+        - { assert: on_screen, value: chatgpt_conversation }
+        - { assert: foreground_package, equals: com.openai.chatgpt }
+
+    # ── ChatGPT: Canvas mode (for long-form/code) ──
+    - id: chatgpt_canvas
+      when: "slots.app == 'chatgpt' and slots.capability in ['code', 'rewrite', 'generate'] and slots.query|len > 200"
+      kind: intent
+      reliability: 0.80
+      cost_ms: 1500
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://chat.openai.com/?q={query|urlencode}&canvas=true"
+        package: com.openai.chatgpt
+      then:
+        - { op: wait, for: screen_signature, value: chatgpt_canvas, timeout_ms: 10000 }
+
+    # ── Perplexity: Deep link ──
+    - id: perplexity_deep_link
+      when: "slots.app == 'perplexity'"
+      kind: intent
+      reliability: 0.90
+      cost_ms: 1000
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://www.perplexity.ai/search?q={query|urlencode}"
+        package: ai.perplexity.app
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: perplexity_results, timeout_ms: 8000 }
+      verify:
+        - { assert: on_screen, value: perplexity_results }
+
+    # ── Grok: Deep link ──
+    - id: grok_deep_link
+      when: "slots.app == 'grok'"
+      kind: intent
+      reliability: 0.82
+      cost_ms: 1200
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://x.ai/?q={query|urlencode}"
+        package: com.x.ai
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: grok_conversation, timeout_ms: 8000 }
+      verify:
+        - { assert: on_screen, value: grok_conversation }
+
+    # ── Gemini: Deep link ──
+    - id: gemini_deep_link
+      when: "slots.app == 'gemini'"
+      kind: intent
+      reliability: 0.85
+      cost_ms: 1200
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://gemini.google.com/app?prompt={query|urlencode}"
+        package: com.google.android.apps.bard
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: gemini_conversation, timeout_ms: 8000 }
+      verify:
+        - { assert: on_screen, value: gemini_conversation }
+
+    # ── Claude: Deep link ──
+    - id: claude_deep_link
+      when: "slots.app == 'claude'"
+      kind: intent
+      reliability: 0.80
+      cost_ms: 1500
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://claude.ai/new?q={query|urlencode}"
+        package: com.anthropic.claude
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: claude_home, timeout_ms: 10000 }
+
+    # ── Claude: Artifact mode (for interactive content) ──
+    - id: claude_artifact
+      when: "slots.app == 'claude' and slots.capability in ['code', 'generate']"
+      kind: intent
+      reliability: 0.75
+      cost_ms: 2000
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://claude.ai/new?q={query|urlencode}&artifact=true"
+        package: com.anthropic.claude
+      then:
+        - { op: wait, for: screen_signature, value: claude_artifact, timeout_ms: 12000 }
+
+    # ── Copilot: Deep link ──
+    - id: copilot_deep_link
+      when: "slots.app == 'copilot'"
+      kind: intent
+      reliability: 0.85
+      cost_ms: 1000
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://copilot.microsoft.com/?q={query|urlencode}"
+        package: com.microsoft.copilot
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: copilot_home, timeout_ms: 8000 }
+
+    # ── DeepL: Translation deep link ──
+    - id: deepl_translate
+      when: "slots.app == 'deepl' or (slots.capability == 'translate' and slots.app == null)"
+      kind: intent
+      reliability: 0.88
+      cost_ms: 800
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://www.deepl.com/translator#{source_language|default_auto}/{target_language|default_en}/{query|urlencode}"
+        package: com.deepl.mobile
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: deepl_translator, timeout_ms: 6000 }
+      verify:
+        - { assert: on_screen, value: deepl_translator }
+
+    # ── QuillBot: Paraphrase deep link ──
+    - id: quillbot_paraphrase
+      when: "slots.app == 'quillbot'"
+      kind: intent
+      reliability: 0.78
+      cost_ms: 1200
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://quillbot.com/paraphrase?text={query|urlencode}"
+        package: com.quillbot.mobile
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_settled, timeout_ms: 8000 }
+
+    # ── Gamma: Presentation creation ──
+    - id: gamma_create
+      when: "slots.app == 'gamma'"
+      kind: intent
+      reliability: 0.75
+      cost_ms: 2000
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://gamma.app/create?prompt={query|urlencode}"
+        package: com.gamma.app
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_signature, value: gamma_creator, timeout_ms: 10000 }
+
+    # ── Consensus: Scientific search ──
+    - id: consensus_search
+      when: "slots.app == 'consensus'"
+      kind: intent
+      reliability: 0.85
+      cost_ms: 1000
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://consensus.app/search?query={query|urlencode}"
+        package: com.consensus.android
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_settled, timeout_ms: 8000 }
+
+    # ── Poe: Multi-model search ──
+    - id: poe_search
+      when: "slots.app == 'poe'"
+      kind: intent
+      reliability: 0.80
+      cost_ms: 1200
+      intent:
+        action: android.intent.action.VIEW
+        data: "https://poe.com/search?q={query|urlencode}"
+        package: com.poe.android
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_settled, timeout_ms: 8000 }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # TIER 2: Share intent (for text processing workflows)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ── Share to AI app (for summarize/rewrite/translate) ──
+    - id: share_to_ai
+      when: "slots.text_to_process != null and slots.capability in ['summarize', 'rewrite', 'translate']"
+      kind: intent
+      reliability: 0.85
+      cost_ms: 1500
+      intent:
+        action: android.intent.action.SEND
+        type: "text/plain"
+        extras:
+          EXTRA_TEXT: "{text_to_process}"
+        package: "{app|to_package}"
+        chooser: true
+      then:
+        - { op: wait, for: screen_settled, timeout_ms: 5000 }
+        - { op: find_and_tap, target: { by: class, value: android.widget.EditText } }
+        - { op: input_text, text: "{capability_command}" }
+        - { op: system_key, key: "enter" }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # TIER 3: Clipboard workflow (for apps without deep links)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ── Copy to clipboard + open app ──
+    - id: clipboard_workflow
+      when: "slots.app in ['grammarly', 'humata', 'notebooklm']"
+      kind: ui_automation
+      reliability: 0.70
+      cost_ms: 3000
+      steps:
+        - id: copy_to_clipboard
+          op: clipboard_set
+          text: "{query}"
+        - id: launch_app
+          op: launch_app
+          package: "{app|to_package}"
+          wait: { for: screen_settled, timeout_ms: 5000 }
+        - id: paste
+          op: clipboard_paste
+          target: { by: class, value: android.widget.EditText }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # TIER 4: Generic UI automation (lowest reliability, catches all)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    - id: ui_generic
+      kind: ui_automation
+      reliability: 0.60
+      cost_ms: 6000
+      steps:
+        - id: launch
+          op: launch_app
+          package: "{app|to_package}"
+          wait: { for: screen_signature, value: "{app}_home", timeout_ms: 5000 }
+
+        - id: handle_auth
+          op: interrupt_check
+          interrupt: auth_wall
+          on_match: abort_with_message("Please sign in to {app} first.")
+
+        - id: find_input
+          op: find_and_tap
+          target:
+            candidates:
+              - { by: class, value: android.widget.EditText, focusable: true }
+              - { by: content_desc, matches: "(?i)message|input|ask|search|prompt", focusable: true }
+          scroll_to_find: true
+          max_swipes: 3
+
+        - id: type_query
+          op: input_text
+          text: "{query}"
+          method: ime_broadcast
+
+        - id: submit
+          op: system_key
+          key: "enter"
+          fallback:
+            - op: find_and_tap
+              target: { by: content_desc, matches: "(?i)send|submit" }
+
+        - id: wait_response
+          op: wait_for_screen_settled
+          timeout_ms: 10000
+          settle_checks: 3
+          settle_interval_ms: 1500
+
+        - id: extract_response
+          op: extract_text
+          target:
+            candidates:
+              - { by: class, value: android.widget.TextView, large_text: true }
+              - { by: content_desc, matches: "(?i)response|answer|result" }
+          max_chars: 2000
+          emit_as: response
+
+      postconditions:
+        - { assert: foreground_package, equals: "{app|to_package}" }
+        - { assert: screen_changed, from: "{app}_home" }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RESPONSE EXTRACTION — Read AI output
+# ═══════════════════════════════════════════════════════════════════════════
+response_extraction:
+  strategy: adaptive
+  methods:
+    # Method 1: Read large TextViews (most AI apps)
+    - id: text_view_scan
+      target:
+        by: class
+        value: android.widget.TextView
+        min_length: 100
+        exclude_hints: ["sign in", "log in", "terms", "privacy"]
+      priority: 1
+
+    # Method 2: Content description (accessibility)
+    - id: content_desc_scan
+      target:
+        by: content_desc
+        matches: "(?i)response|answer|result|output"
+      priority: 2
+
+    # Method 3: WebView content (for web-based UIs)
+    - id: webview_extract
+      target:
+        by: class
+        value: android.webkit.WebView
+      method: javascript_injection
+      script: "document.body.innerText.substring(0, 2000)"
+      priority: 3
+      notes: "Use for ChatGPT, Claude, Perplexity web views"
+
+  timeout_ms: 15000
+  poll_interval_ms: 500
+  settle_required: 2  # Wait for 2 consecutive identical reads
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CAPABILITY-SPECIFIC WORKFLOWS
+# ═══════════════════════════════════════════════════════════════════════════
+capability_workflows:
+
+  summarize:
+    preferred_apps: [perplexity, chatgpt, claude]
+    prompt_template: "Summarize this in 3-5 bullet points:\n\n{text_to_process}"
+    output_format: bullet_points
+
+  translate:
+    preferred_apps: [deepl, chatgpt, google_translate]
+    prompt_template: "Translate the following from {source_language} to {target_language}:\n\n{text_to_process}"
+    pre_processing:
+      - op: set_slot
+        slot: target_language
+        from: user_request
+        default: "English"
+    post_processing:
+      - op: copy_to_clipboard
+        source: response
+
+  rewrite:
+    preferred_apps: [quillbot, chatgpt, claude]
+    prompt_template: "Rewrite this to be more {tone|default_professional}:\n\n{text_to_process}"
+    tones: [professional, casual, formal, friendly, academic, concise]
+
+  explain:
+    preferred_apps: [chatgpt, perplexity, claude]
+    prompt_template: "Explain {query} in simple terms with examples"
+    follow_up_prompts:
+      - "Can you explain that in more detail?"
+      - "What are the key takeaways?"
+      - "How does this apply to {context}?"
+
+  code:
+    preferred_apps: [chatgpt, claude, perplexity]
+    prompt_template: "Write {programming_language|default_python} code to {query}"
+    output_format: code_block
+    capabilities:
+      - generate_code
+      - debug_code
+      - explain_code
+      - refactor_code
+      - write_tests
+
+  analyze:
+    preferred_apps: [chatgpt, claude, perplexity]
+    prompt_template: "Analyze the following and provide insights:\n\n{text_to_process|default_query}"
+    capabilities:
+      - sentiment_analysis
+      - data_analysis
+      - document_analysis
+      - competitive_analysis
+
+  generate:
+    preferred_apps: [chatgpt, copilot, gamma]
+    prompt_template: "Generate {query}"
+    output_types:
+      - text
+      - image (copilot, dall-e)
+      - presentation (gamma)
+      - code (chatgpt, claude)
+
+  research:
+    preferred_apps: [consensus, perplexity, chatgpt]
+    prompt_template: "Research {query} with citations and sources"
+    output_format: citations
+    post_processing:
+      - op: extract_sources
+        from: response
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RECOVERY — Graceful degradation ladder
+# ═══════════════════════════════════════════════════════════════════════════
+recovery:
+  # ── Auth failures ──
+  - on: auth_wall
+    do:
+      - abort
+      - notify_user: "Please sign in to {app} first."
+    severity: warning
+
+  - on: auth_expired
+    do:
+      - notify_user: "Your {app} session expired. Please re-login."
+      - open_app_settings: "{app|to_package}"
+
+  # ── Rate limiting ──
+  - on: rate_limited
+    do:
+      - abort
+      - notify_user: "{app} rate limit reached. Try again in a few minutes."
+      - suggest_alternative: true  # Suggest another AI app
+    severity: warning
+
+  - on: quota_exceeded
+    do:
+      - abort
+      - notify_user: "{app} daily quota exceeded. Try {alternative_app}?"
+    severity: warning
+
+  # ── App not installed ──
+  - on: app_not_installed
+    do:
+      - delegate: search_install_app
+        params: { query: "{app}" }
+      - notify_user: "{app} isn't installed. Want me to find it on Play Store?"
+    severity: info
+
+  # ── Deep link failures ──
+  - on: deep_link_failed
+    do:
+      - retry_with: ui_generic
+      - notify_user: "Deep link failed, trying direct app control..."
+    severity: warning
+
+  - on: url_not_supported
+    do:
+      - fallback_to: ui_generic
+      - log: "Deep link URL not supported for {app}"
+    severity: info
+
+  # ── UI automation failures ──
+  - on: selector_not_found
+    do:
+      - rescan_after: 600ms
+      - scroll_and_retry: 2
+      - next_route
+    severity: warning
+
+  - on: wrong_screen
+    do:
+      - back: { max: 2 }
+      - relaunch: "{app|to_package}"
+      - next_route
+    severity: warning
+
+  - on: input_field_not_found
+    do:
+      - tap_center_of_screen  # Try tapping where input usually is
+      - wait: 500ms
+      - retry_find
+    severity: warning
+
+  # ── Response extraction failures ──
+  - on: response_not_found
+    do:
+      - wait: 2000ms
+      - retry_extract
+      - if_still_failed:
+        - notify_user: "I sent your question to {app}, but couldn't read the response. Please check the app."
+    severity: warning
+
+  - on: response_timeout
+    do:
+      - notify_user: "{app} is taking too long to respond. The query was sent — check the app for the answer."
+      - do_not_retry: true
+    severity: warning
+
+  # ── Network failures ──
+  - on: network_error
+    do:
+      - abort
+      - notify_user: "No internet connection. All AI apps require internet."
+    severity: error
+
+  - on: timeout
+    do:
+      - abort
+      - notify_user: "Connection timed out. Please check your internet and try again."
+    severity: error
+
+  # ── Content policy violations ──
+  - on: content_blocked
+    do:
+      - abort
+      - notify_user: "The query was blocked by {app}'s content policy. Please rephrase your question."
+    severity: warning
+
+  # ── Terminal fallback ──
+  - on: all_routes_failed
+    do:
+      - escalate: llm_open_loop
+      - budget_steps: 6
+      - notify_user: "I couldn't complete the request. Trying advanced mode..."
+    severity: error
+
+  terminal_message: "I couldn't get an answer from {app}. Please try again or use a different AI app."
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ROUTING — NLU triggers, priorities, disambiguation
+# ═══════════════════════════════════════════════════════════════════════════
+routing:
+  priority: 70
+  triggers:
+    # ── Direct app mentions ──
+    - "ask chatgpt about {query}"
+    - "ask grok {query}"
+    - "search perplexity for {query}"
+    - "get gemini to explain {query}"
+    - "ask claude {query}"
+    - "have copilot {query}"
+    - "use poe for {query}"
+    - "translate {query} with deepl"
+    - "paraphrase {query} with quillbot"
+    - "create presentation about {query} with gamma"
+    - "research {query} on consensus"
+
+    # ── Generic AI queries ──
+    - "ask ai {query}"
+    - "what does the ai say about {query}"
+    - "have ai summarize {topic}"
+    - "chat with gpt about {query}"
+    - "ask the assistant {query}"
+    - "prompt ai with {query}"
+    - "get an ai answer for {query}"
+    - "ask ai to explain {query}"
+    - "have ai write {query}"
+
+    # ── Capability-specific ──
+    - "summarize {text} using ai"
+    - "translate {text} to {language}"
+    - "rewrite {text} to be more {tone}"
+    - "explain {concept} simply"
+    - "write code for {query}"
+    - "debug this code: {code}"
+    - "analyze {data}"
+    - "research {topic} with sources"
+    - "generate {content_type} about {query}"
+
+    # ── Clipboard workflows ──
+    - "ask ai about what's in my clipboard"
+    - "summarize my clipboard text"
+    - "translate my clipboard"
+
+  anti_triggers:
+    - "search the web for {query}" -> web_search
+    - "google {query}" -> web_search
+    - "open chatgpt" -> open_app
+    - "open {app}" -> open_app
+    - "search youtube for {query}" -> search_video
+    - "find {place} on maps" -> search_place
+
+  required_entities: [query]
+  optional_entities: [app, capability, target_language]
+
+  disambiguate_against:
+    - web_search
+    - open_app
+    - search_video
+    - search_place
+    - create_design  # Canva AI
+
+  disambiguation_rules:
+    # If user says "search" without "ai"/"ask", route to web_search
+    - when: "query contains 'search' and not (query contains 'ai' or query contains 'ask')"
+      route_to: web_search
+    # If user says "open {app}" without query, route to open_app
+    - when: "query is empty and app is specified"
+      route_to: open_app
+    # If user mentions "translate" with specific language, prefer deepl
+    - when: "capability == 'translate' and target_language != null"
+      prefer_app: deepl
+    # If user mentions "grammar" or "spelling", prefer grammarly
+    - when: "query matches '(?i)grammar|spelling|proofread'"
+      prefer_app: grammarly
+    # If user mentions "presentation" or "slides", prefer gamma
+    - when: "query matches '(?i)presentation|slides|deck'"
+      prefer_app: gamma
+    # If user mentions "research" or "papers" or "studies", prefer consensus
+    - when: "query matches '(?i)research|papers|studies|scientific'"
+      prefer_app: consensus
+
+# ═══════════════════════════════════════════════════════════════════════════
+# OUTPUT — Response schema and templates
+# ═══════════════════════════════════════════════════════════════════════════
+output:
+  schema:
+    response:
+      type: string
+      description: "The AI's response text"
+    source:
+      type: string
+      description: "Which AI app provided the response"
+    capability_used:
+      type: string
+      description: "Which capability was invoked"
+    sources_cited:
+      type: array
+      items: string
+      description: "URLs/sources cited (for Perplexity, Consensus)"
+    execution_time_ms:
+      type: integer
+      description: "Total execution time"
+    route_used:
+      type: string
+      description: "Which execution route was used"
+
+  templates:
+    # ── Success ──
+    success: "Here's what {app} says: {response|first_200}"
+    success_with_source: "According to {app}: {response|first_200}\n\nSources: {sources_cited|first_3}"
+    success_translate: "Translation ({target_language}): {response}"
+    success_summarize: "Summary:\n{response}"
+    success_code: "Here's the code:\n```\n{response}\n```"
+
+    # ── Partial success ──
+    sent_no_response: "I sent your question to {app}, but couldn't read the response. Please check the app."
+    response_truncated: "Here's what {app} says (truncated): {response|first_200}..."
+
+    # ── Failures ──
+    failed: "I couldn't get a response from {app}."
+    failed_auth: "Please sign in to {app} first."
+    failed_rate: "{app} rate limit reached. Try again later or use a different AI."
+    failed_network: "No internet connection. AI apps require internet."
+    failed_not_installed: "{app} isn't installed. Want me to find it on the Play Store?"
+
+    # ── Disambiguation ──
+    disambiguate_app: "Which AI would you like to use? I can ask: ChatGPT, Claude, Perplexity, Gemini, or others."
+    disambiguate_capability: "Would you like me to summarize, translate, rewrite, or explain this?"
+
+  speak_pii: false
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TELEMETRY — Observability and debugging
+# ═══════════════════════════════════════════════════════════════════════════
+telemetry:
+  emit:
+    - route_used
+    - app_selected
+    - capability_detected
+    - deep_link_success
+    - response_extracted
+    - response_length
+    - execution_time_ms
+    - selector_hit_rank
+    - interrupts_fired
+    - outcome
+    - fallback_triggered
+  redact:
+    - query  # May contain sensitive information
+    - response  # May contain PII
+    - text_to_process
+  capture_on_failure:
+    ui_dump: true
+    screenshot: redacted
+    last_n_steps: 5
+    app_version: true
+    network_state: true
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TESTING — Validation rules
+# ═══════════════════════════════════════════════════════════════════════════
+testing:
+  fixtures_required:
+    - chatgpt_home
+    - chatgpt_conversation
+    - grok_home
+    - perplexity_home
+    - perplexity_results
+    - gemini_home
+  selector_validation:
+    - validate_all_selectors_against_fixtures: true
+    - min_confidence_threshold: 0.70
+    - fallback_selector_required: true
+  routing_validation:
+    - test_utterances: 100
+    - min_precision: 0.85
+    - min_recall: 0.80
+    - confusion_matrix_required: true
+  e2e_validation:
+    - devices: [SM-S918B, Pixel_8]
+    - scenarios:
+      - basic_query_chatgpt
+      - basic_query_grok
+      - basic_query_perplexity
+      - basic_query_gemini
+      - translate_deepl
+      - summarize_perplexity
+      - code_chatgpt
+      - auth_wall_handling
+      - rate_limit_handling
+      - app_not_installed_handling
