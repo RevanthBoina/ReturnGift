@@ -1,0 +1,63 @@
+# Dependabot configuration for ReturnGift
+# Automated dependency updates with GitHub Actions
+
+version: 2
+updates:
+  # Enable version updates for npm dependencies
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Singapore"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      android-dependencies:
+        patterns:
+          - "androidx.*"
+          - "com.google.*"
+      compose-dependencies:
+        patterns:
+          - "androidx.compose.*"
+      langchain-dependencies:
+        patterns:
+          - "dev.langchain4j.*"
+      build-dependencies:
+        patterns:
+          - "org.jetbrains.*"
+          - "io.gitlab.arturbosch.*"
+    labels:
+      - "dependencies"
+      - "automerge"
+    # Allow auto-merge for patch and minor updates
+    allow:
+      - dependency-type: "all"
+    # Ignore major version updates (require manual review)
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Enable security updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Singapore"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "ci"
+      - "dependencies"
+    # Group action updates
+    groups:
+      github-actions:
+        patterns:
+          - "*"

@@ -14,7 +14,7 @@ import com.returngift.agent.utils.XLog
  * 3-Tier Pipeline Router.
  *
  * Tier 1: Deterministic parser (regex) → 0 LLM calls
- * Tier 2: LLM classifier (1 call) → routes to skill or agent
+ * Tier 2: Skill matching with anti-trigger enforcement and entity validation → routes to skill or agent
  * Tier 3: UI agent loop (3-30 calls) → full perception/reasoning/action
  *
  * 3-tier routing: deterministic → skill → agent loop.
@@ -29,13 +29,21 @@ class PipelineRouter(private val context: Context) {
         data class DirectTool(val toolName: String, val params: Map<String, Any>, val description: String) : Route()
 
         /** Tier 2: Execute a registered skill */
-        data class Skill(val skillId: String, val params: Map<String, String>, val description: String) : Route()
+        data class Skill(
+            val skillId: String, 
+            val params: Map<String, String>, 
+            val description: String,
+            val confidence: Float = 1.0f
+        ) : Route()
 
         /** Tier 2/3: Run the full agent loop */
         data class AgentLoop(val task: String, val app: String? = null) : Route()
 
         /** Tier 2: Pure chat response (no phone control) */
         data class Chat(val task: String) : Route()
+        
+        /** Tier 2: Redirect to a different skill based on anti-trigger */
+        data class Redirect(val targetSkillId: String, val reason: String) : Route()
     }
 
     /**
@@ -73,12 +81,35 @@ class PipelineRouter(private val context: Context) {
             }
         }
 
-        // Tier 1.5: Skill trigger matching (deterministic, 0 LLM calls)
-        val matchedSkill = SkillRegistry.findByTrigger(task)
-        if (matchedSkill != null) {
-            val params = extractSkillParams(task, matchedSkill.triggerPatterns)
-            XLog.i(TAG, "Tier 1.5 skill match: ${matchedSkill.id} params=$params")
-            return Route.Skill(matchedSkill.id, params, matchedSkill.description)
+        // Tier 1.5: Skill trigger matching with enhanced validation
+        val matchResult = SkillRegistry.findByTriggerDetailed(task)
+        if (matchResult != null) {
+            // Handle anti-trigger redirect
+            if (matchResult.redirectTo != null) {
+                XLog.i(TAG, "Anti-trigger redirect: ${matchResult.skill.id} → ${matchResult.redirectTo}")
+                return Route.Redirect(matchResult.redirectTo, "anti-trigger match")
+            }
+            
+            // Handle low confidence matches - fall through to agent loop
+            if (!matchResult.shouldRouteToSkill) {
+                val reason = buildString {
+                    if (matchResult.confidence < 0.8f) append("low confidence (${matchResult.confidence})")
+                    if (matchResult.missingRequiredEntities.isNotEmpty()) {
+                        if (isNotEmpty()) append("; ")
+                        append("missing entities: ${matchResult.missingRequiredEntities.joinToString()}")
+                    }
+                }
+                XLog.i(TAG, "Skill ${matchResult.skill.id} match below threshold, falling through to agent loop: $reason")
+                return Route.AgentLoop(task)
+            }
+            
+            XLog.i(TAG, "Tier 1.5 skill match: ${matchResult.skill.id} confidence=${matchResult.confidence} params=${matchResult.extractedParams}")
+            return Route.Skill(
+                matchResult.skill.id, 
+                matchResult.extractedParams, 
+                matchResult.skill.description,
+                matchResult.confidence
+            )
         }
 
         // No deterministic match → Tier 3 agent loop
@@ -106,24 +137,6 @@ class PipelineRouter(private val context: Context) {
         val result = ToolRegistry.getInstance().executeTool(toolName, params)
         XLog.i(TAG, "Executed tool: $toolName → ${if (result.isSuccess) "success" else result.error}")
         return result
-    }
-
-    /**
-     * Extract parameter values from a task string using trigger patterns.
-     * E.g., "search for cat videos" + pattern "search for {query}" → {"query": "cat videos"}
-     */
-    private fun extractSkillParams(task: String, patterns: List<String>): Map<String, String> {
-        val lower = task.lowercase()
-        for (pattern in patterns) {
-            val paramNames = Regex("\\{(\\w+)\\}").findAll(pattern).map { it.groupValues[1] }.toList()
-            val regexStr = pattern.lowercase()
-                .replace(Regex("\\{\\w+\\}"), "(.+)")
-            val match = Regex(regexStr).find(lower)
-            if (match != null && match.groupValues.size > 1) {
-                return paramNames.zip(match.groupValues.drop(1)).toMap()
-            }
-        }
-        return emptyMap()
     }
 
     companion object {

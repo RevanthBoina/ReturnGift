@@ -125,11 +125,23 @@ public class ClawAccessibilityService extends AccessibilityService {
         XLog.i(TAG, "Accessibility service connected");
         ForegroundService.Companion.syncToBackgroundState(this);
         maybeReturnToAppAfterPermissionFlow();
+        
+        // Initialize screen capture manager for fixture capture
+        ScreenCaptureManager.init(this, (xml, treeHash, packageName) -> {
+            XLog.d(TAG, "Screen captured: " + packageName + " hash=" + treeHash.substring(0, 12));
+        });
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         KVUtils.INSTANCE.noteAccessibilityHeartbeat();
+        
+        // Forward to screen capture manager for fixture capture
+        ScreenCaptureManager manager = ScreenCaptureManager.getInstance();
+        if (manager != null) {
+            manager.onAccessibilityEvent(event);
+        }
+        
         // Debug: log notification events from messaging apps
         if (event != null && event.getEventType() == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             XLog.d(TAG, "Notification event from: " + event.getPackageName());

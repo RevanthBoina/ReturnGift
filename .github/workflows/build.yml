@@ -31,6 +31,21 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Run Android Lint
+        run: ./gradlew lintDebug
+        continue-on-error: true
+
+      - name: Check for Detekt
+        run: |
+          if grep -q "id.*detekt" build.gradle.kts app/build.gradle.kts 2>/dev/null; then
+            ./gradlew detekt
+          else
+            echo "Detekt not configured - skipping"
+          fi
+
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
@@ -39,3 +54,12 @@ jobs:
         with:
           name: debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Upload Lint Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-reports
+          path: app/build/reports/lint-results-*.html
+          retention-days: 7
+          if-no-files-found: ignore

@@ -159,6 +159,8 @@ object YamlSkillLoader {
             output = output,
             lastValidatedUtc = m.str("last_validated_utc"),
             stalenessSla = m.int("staleness_sla_days", 30),
+            screenSignatures = m.strList("screen_signatures"),
+            deviceProfiles = m.strList("device_profiles"),
         )
     }
 
