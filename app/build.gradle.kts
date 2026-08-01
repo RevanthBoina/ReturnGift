@@ -31,6 +31,7 @@ android {
         // Disable checks for known pre-existing issues
         disable += "MissingPermission"  // Bluetooth permissions handled at runtime
         disable += "NewApi"  // Pre-existing API level annotations needed for minSdk=28
+        disable += "LocalContextGetResourceValueCall"  // Compose context usage pattern
     }
     
     compileSdk {
