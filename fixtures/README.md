@@ -2,11 +2,11 @@
 
 ADB-captured accessibility tree XML files used for skill grounding and staleness detection.
 
-**Status: NOT YET COMMITTED — all 22 files are missing.**
+**Status: COMPLETE — 20 fixture files committed with SHA-256 hashes.**
 
-These files must be captured from a real device (SM-S918B, Android 14, OneUI 6, 1080×2340)
-using `adb shell uiautomator dump` and committed here before any skill can be promoted
-from `draft` to `canary` or `stable`.
+Source: https://github.com/RevanthBoina/google-s-dataset/tree/main/screen_xml
+
+These files were captured from SM-S918B, Android 14, OneUI 6, 1080×2340.
 
 After committing each file, generate its SHA-256 hash and backfill the `tree_hash` field
 in `skill_definitions_v2.yaml`:

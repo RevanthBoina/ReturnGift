@@ -3,11 +3,15 @@
 
 package com.returngift.agent.agent
 
+import android.app.Activity
+import android.app.Application
 import android.os.Handler
 import android.os.Looper
+import com.blankj.utilcode.util.ActivityUtils
 import com.returngift.agent.agent.skill.SkillRegistry
 import com.returngift.agent.utils.XLog
 import com.returngift.agent.widget.ConfirmDialog
+import com.returngift.agent.widget.OverlayConfirmDialog
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -15,6 +19,7 @@ import java.util.concurrent.TimeUnit
  * Runs before every tool execution to enforce YAML safety blocks:
  *  1. Blocklist pattern check — rejects tool params matching blocklist_patterns regex
  *  2. Risk-tier gate — tier ≥ 2 shows ConfirmDialog.showWarm and suspends until user responds
+ *     Uses overlay fallback if no foreground Activity is available
  *  3. never_retry_after checkpoint — prevents re-executing a tool after a terminal step
  *
  * Usage: call SafetyInterceptor.check() before ToolRegistry.executeTool().
@@ -38,7 +43,8 @@ object SafetyInterceptor {
     /**
      * @param toolName  the tool about to be executed
      * @param params    the tool parameters (used for blocklist matching)
-     * @param context   Android context for showing dialogs (must be non-null for tier ≥ 2)
+     * @param context   Android context for showing dialogs (prefer Activity for dialog,
+     *                  falls back to overlay if Activity unavailable and overlay permission granted)
      * @return null if allowed, error message string if blocked
      */
     fun check(
@@ -73,13 +79,24 @@ object SafetyInterceptor {
 
         // 3. Risk-tier confirmation gate (tier ≥ 2)
         if (safety.requiresConfirmation && safety.riskTier >= 2) {
-            if (context == null) {
-                // Fail closed: no Activity context means we cannot show a confirmation,
-                // so deny rather than silently allow a tier-2+ action.
-                XLog.w(TAG, "Safety: '$toolName' requires confirmation (tier ${safety.riskTier}) but no Activity context available — denying.")
-                return "Safety: cannot confirm '$toolName' — no foreground Activity available."
+            // Determine the best context to use for showing the confirmation dialog:
+            // 1. Prefer Activity context if available (for ConfirmDialog)
+            // 2. Fall back to overlay if no Activity but overlay permission granted
+            // 3. Fail closed only if neither is available
+            val (dialogContext, useOverlay) = determineDialogContext(context)
+
+            if (dialogContext == null) {
+                // Fail closed: no Activity AND overlay permission not granted
+                XLog.w(TAG, "Safety: '$toolName' requires confirmation (tier ${safety.riskTier}) but no Activity context and overlay permission not granted — denying.")
+                return "Safety: cannot confirm '$toolName' — no dialog context available."
             }
-            val allowed = showConfirmationDialog(context, skillId, toolName, params, safety.confirmationMode)
+
+            val allowed = if (useOverlay) {
+                showOverlayConfirmation(dialogContext as Application, skillId, toolName, params, safety.confirmationMode)
+            } else {
+                showActivityConfirmation(dialogContext, skillId, toolName, params, safety.confirmationMode)
+            }
+
             if (!allowed) {
                 return "Safety: user declined confirmation for '$toolName' in skill '$skillId'."
             }
@@ -93,7 +110,37 @@ object SafetyInterceptor {
         return null
     }
 
-    private fun showConfirmationDialog(
+    /**
+     * Determine the best context for showing confirmation dialog.
+     * @return Pair of (context to use, shouldUseOverlay)
+     */
+    private fun determineDialogContext(context: android.content.Context?): Pair<android.content.Context?, Boolean> {
+        // 1. Try Activity context first
+        val activityContext: Activity? = ActivityUtils.getTopActivity()
+        if (activityContext != null) {
+            return Pair(activityContext, false)
+        }
+
+        // 2. No Activity - try overlay if we have an Application context
+        if (context is Application) {
+            if (OverlayConfirmDialog.hasOverlayPermission(context)) {
+                XLog.i(TAG, "No foreground Activity — using overlay for confirmation dialog")
+                return Pair(context, true)
+            }
+        } else if (context != null) {
+            // Try to get Application from context
+            val app = context.applicationContext as? Application
+            if (app != null && OverlayConfirmDialog.hasOverlayPermission(app)) {
+                XLog.i(TAG, "No foreground Activity — using overlay for confirmation dialog")
+                return Pair(app, true)
+            }
+        }
+
+        // 3. Fall back - no Activity and no overlay permission
+        return Pair(null, false)
+    }
+
+    private fun showActivityConfirmation(
         context: android.content.Context,
         skillId: String,
         toolName: String,
@@ -124,16 +171,39 @@ object SafetyInterceptor {
                     onCancel = { allowed = false; latch.countDown() },
                 )
             } catch (e: Exception) {
-                XLog.e(TAG, "Failed to show confirmation dialog", e)
+                XLog.e(TAG, "Failed to show Activity confirmation dialog", e)
                 latch.countDown()
             }
         }
 
         val completed = latch.await(CONFIRM_TIMEOUT_SEC, TimeUnit.SECONDS)
         if (!completed) {
-            XLog.w(TAG, "Confirmation dialog timed out after ${CONFIRM_TIMEOUT_SEC}s — denying")
+            XLog.w(TAG, "Activity confirmation dialog timed out after ${CONFIRM_TIMEOUT_SEC}s — denying")
         }
-        XLog.i(TAG, "Confirmation for '$toolName': allowed=$allowed")
+        XLog.i(TAG, "Activity confirmation for '$toolName': allowed=$allowed")
+        return allowed
+    }
+
+    private fun showOverlayConfirmation(
+        application: Application,
+        skillId: String,
+        toolName: String,
+        params: Map<String, Any>,
+        mode: String,
+    ): Boolean {
+        val title = "Confirm action"
+        val message = buildConfirmMessage(skillId, toolName, params, mode)
+
+        val allowed = OverlayConfirmDialog.showOverlay(
+            application = application,
+            title = title,
+            message = message,
+            actionTitle = "Allow",
+            cancelTitle = "Cancel",
+            timeoutSeconds = CONFIRM_TIMEOUT_SEC,
+        )
+
+        XLog.i(TAG, "Overlay confirmation for '$toolName': allowed=$allowed")
         return allowed
     }
 
