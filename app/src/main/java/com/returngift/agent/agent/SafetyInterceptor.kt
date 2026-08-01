@@ -72,7 +72,13 @@ object SafetyInterceptor {
         }
 
         // 3. Risk-tier confirmation gate (tier ≥ 2)
-        if (safety.requiresConfirmation && safety.riskTier >= 2 && context != null) {
+        if (safety.requiresConfirmation && safety.riskTier >= 2) {
+            if (context == null) {
+                // Fail closed: no Activity context means we cannot show a confirmation,
+                // so deny rather than silently allow a tier-2+ action.
+                XLog.w(TAG, "Safety: '$toolName' requires confirmation (tier ${safety.riskTier}) but no Activity context available — denying.")
+                return "Safety: cannot confirm '$toolName' — no foreground Activity available."
+            }
             val allowed = showConfirmationDialog(context, skillId, toolName, params, safety.confirmationMode)
             if (!allowed) {
                 return "Safety: user declined confirmation for '$toolName' in skill '$skillId'."
