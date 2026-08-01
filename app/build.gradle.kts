@@ -32,6 +32,7 @@ android {
         disable += "MissingPermission"  // Bluetooth permissions handled at runtime
         disable += "NewApi"  // Pre-existing API level annotations needed for minSdk=28
         disable += "LocalContextGetResourceValueCall"  // Compose context usage pattern
+        disable += "QueryAllPackagesPermission"  // QUERY_ALL_PACKAGES required for package visibility on older Android
     }
     
     compileSdk {
