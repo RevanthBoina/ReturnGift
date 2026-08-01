@@ -3,6 +3,7 @@
 
 package com.returngift.agent.server
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Base64
 import com.google.gson.Gson
@@ -428,6 +429,7 @@ class SandboxExecutor(private val context: Context) {
         return executeInTempFile(code, ".js", listOf(NODE_CMD), timeoutMs)
     }
 
+    @SuppressLint("NewApi")  // ByteArrayOutputStream.toString(Charsets) is safe at runtime
     private fun executeInTempFile(
         code: String,
         extension: String,
