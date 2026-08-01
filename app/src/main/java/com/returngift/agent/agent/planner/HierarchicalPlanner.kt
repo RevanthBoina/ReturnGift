@@ -3,8 +3,9 @@
 
 package com.returngift.agent.agent.planner
 
+import com.returngift.agent.agent.anomaly.BehavioralAnomalyDetector
+import com.returngift.agent.agent.grounding.VisualUIGrounding
 import com.returngift.agent.agent.memory.ContextualMemory
-import com.returngift.agent.agent.routing.AdaptiveRouter
 import com.returngift.agent.agent.skill.SkillRegistry
 import com.returngift.agent.agent.skill.SkillExecutor
 import com.returngift.agent.utils.XLog
@@ -24,7 +25,7 @@ import java.util.UUID
  */
 class HierarchicalPlanner {
 
-    private const val TAG = "HierarchicalPlanner"
+    private val TAG = "HierarchicalPlanner"
     
     private val graphState = GraphState
     private val skillExecutor = SkillExecutor()

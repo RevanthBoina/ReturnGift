@@ -14,23 +14,24 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.Mock
-import org.mockito.junit.MockitoJUnitRunner
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Unit tests for PipelineRouter.
  * Tests all 3 tiers: deterministic parser, skill matching, and agent loop bypass.
  */
-@RunWith(MockitoJUnitRunner::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
 class PipelineRouterTest {
 
-    @Mock
     private lateinit var mockContext: Context
 
     private lateinit var router: PipelineRouter
 
     @Before
     fun setup() {
+        mockContext = org.mockito.Mockito.mock(Context::class.java)
         router = PipelineRouter(mockContext)
         SkillRegistry.clear()
     }

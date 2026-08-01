@@ -66,7 +66,7 @@ object TaskPlanner {
     )
     
     data class ExecutionPlan(
-        val tasks: Map<String, SubTask>,
+        val tasks: MutableMap<String, SubTask>,
         val rootTasks: List<String>
     )
     

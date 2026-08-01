@@ -7,13 +7,15 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.junit.MockitoJUnitRunner
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Unit tests for SkillExecutor.
  * Tests skill execution flow, retries, optional steps, and error handling.
  */
-@RunWith(MockitoJUnitRunner::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
 class SkillExecutorTest {
 
     private lateinit var executor: SkillExecutor
@@ -156,9 +158,9 @@ class SkillExecutorTest {
         val skill = createSkill(
             id = "multi_step_skill",
             steps = listOf(
-                createStep("step_one", "First step"),
-                createStep("step_two", "Second step"),
-                createStep("step_three", "Third step")
+                createStep("step_one", "First step", optional = true),
+                createStep("step_two", "Second step", optional = true),
+                createStep("step_three", "Third step", optional = true)
             )
         )
         

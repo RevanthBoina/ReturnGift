@@ -28,7 +28,7 @@ import com.returngift.agent.utils.XLog
  */
 class Phase2Pipeline(private val context: Context) {
 
-    private const val TAG = "Phase2Pipeline"
+    private val TAG = "Phase2Pipeline"
     
     // Component instances
     private val planner = HierarchicalPlanner()
@@ -174,8 +174,8 @@ class Phase2Pipeline(private val context: Context) {
         
         // Report completion
         callback.onComplete(
-            rounds = plannerResult.completedNodes.size,
-            finalAnswer = plannerResult.message(),
+            round = plannerResult.completedNodes.size,
+            finalAnswer = if (plannerResult.success) "Task completed successfully" else "Task failed",
             totalTokens = 0,
             modelName = "integrated"
         )
@@ -185,7 +185,7 @@ class Phase2Pipeline(private val context: Context) {
             success = plannerResult.success,
             completedNodes = plannerResult.completedNodes,
             failedNodes = plannerResult.failedNodes,
-            message = plannerResult.message(),
+            message = if (plannerResult.success) "Task completed successfully" else "Task failed",
             requiresConfirmation = false,
             anomalyScore = 0f,
             screenChanged = screenDiff.significantChange,

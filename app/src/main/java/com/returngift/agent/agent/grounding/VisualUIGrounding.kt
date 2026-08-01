@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class VisualUIGrounding(private val context: Context) {
 
-    private const val TAG = "VisualUIGrounding"
+    private val TAG = "VisualUIGrounding"
     
     private val a11yConfidenceThreshold = 0.7f
     private val screenCache = ConcurrentHashMap<String, ScreenUnderstanding>()

@@ -124,14 +124,14 @@ class SkillEmbeddingIndex {
         val queryEmbedding = EmbeddingService.embed(query)
         
         return embeddings.entries
-            .parallelStream()
+            .asSequence()
             .map { (skillId, embedding) ->
                 val score = EmbeddingService.cosineSimilarity(queryEmbedding, embedding.combinedEmbedding)
                 skillId to score
             }
-            .filter { it.second >= minScore }
-            .sortedByDescending { it.second }
-            .limit(topK.toLong())
+            .filter { (_, score) -> score >= minScore }
+            .sortedByDescending { (_, score) -> score }
+            .take(topK)
             .toList()
     }
     
