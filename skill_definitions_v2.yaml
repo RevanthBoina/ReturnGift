@@ -206,22 +206,22 @@ grounding:
       path: fixtures/screen_1.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:75ca1761c6bd58546c47dec7f94a651ccc4dd2607e4e5d345269d402a866c3be
     - id: messages_list
       path: fixtures/screen_24.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:021b31f5cdbda912dccd77587e8ab24377ac8731c491995d398fbef1ca9a61fa
     - id: telegram_list
       path: fixtures/screen_31.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:780c5dbc38f4bb9fb170d5004c435041128b844d759add0b8c12e03d13d2006b
     - id: snapchat_feed
       path: fixtures/screen_32.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:2299a1a7b432610e8f5b7b14017f971345661992359ddd5465c88b0ee917d0a7
   screen_signatures:
     wa_chat_list:
       package_equals: com.whatsapp
@@ -461,7 +461,7 @@ grounding:
     - id: wa_chat_list
       path: fixtures/screen_1.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:75ca1761c6bd58546c47dec7f94a651ccc4dd2607e4e5d345269d402a866c3be
   screen_signatures:
     wa_chat_list:
       package_equals: com.whatsapp
@@ -612,7 +612,7 @@ grounding:
       path: fixtures/screen_12.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:11f00b8ba9e0168ad96e84ce3260532bc9f15f5956380ea31c4ebd27e592e149
   screen_signatures:
     dialer_keypad:
       package_equals: com.samsung.android.dialer
@@ -940,7 +940,7 @@ grounding:
       path: fixtures/screen_3.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:ce37c637bda6581e639cbc428fc2cfd8877a90602edc74d5ae9b7f2b4e8390c6
       app: com.openai.chatgpt
       screen_state: home_conversation_list
 
@@ -2092,7 +2092,7 @@ grounding:
     - id: chrome_ntp
       path: fixtures/screen_14.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:ed79f58390d29a35521eb156b2f6aef8b7074e6f82f118c7ca70f4995b5aab90
   screen_signatures:
     chrome_ntp:
       package_equals: com.android.chrome
@@ -2230,7 +2230,7 @@ grounding:
       path: fixtures/screen_18.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:dd6d4b1beac9b22f8efbcec5a6b5f7bdfad5e01b1c27e837af48e057ac9b5fef
   screen_signatures:
     maps_main:
       package_equals: com.google.android.apps.maps
@@ -2406,7 +2406,7 @@ grounding:
       path: fixtures/screen_27.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:4f52869b28e119c88f54d5c45c1df600112e7bd4a26aafbb069bada2ec56b624
   screen_signatures:
     rapido_home:
       package_equals: com.rapido.passenger
@@ -2579,7 +2579,7 @@ grounding:
     - id: youtube_player
       path: fixtures/screen_33.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:c4c92ad4658d046ea968046bbaa086b9293c458ee75466799f4f431b29c66287
   screen_signatures:
     youtube_home:
       package_equals: com.google.android.youtube
@@ -2731,7 +2731,7 @@ grounding:
     - id: play_store_home
       path: fixtures/screen_16.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:98682d808c0952dcb203922a88c4186652d207b54ca43f694234843fd5dc268a
   screen_signatures:
     play_store_home:
       package_equals: com.android.vending
@@ -2865,7 +2865,7 @@ grounding:
     - id: clock_alarm_tab
       path: fixtures/screen_25.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:24caeebb08bca037eb1ba1c23bfff6ffb66c9865c9a2f8898cd49e6fb863418c
   screen_signatures:
     clock_alarm_tab:
       package_equals: com.sec.android.app.clockpackage
@@ -3015,7 +3015,7 @@ grounding:
     - id: settings_main
       path: fixtures/screen_4.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:de018298119ef5328758ea0f56d30ddecc4f53e2c74691e150f3312b803e1a42
   screen_signatures:
     settings_main:
       package_equals: com.android.settings
@@ -3182,7 +3182,7 @@ grounding:
     - id: github_home
       path: fixtures/screen_36.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:bf9e9c0fe60fefd59959cddd9320c7fa629cafade1fe7e68a1cd5a07564cf624
   screen_signatures:
     github_home:
       package_equals: com.github.android
@@ -3312,7 +3312,7 @@ grounding:
     - id: canva_editor
       path: fixtures/screen_35.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:2c1fcd1cc5a9ec72e6808ea0e59ae6a45bd19681f56ede707c80c270b30dda4f
   screen_signatures:
     canva_editor:
       package_equals: com.canva.editor
@@ -3425,7 +3425,7 @@ grounding:
     - id: drive_home
       path: fixtures/screen_15.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:e51585e63670666e3ed528337624212bf525e38051bbffd5e38563b8ad6fa45c
   screen_signatures:
     drive_home:
       package_equals: com.google.android.apps.docs
@@ -3565,7 +3565,7 @@ grounding:
     - id: inshot_home
       path: fixtures/screen_30.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:96fd02cffba4330a44a217e5c916e68b0900519d66c5bcd306f43e6164ae3fbf
   screen_signatures:
     inshot_home:
       package_equals: com.camerasideas.instashot
@@ -3681,7 +3681,7 @@ grounding:
     - id: launcher_home
       path: fixtures/screen_39.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:fccfa982dee2a0f972f1d654e674af41c7fe0e40605e5ae2b27ba98a9d3c4199
 
 slots:
   app_name:
@@ -3790,7 +3790,7 @@ grounding:
     - id: linkedin_feed
       path: fixtures/screen_2.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:463e0e6fb48ef9636d935f533cf946c0f40f04b09c7e8fc5f8606da45098d0f9
 
 slots: {}
 
@@ -3892,7 +3892,7 @@ grounding:
     - id: voice_recorder
       path: fixtures/screen_34.xml
       captured_utc: "2026-07-15T00:00:00Z"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:69f05daba0c441e86da181e865655c12655ace6fa2c6902b03277d3ff1d822fb
   known_issues:
     - "Ad overlay present in captured screen — handled by global_interrupts.full_screen_ad"
 
@@ -4018,7 +4018,7 @@ grounding:
       path: fixtures/screen_17.xml
       captured_utc: "2026-07-15T00:00:00Z"
       device: "SM-S918B/api34/1080x2340/dpi420"
-      tree_hash: null  # TODO: generate from real fixture file
+      tree_hash: sha256:98058d0877bd79a9b4bd6c716177d44a7de8e0c5d8d83a58128a61fa54bda9ea
   screen_signatures:
     classroom_feed:
       package_equals: com.google.android.apps.classroom
