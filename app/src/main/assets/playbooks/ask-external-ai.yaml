@@ -64,6 +64,7 @@ compatibility:
         version_name: "1.2024.191"
         version_code: 191
         deep_link: "https://chat.openai.com/?q={query}"
+        browser_fallback_url: "https://chat.openai.com/?q={query|urlencode}"
         capabilities: [chat, summarize, translate, rewrite, code, analyze]
         auth_required: true
         free_tier: true
@@ -73,6 +74,7 @@ compatibility:
         version_name: "2.15.0"
         version_code: 2150
         deep_link: "https://www.perplexity.ai/search?q={query}"
+        browser_fallback_url: "https://www.perplexity.ai/search?q={query|urlencode}"
         capabilities: [chat, search, cite_sources, summarize]
         auth_required: false  # Works without login
         free_tier: true
@@ -83,6 +85,7 @@ compatibility:
         version_name: "1.0.8"
         version_code: 108
         deep_link: "https://x.ai/?q={query}"
+        browser_fallback_url: "https://x.ai/?q={query|urlencode}"
         capabilities: [chat, search, realtime_news]
         auth_required: true
         free_tier: true
@@ -92,6 +95,7 @@ compatibility:
         version_name: "1.0.20240115"
         version_code: 20240115
         deep_link: "https://gemini.google.com/app?prompt={query}"
+        browser_fallback_url: "https://gemini.google.com/app?prompt={query|urlencode}"
         capabilities: [chat, search, multimodal, workspace_integration]
         auth_required: true
         free_tier: true
@@ -102,6 +106,7 @@ compatibility:
         version_name: "1.0.0"
         version_code: 100
         deep_link: "https://claude.ai/new?q={query}"
+        browser_fallback_url: "https://claude.ai/new?q={query|urlencode}"
         capabilities: [chat, analyze, artifacts, code, long_context]
         auth_required: true
         free_tier: true
@@ -111,6 +116,7 @@ compatibility:
         version_name: "27.4.420715004"
         version_code: 274
         deep_link: "https://copilot.microsoft.com/?q={query}"
+        browser_fallback_url: "https://copilot.microsoft.com/?q={query|urlencode}"
         capabilities: [chat, search, image_gen, web_sources]
         auth_required: false
         free_tier: true
@@ -120,6 +126,7 @@ compatibility:
         version_name: "2.0.8"
         version_code: 208
         deep_link: "https://poe.com/search?q={query}"
+        browser_fallback_url: "https://poe.com/search?q={query|urlencode}"
         capabilities: [chat, multi_model, summarize, code]
         auth_required: true
         free_tier: true
@@ -139,6 +146,7 @@ compatibility:
         version_name: "3.6.0"
         version_code: 360
         deep_link: "https://www.deepl.com/translator#{source_lang}/{target_lang}/{query}"
+        browser_fallback_url: "https://www.deepl.com/translator#auto/en/{query|urlencode}"
         capabilities: [translate, context_aware]
         auth_required: false
         free_tier: true
@@ -148,6 +156,7 @@ compatibility:
         version_name: "1.0.0"
         version_code: 100
         deep_link: "https://quillbot.com/paraphrase?text={query}"
+        browser_fallback_url: "https://quillbot.com/paraphrase?text={query|urlencode}"
         capabilities: [paraphrase, rewrite, summarize, grammar]
         auth_required: false
         free_tier: true
@@ -157,6 +166,7 @@ compatibility:
         version_name: "1.0.0"
         version_code: 100
         deep_link: "https://gamma.app/create?prompt={query}"
+        browser_fallback_url: "https://gamma.app/create?prompt={query|urlencode}"
         capabilities: [presentation, deck, webpage, visual_content]
         auth_required: true
         free_tier: true
@@ -166,6 +176,7 @@ compatibility:
         version_name: "1.0.0"
         version_code: 100
         deep_link: "https://notebooklm.google.com/"
+        browser_fallback_url: "https://notebooklm.google.com/"
         capabilities: [document_chat, audio_summary, study_guide]
         auth_required: true
         free_tier: true
@@ -175,6 +186,7 @@ compatibility:
         version_name: "1.0.0"
         version_code: 100
         deep_link: "https://consensus.app/search?query={query}"
+        browser_fallback_url: "https://consensus.app/search?query={query|urlencode}"
         capabilities: [research, scientific_papers, evidence_based]
         auth_required: false
         free_tier: true
@@ -184,6 +196,7 @@ compatibility:
         version_name: "1.0.0"
         version_code: 100
         deep_link: "https://www.humata.ai/"
+        browser_fallback_url: "https://www.humata.ai/"
         capabilities: [pdf_analysis, document_qa, summarize]
         auth_required: true
         free_tier: true
@@ -589,6 +602,26 @@ slots:
 execution:
   strategy: first_success
   routes:
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # TIER 0.5: Browser fallback (when native app not installed)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    - id: browser_fallback
+      when: "not app.installed('{app|to_package}') and slots.app not in ['grammarly', 'humata', 'notebooklm']"
+      kind: intent
+      reliability: 0.80
+      cost_ms: 1500
+      notes: "Fires when native app absent. All HTTPS URLs are mobile-browser-compatible."
+      intent:
+        action: android.intent.action.VIEW
+        data: "{app|browser_fallback_url}"
+        package: com.android.chrome
+        flags: [FLAG_ACTIVITY_NEW_TASK]
+      then:
+        - { op: wait, for: screen_settled, timeout_ms: 6000 }
+      verify:
+        - { assert: foreground_package, equals: com.android.chrome }
 
     # ═══════════════════════════════════════════════════════════════════════
     # TIER 1: Deep link intents (highest reliability)
