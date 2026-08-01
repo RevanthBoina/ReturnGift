@@ -4,17 +4,26 @@
 package com.returngift.agent.agent.skill
 
 import android.content.Context
+import com.returngift.agent.agent.embedding.SkillEmbeddingIndex
 import com.returngift.agent.utils.XLog
 
 /**
  * Registry of built-in and user-defined skills.
  * Skills are loaded at app startup and matched by trigger patterns.
+ * 
+ * Integration: Uses hybrid semantic retrieval combining:
+ * - Embedding-based similarity search via SkillEmbeddingIndex
+ * - Keyword-based matching with overlap scoring
+ * - Confidence scoring with entity validation
  */
 object SkillRegistry {
 
     private const val TAG = "SkillRegistry"
     private val skills = mutableMapOf<String, Skill>()
     private val yamlMeta = mutableMapOf<String, YamlSkill>()
+    
+    // Semantic embedding index for hybrid retrieval
+    private val embeddingIndex = SkillEmbeddingIndex.getInstance()
 
     /**
      * Result of skill matching with metadata for routing decisions.
@@ -52,6 +61,89 @@ object SkillRegistry {
 
     fun getUserFacing(): List<Skill> =
         skills.values.filter { it.userFacing }
+    
+    /**
+     * Semantic skill retrieval using hybrid approach.
+     * Combines embedding-based similarity with keyword boosting and confidence scoring.
+     * 
+     * @param query The user's task query
+     * @param topK Maximum number of results to consider
+     * @return MatchResult with full routing metadata, or null if no match above threshold
+     */
+    fun findBySemanticRetrieval(query: String, topK: Int = 5): MatchResult? {
+        val lower = query.lowercase()
+        
+        // Compound tasks should go to agent loop
+        if (lower.contains(" and ") || lower.contains(" then ") || lower.contains(" after ")) {
+            XLog.d(TAG, "Compound task in semantic retrieval, skipping: $query")
+            return null
+        }
+        
+        // Use hybrid search with keyword boosting
+        val candidates = embeddingIndex.searchWithBoosting(
+            query = query,
+            topK = topK,
+            minScore = 0.15f,
+            semanticWeight = 0.7f,
+            keywordWeight = 0.3f
+        )
+        
+        if (candidates.isEmpty()) {
+            XLog.d(TAG, "No semantic matches found for: $query")
+            return null
+        }
+        
+        // Get best match and validate
+        for ((skillId, baseScore) in candidates) {
+            val skill = skills[skillId] ?: continue
+            val yaml = yamlMeta[skillId]
+            
+            // Calculate detailed match metrics
+            val antiTriggerMatches = mutableListOf<String>()
+            var redirectTo: String? = null
+            
+            yaml?.routing?.antiTriggers?.forEach { anti ->
+                val antiTokens = tokenize(anti.pattern)
+                val queryTokens = tokenize(query)
+                if (antiTokens.isNotEmpty() && antiTokens.all { queryTokens.contains(it) }) {
+                    antiTriggerMatches.add(anti.pattern)
+                    redirectTo = anti.redirectTo
+                }
+            }
+            
+            val missingEntities = mutableListOf<String>()
+            yaml?.routing?.requiredEntities?.forEach { entity ->
+                if (!canExtractEntity(query, "", entity)) {
+                    missingEntities.add(entity)
+                }
+            }
+            
+            // Calculate final confidence
+            val confidence = embeddingIndex.calculateConfidence(
+                query = query,
+                skillId = skillId,
+                yamlMeta = yaml,
+                antiTriggerMatches = antiTriggerMatches,
+                missingEntities = missingEntities
+            )
+            
+            if (confidence >= 0.4f) {
+                XLog.d(TAG, "Semantic match: ${skill.id} score=$confidence")
+                
+                return MatchResult(
+                    skill = skill,
+                    matchedPattern = "",  // Semantic match doesn't have specific pattern
+                    confidence = confidence,
+                    extractedParams = extractParams(query, skill.triggerPatterns),
+                    antiTriggerMatches = antiTriggerMatches,
+                    missingRequiredEntities = missingEntities,
+                    redirectTo = redirectTo
+                )
+            }
+        }
+        
+        return null
+    }
 
     /**
      * Find a skill that matches a task by trigger patterns.
@@ -247,6 +339,9 @@ object SkillRegistry {
             compiled++
         }
         XLog.i(TAG, "Compiled $compiled YAML skills (${yamlSkills.size} parsed)")
+        
+        // Rebuild semantic embedding index with all loaded skills
+        embeddingIndex.rebuild()
     }
 
     /** Returns the raw YamlSkill metadata for a skill id, if loaded from YAML. */
