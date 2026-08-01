@@ -6,12 +6,12 @@ package com.returngift.agent.agent.routing
 import android.content.Context
 import android.os.BatteryManager
 import android.os.Build
-import com.returngift.agent.agent.PipelineRouter
+import com.returngift.agent.agent.TaskParser
 import com.returngift.agent.agent.skill.SkillRegistry
 import com.returngift.agent.utils.XLog
 
 /**
- * Adaptive routing engine that extends PipelineRouter.
+ * Adaptive routing engine for task complexity classification.
  * 
  * Classifies requests based on:
  * - Task complexity (deterministic, simple, standard, complex)
@@ -19,7 +19,7 @@ import com.returngift.agent.utils.XLog
  * - Historical success rate
  * - System state (battery, thermal, RAM, latency targets)
  */
-class AdaptiveRouter(context: Context) : PipelineRouter(context) {
+class AdaptiveRouter(private val context: Context) {
 
     enum class RequestComplexity {
         DETERMINISTIC, SIMPLE, STANDARD, COMPLEX
@@ -49,6 +49,13 @@ class AdaptiveRouter(context: Context) : PipelineRouter(context) {
     
     enum class ThermalStatus { NOMINAL, CAUTION, SERIOUS, CRITICAL }
     
+    data class RouterStats(
+        val skillSuccessRates: Map<String, Float>,
+        val cloudEnabled: Boolean,
+        val latencyTargetMs: Long,
+        val batteryThreshold: Int
+    )
+    
     private var cloudEnabled = false
     private var latencyTargetMs = 5000L
     private var batteryThreshold = 20
@@ -75,7 +82,7 @@ class AdaptiveRouter(context: Context) : PipelineRouter(context) {
                     complexity = RequestComplexity.DETERMINISTIC,
                     tier = ExecutionTier.DIRECT_SKILL,
                     skillId = parseResult.toolName,
-                    params = parseResult.toolParams ?: emptyMap(),
+                    params = parseResult.toolParams?.mapValues { it.value.toString() } ?: emptyMap(),
                     reason = "Deterministic action",
                     confidence = successRate
                 )
@@ -231,4 +238,13 @@ class AdaptiveRouter(context: Context) : PipelineRouter(context) {
     
     fun setCloudEnabled(enabled: Boolean) { cloudEnabled = enabled }
     fun setLatencyTarget(targetMs: Long) { latencyTargetMs = targetMs }
+    
+    fun getStats(): RouterStats {
+        return RouterStats(
+            skillSuccessRates = skillSuccessRates.toMap(),
+            cloudEnabled = cloudEnabled,
+            latencyTargetMs = latencyTargetMs,
+            batteryThreshold = batteryThreshold
+        )
+    }
 }

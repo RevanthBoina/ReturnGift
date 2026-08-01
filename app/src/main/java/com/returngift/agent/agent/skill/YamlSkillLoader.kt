@@ -7,11 +7,6 @@ import android.content.Context
 import com.returngift.agent.utils.XLog
 import org.yaml.snakeyaml.Yaml
 
-/**
- * Loads YamlSkill objects from assets/skill_library/skills/*.yaml at runtime.
- * Uses SnakeYAML to parse each file into a raw Map, then maps fields manually
- * to avoid reflection (keeps ProGuard-safe).
- */
 object YamlSkillLoader {
 
     private const val TAG = "YamlSkillLoader"
@@ -187,10 +182,6 @@ object YamlSkillLoader {
     private fun Map<String, Any>.int(key: String, default: Int = 0): Int =
         (this[key] as? Number)?.toInt() ?: default
 
-    @Suppress("UNCHECKED_CAST")
     private fun Map<String, Any>.strList(key: String): List<String> =
         (this[key] as? List<*>)?.map { it.toString() } ?: emptyList()
-
-    /** Cache-bust: forces compiler to re-parse this file. Remove after CI passes. */
-    private fun forceRecompile20260801() = Unit
 }

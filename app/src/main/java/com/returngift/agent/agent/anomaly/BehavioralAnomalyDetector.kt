@@ -16,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class BehavioralAnomalyDetector(private val context: Context) {
 
-    private const val TAG = "BehavioralAnomalyDetector"
-    private const val PROFILE_FILE = "behavior_profile.json"
+    private val TAG = "BehavioralAnomalyDetector"
+    private val PROFILE_FILE = "behavior_profile.json"
     
     var confidenceThreshold = 0.7f
     private val decayFactor = 0.95f

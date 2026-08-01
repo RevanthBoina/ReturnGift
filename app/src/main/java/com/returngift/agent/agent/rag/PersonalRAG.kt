@@ -17,8 +17,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class PersonalRAG(private val context: Context) {
 
-    private const val TAG = "PersonalRAG"
-    private const val INDEX_FILE = "personal_rag_index.json"
+    private val TAG = "PersonalRAG"
+    private val INDEX_FILE = "personal_rag_index.json"
     
     private val documentStore = ConcurrentHashMap<String, Document>()
     private val embeddingCache = ConcurrentHashMap<String, FloatArray>()

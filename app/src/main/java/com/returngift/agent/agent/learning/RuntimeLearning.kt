@@ -194,7 +194,7 @@ object RuntimeLearning {
     fun getTraces(skillId: String): List<ExecutionTrace> = traces[skillId]?.toList() ?: emptyList()
     
     fun getStats(skillId: String): SkillStats {
-        val skillTraces = traces[skillId] ?: return SkillStats(0, 0, 0, 0)
+        val skillTraces = traces[skillId] ?: return SkillStats(0, 0, 0, 0f, 0)
         val total = skillTraces.size
         val successes = skillTraces.count { it.outcome == TraceOutcome.SUCCESS }
         val failures = skillTraces.count { it.outcome == TraceOutcome.FAILURE }
@@ -348,7 +348,7 @@ object RuntimeLearning {
             impJson.put("type", imp.type.name)
             impJson.put("originalStep", imp.originalStep)
             impJson.put("newToolName", imp.newToolName)
-            impJson.put("newParameters", JSONObject(imp.newParameters ?: emptyMap()))
+            impJson.put("newParameters", JSONObject(imp.newParameters ?: emptyMap<String, Any>()))
             impJson.put("confidence", imp.confidence.toDouble())
             impJson.put("reason", imp.reason)
             improvementsArray.put(impJson)

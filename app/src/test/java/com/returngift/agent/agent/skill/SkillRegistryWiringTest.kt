@@ -12,9 +12,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mockito.Mock
-import org.mockito.junit.MockitoJUnitRunner
-import org.mockito.Mockito.`when`
+import org.mockito.Mockito.mock
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Wiring tests for SkillRegistry startup path.
@@ -28,22 +28,24 @@ import org.mockito.Mockito.`when`
  *
  * Run in CI to catch future regressions.
  */
-@RunWith(MockitoJUnitRunner::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
 class SkillRegistryWiringTest {
 
-    @Mock
     private lateinit var mockContext: Context
-
-    @Mock
     private lateinit var mockAssets: android.content.res.AssetManager
 
     @Before
     fun setup() {
+        // Initialize mocks
+        mockContext = mock(Context::class.java)
+        mockAssets = mock(android.content.res.AssetManager::class.java)
+
         // Reset state before each test
         SkillRegistry.clear()
 
         // Mock context to return empty asset list (no YAML files in test)
-        `when`(mockContext.assets).thenReturn(mockAssets)
+        org.mockito.Mockito.`when`(mockContext.assets).thenReturn(mockAssets)
     }
 
     @After
@@ -146,9 +148,11 @@ class SkillRegistryWiringTest {
             assertTrue("Skill ${skill.id} has valid category",
                 skill.category in listOf(
                     SkillCategory.GENERAL,
-                    SkillCategory.SOCIAL,
-                    SkillCategory.PRODUCTIVITY,
-                    SkillCategory.ENTERTAINMENT
+                    SkillCategory.INPUT,
+                    SkillCategory.NAVIGATION,
+                    SkillCategory.MESSAGING,
+                    SkillCategory.DISMISS,
+                    SkillCategory.MEDIA
                 ))
         }
     }
