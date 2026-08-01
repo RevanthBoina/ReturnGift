@@ -60,5 +60,7 @@ data class SkillResult(
     val stepsUsed: Int,
     val tokensUsed: Int = 0,
     val fallbackUsed: Boolean = false,
-    val message: String = ""
+    val message: String = "",
+    val errorMessage: String? = null,
+    val telemetryData: Map<String, Any> = emptyMap()
 )

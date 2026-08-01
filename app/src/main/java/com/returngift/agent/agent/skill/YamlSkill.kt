@@ -17,6 +17,8 @@ data class YamlSkill(
     val output: Output = Output(),
     val lastValidatedUtc: String = "",
     val stalenessSla: Int = 30,
+    val screenSignatures: List<String> = emptyList(),
+    val deviceProfiles: List<String> = emptyList(),
 )
 
 data class Taxonomy(

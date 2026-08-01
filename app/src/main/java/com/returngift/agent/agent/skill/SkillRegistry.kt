@@ -17,6 +17,25 @@ object SkillRegistry {
     private val yamlMeta = mutableMapOf<String, YamlSkill>()
 
     /**
+     * Result of skill matching with metadata for routing decisions.
+     */
+    data class MatchResult(
+        val skill: Skill,
+        val matchedPattern: String,
+        val confidence: Float,  // 0.0 to 1.0
+        val extractedParams: Map<String, String>,
+        val antiTriggerMatches: List<String>,  // Patterns that matched anti-triggers
+        val missingRequiredEntities: List<String>,  // Required entities not found
+        val redirectTo: String?  // If anti-trigger matched, redirect to this skill
+    ) {
+        val isHighConfidence: Boolean
+            get() = confidence >= 0.8f && antiTriggerMatches.isEmpty() && missingRequiredEntities.isEmpty()
+        
+        val shouldRouteToSkill: Boolean
+            get() = isHighConfidence && redirectTo == null
+    }
+
+    /**
      * Register a skill. Replaces existing skill with same ID.
      */
     fun register(skill: Skill) {
@@ -37,27 +56,161 @@ object SkillRegistry {
     /**
      * Find a skill that matches a task by trigger patterns.
      * Returns null if no skill matches.
+     * 
+     * This method uses simple regex matching. For embedding-based retrieval,
+     * use findByTriggerWithEmbedding() when available.
      */
     fun findByTrigger(task: String): Skill? {
+        val matchResult = findByTriggerDetailed(task)
+        return matchResult?.skill
+    }
+
+    /**
+     * Find a skill with detailed match information including anti-trigger
+     * and entity validation.
+     * 
+     * @param task The user's task utterance
+     * @return MatchResult with full routing metadata, or null if no match
+     */
+    fun findByTriggerDetailed(task: String): MatchResult? {
         val lower = task.lowercase()
+        
         // Compound tasks with conjunctions should go to agent loop, not skills.
         // Skills are for simple, single-action commands only.
         if (lower.contains(" and ") || lower.contains(" then ") || lower.contains(" after ")) {
             XLog.d(TAG, "Compound task detected, skipping skill matching: $task")
             return null
         }
-        return skills.values.find { skill ->
-            skill.triggerPatterns.any { pattern ->
-                try {
-                    val regex = pattern.lowercase()
-                        .replace(Regex("\\{\\w+\\}"), "(.+)")
-                    Regex(regex).containsMatchIn(lower)
-                } catch (e: Exception) {
-                    XLog.w(TAG, "Invalid trigger pattern: $pattern", e)
-                    false
+
+        val taskTokens = tokenize(task)
+        
+        // Find best matching skill
+        var bestMatch: MatchResult? = null
+        var bestScore = 0f
+
+        for (skill in skills.values) {
+            val yamlMeta = yamlMeta[skill.id]
+            
+            // Calculate trigger match score
+            var matchedPattern = ""
+            var maxOverlap = 0f
+            
+            for (pattern in skill.triggerPatterns) {
+                val patternTokens = tokenize(removePlaceholders(pattern))
+                if (patternTokens.isEmpty()) continue
+                
+                val overlap = patternTokens.intersect(taskTokens).size.toFloat() / patternTokens.size
+                if (overlap > maxOverlap) {
+                    maxOverlap = overlap
+                    matchedPattern = pattern
                 }
             }
+
+            if (maxOverlap == 0f) continue
+
+            // Check anti-triggers - if any match, skip this skill
+            val antiTriggerMatches = mutableListOf<String>()
+            var redirectTo: String? = null
+            
+            yamlMeta?.routing?.antiTriggers?.forEach { antiTrigger ->
+                val antiTokens = tokenize(antiTrigger.pattern)
+                if (antiTokens.isNotEmpty() && antiTokens.all { taskTokens.contains(it) }) {
+                    antiTriggerMatches.add(antiTrigger.pattern)
+                    redirectTo = antiTrigger.redirectTo
+                    XLog.d(TAG, "Skill ${skill.id} vetoed by anti-trigger: ${antiTrigger.pattern} -> ${antiTrigger.redirectTo}")
+                }
+            }
+
+            // Check required entities
+            val missingEntities = mutableListOf<String>()
+            yamlMeta?.routing?.requiredEntities?.forEach { entity ->
+                // Check if the entity is extractable from the task
+                if (!canExtractEntity(task, matchedPattern, entity)) {
+                    missingEntities.add(entity)
+                }
+            }
+
+            // Calculate confidence score
+            val antiTriggerPenalty = if (antiTriggerMatches.isNotEmpty()) 0.5f else 0f
+            val missingEntityPenalty = missingEntities.size * 0.15f
+            val confidence = (maxOverlap - antiTriggerPenalty - missingEntityPenalty).coerceIn(0f, 1f)
+
+            if (confidence > bestScore) {
+                bestScore = confidence
+                bestMatch = MatchResult(
+                    skill = skill,
+                    matchedPattern = matchedPattern,
+                    confidence = confidence,
+                    extractedParams = extractParams(task, skill.triggerPatterns),
+                    antiTriggerMatches = antiTriggerMatches,
+                    missingRequiredEntities = missingEntities,
+                    redirectTo = redirectTo
+                )
+            }
         }
+
+        if (bestMatch != null) {
+            XLog.d(TAG, "Best match: ${bestMatch.skill.id} confidence=${bestMatch.confidence} " +
+                    "antiTriggers=${bestMatch.antiTriggerMatches.size} " +
+                    "missingEntities=${bestMatch.missingRequiredEntities.size}")
+        }
+
+        return bestMatch
+    }
+
+    /**
+     * Extract parameters from task using trigger patterns.
+     */
+    private fun extractParams(task: String, patterns: List<String>): Map<String, String> {
+        val lower = task.lowercase()
+        for (pattern in patterns) {
+            val paramNames = Regex("\\{(\\w+)\\}").findAll(pattern).map { it.groupValues[1] }.toList()
+            val regexStr = pattern.lowercase().replace(Regex("\\{\\w+\\}"), "(.+)")
+            val match = Regex(regexStr).find(lower)
+            if (match != null && match.groupValues.size > 1) {
+                return paramNames.zip(match.groupValues.drop(1)).toMap()
+            }
+        }
+        return emptyMap()
+    }
+
+    /**
+     * Check if a required entity can be extracted from the task.
+     */
+    private fun canExtractEntity(task: String, matchedPattern: String, entity: String): Boolean {
+        // Simple check: if entity name appears in task, consider it extractable
+        val lower = task.lowercase()
+        val entityLower = entity.lowercase()
+        
+        // Check if entity is a placeholder name that was filled
+        val patternLower = matchedPattern.lowercase()
+        if (patternLower.contains("{$entity}") || patternLower.contains("{$entity|")) {
+            // Entity was in the pattern, check if a value was extracted
+            val regexStr = patternLower.replace(Regex("\\{\\w+[^}]*}"), "(.+)")
+            val match = Regex(regexStr).find(lower)
+            return match != null && match.groupValues.size > 1
+        }
+        
+        // Entity wasn't in pattern, check if it's a common entity type
+        return when (entity) {
+            "recipient", "contact", "person" -> 
+                lower.contains("to ") || lower.contains(" for ") || lower.contains("@")
+            "app" ->
+                lower.contains(" on ") || lower.contains(" via ")
+            "message", "body", "text" ->
+                lower.contains(" saying ") || lower.contains(" with message ") || lower.contains(" that ")
+            "query", "search" ->
+                lower.contains("search ") || lower.contains(" for ") || lower.contains(" look up ")
+            else -> true  // Unknown entities assume extractable
+        }
+    }
+
+    private fun tokenize(text: String): Set<String> {
+        return Regex("[a-z0-9]+").findAll(text.lowercase()).map { it.value }.toSet()
+    }
+
+    private fun removePlaceholders(pattern: String): String {
+        return pattern.replace(Regex("\\{[^}]+\\}"), "").lowercase()
     }
 
     /**

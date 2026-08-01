@@ -9,7 +9,35 @@ permissions:
   contents: write
 
 jobs:
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Run Android Lint
+        run: ./gradlew lintDebug
+
+      - name: Check Detekt
+        run: |
+          if grep -q "id.*detekt" build.gradle.kts app/build.gradle.kts 2>/dev/null; then
+            ./gradlew detekt
+          else
+            echo "Detekt not configured - skipping"
+          fi
+
   release:
+    name: Build & Release
+    needs: quality-gate
     runs-on: ubuntu-latest
 
     steps:
