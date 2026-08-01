@@ -13,20 +13,33 @@ object LocalBackendHealth {
     private const val TAG = "LocalBackendHealth"
     private const val CRASH_MARKER_MAX_AGE_MS = 1000L * 60L * 60L * 24L * 30L
     private const val VERIFIED_GPU_CPU_SAFE_RETRY_COOLDOWN_MS = 1000L * 60L * 60L * 24L
-    private val CONSERVATIVE_CPU_MANUFACTURERS = setOf("xiaomi", "redmi", "poco")
-    private val CONSERVATIVE_CPU_MODELS = listOf(
-        "xiaomi 15",
-        "mi 15",
-        "galaxy z fold4",
-        "sm-f936",
-        "z flip7",
-        "sm-f766",
-    )
-    private val CONSERVATIVE_CPU_HARDWARE_HINTS = listOf(
-        "mt",
-        "mediatek",
-        "dimensity",
-    )
+
+    // M5 fix: make conservative CPU lists externalizable via assets/config.json
+    // to avoid requiring code changes when adding new devices. Falls back to
+    // hardcoded defaults if the asset is absent or malformed.
+    private val CONSERVATIVE_CPU_MANUFACTURERS: Set<String> by lazy { loadConservativeSet("conservative_cpu_manufacturers", setOf("xiaomi", "redmi", "poco")) }
+    private val CONSERVATIVE_CPU_MODELS: List<String> by lazy { loadConservativeList("conservative_cpu_models", listOf("xiaomi 15", "mi 15", "galaxy z fold4", "sm-f936", "z flip7", "sm-f766")) }
+    private val CONSERVATIVE_CPU_HARDWARE_HINTS: List<String> by lazy { loadConservativeList("conservative_cpu_hardware_hints", listOf("mt", "mediatek", "dimensity")) }
+
+    private fun loadConservativeSet(key: String, fallback: Set<String>): Set<String> {
+        return try {
+            val json = com.blankj.utilcode.util.Utils.getApp().assets.open("local_backend_health.json").bufferedReader().use { it.readText() }
+            val node = com.google.gson.JsonParser.parseString(json).asJsonObject
+            node.getAsJsonArray(key)?.map { it.asString }?.toSet() ?: fallback
+        } catch (e: Exception) {
+            fallback
+        }
+    }
+
+    private fun loadConservativeList(key: String, fallback: List<String>): List<String> {
+        return try {
+            val json = com.blankj.utilcode.util.Utils.getApp().assets.open("local_backend_health.json").bufferedReader().use { it.readText() }
+            val node = com.google.gson.JsonParser.parseString(json).asJsonObject
+            node.getAsJsonArray(key)?.map { it.asString } ?: fallback
+        } catch (e: Exception) {
+            fallback
+        }
+    }
 
     fun currentDeviceKey(): String {
         val fingerprint = Build.FINGERPRINT?.trim().orEmpty()
