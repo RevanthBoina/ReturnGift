@@ -190,4 +190,7 @@ object YamlSkillLoader {
     @Suppress("UNCHECKED_CAST")
     private fun Map<String, Any>.strList(key: String): List<String> =
         (this[key] as? List<*>)?.map { it.toString() } ?: emptyList()
+
+    /** Cache-bust: forces compiler to re-parse this file. Remove after CI passes. */
+    private fun forceRecompile20260801() = Unit
 }

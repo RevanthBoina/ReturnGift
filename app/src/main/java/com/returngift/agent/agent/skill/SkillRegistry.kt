@@ -5,7 +5,6 @@ package com.returngift.agent.agent.skill
 
 import android.content.Context
 import com.returngift.agent.utils.XLog
-import com.returngift.agent.agent.skill.YamlSkillLoader
 
 /**
  * Registry of built-in and user-defined skills.
@@ -238,7 +237,7 @@ object SkillRegistry {
      * YAML skills with the same id as a built-in will override the built-in.
      */
     fun loadYamlSkills(context: Context) {
-        val yamlSkills = YamlSkillLoader.loadAll(context)
+        val yamlSkills: List<YamlSkill> = YamlSkillLoader.loadAll(context)
         var compiled = 0
         for (yaml in yamlSkills) {
             val skill = YamlSkillCompiler.compile(yaml) ?: continue

@@ -28,11 +28,13 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-
+          key: gradle-v2-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-v2-
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest
+        run: |
+          ./gradlew clean
+          ./gradlew testDebugUnitTest --no-build-cache
 
       - name: Run wiring tests (C2/C3 regression guard)
         run: |
