@@ -3,4 +3,10 @@
   <issue id="GestureBackNavigation" severity="Error" message="onBackPressed is no longer called for back gestures; migrate to AndroidX&apos;s backward compatible OnBackPressedDispatcher" errorLine1="    override fun onBackPressed()" errorLine2="                 ~~~~~~~~~~~~~">
     <location file="app/src/main/java/com/returngift/agent/ui/web/WebActivity.kt" line="126" column="18"/>
   </issue>
+  <issue id="NewApi" severity="Error" message="android:windowSplashScreenAnimatedIcon requires API level 31 (current min is 28)">
+    <location file="app/src/main/res/values-night/themes.xml" line="36"/>
+  </issue>
+  <issue id="NewApi" severity="Error" message="android:windowSplashScreenAnimatedIcon requires API level 31 (current min is 28)">
+    <location file="app/src/main/res/values/themes.xml" line="35"/>
+  </issue>
 </lint-baseline>
