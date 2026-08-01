@@ -180,7 +180,7 @@ object CaptureOnFailure {
     
     private fun getContext(): Context? {
         return try {
-            com.returngift.agent.ClawApplication.getInstance()
+            com.returngift.agent.ClawApplication.instance
         } catch (e: Exception) {
             null
         }

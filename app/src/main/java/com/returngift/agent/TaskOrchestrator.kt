@@ -223,6 +223,34 @@ class TaskOrchestrator(
                     XLog.w(TAG, "Skill ${route.skillId} not found, falling through to agent loop")
                 }
             }
+            is PipelineRouter.Route.Redirect -> {
+                XLog.i(TAG, "Pipeline Tier 2: Redirect — ${route.targetSkillId} (reason: ${route.reason})")
+                // Recursively route to the redirected skill
+                val skill = SkillRegistry.findById(route.targetSkillId)
+                if (skill != null) {
+                    FloatingCircleManager.ensureShowing()
+                    FloatingCircleManager.showTaskNotify(task, channel)
+                    Thread({
+                        val skillResult = skillExecutor.execute(skill, emptyMap()) { step, total, desc ->
+                            taskEventCallback?.invoke(TaskEvent.Progress(step, "Step $step/$total: $desc"))
+                            ForegroundService.updateTaskStatus(ClawApplication.instance, desc)
+                        }
+                        if (skillResult.success) {
+                            ChannelManager.sendMessage(channel, skillResult.message, messageID)
+                            taskEventCallback?.invoke(TaskEvent.Completed(skillResult.message))
+                            releaseTask()
+                            FloatingCircleManager.setSuccessState()
+                            ForegroundService.resetToIdle(ClawApplication.instance)
+                            onTaskFinished()
+                        } else {
+                            XLog.i(TAG, "Redirected skill ${skill.id} failed, falling back to agent loop")
+                            startNewTask(channel, skill.fallbackGoal, messageID, isFallback = true)
+                        }
+                    }, "skill-executor-redirect").start()
+                    return
+                }
+                XLog.w(TAG, "Redirected skill ${route.targetSkillId} not found, falling through to agent loop")
+            }
             is PipelineRouter.Route.Chat, is PipelineRouter.Route.AgentLoop -> {
                 // Fall through to agent loop
             }
