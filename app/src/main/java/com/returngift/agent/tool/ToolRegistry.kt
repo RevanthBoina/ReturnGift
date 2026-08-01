@@ -88,6 +88,24 @@ object ToolRegistry {
 
     fun executeTool(name: String, params: Map<String, Any>): ToolResult {
         val tool = tools[name] ?: return ToolResult.error("Unknown tool: $name")
+
+        // C3 fix: SafetyInterceptor existed but had zero call sites anywhere in the
+        // codebase, so blocklist_patterns, risk_tier confirmation, and never_retry_after
+        // checkpoints from the YAML skill specs were never enforced. This is the single
+        // choke point every execution path (skills, agent loop, debug receivers, config
+        // server) routes through, so wiring it in here covers all of them.
+        //
+        // Prefer the foreground Activity for the confirmation dialog when one exists;
+        // fall back to the Application context otherwise (SafetyInterceptor already
+        // fails closed — denies — if no dialog can be shown).
+        val dialogContext = com.blankj.utilcode.util.ActivityUtils.getTopActivity()
+            ?: com.returngift.agent.ClawApplication.instance
+        val blockReason = com.returngift.agent.agent.SafetyInterceptor.check(name, params, dialogContext)
+        if (blockReason != null) {
+            com.returngift.agent.utils.XLog.w("ToolRegistry", "Blocked '$name': $blockReason")
+            return ToolResult.error(blockReason)
+        }
+
         return try {
             tool.executeWithWaitAfter(params)
         } catch (e: Exception) {

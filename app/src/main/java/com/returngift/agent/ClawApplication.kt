@@ -41,8 +41,13 @@ class ClawApplication : BaseApp() {
         LocalBackendHealth.recoverPendingGpuCrashIfNeeded()
         ToolRegistry.getInstance().registerAllTools(ToolRegistry.DeviceType.MOBILE)
         com.returngift.agent.agent.skill.SkillRegistry.loadBuiltInSkills()
+        // C2 fix: loadYamlSkills() was never called, so all 19 YAML-defined skills
+        // (skill_library/skills/*.yaml) silently never entered the registry and the
+        // router fell through to the LLM agent loop for everything they should have
+        // handled. YAML skills with an id matching a built-in override the built-in.
+        com.returngift.agent.agent.skill.SkillRegistry.loadYamlSkills(this)
         com.returngift.agent.agent.PlaybookManager.loadAll(this)
-        XLog.e(TAG, "ClawApplication initialized, tools registered: ${ToolRegistry.getInstance().getAllTools().size}")
+        XLog.e(TAG, "ClawApplication initialized, tools registered: ${ToolRegistry.getInstance().getAllTools().size}, skills registered: ${com.returngift.agent.agent.skill.SkillRegistry.getAll().size}")
 
         // Auto-start config server if enabled
         ConfigServerManager.autoStartIfNeeded(this)
