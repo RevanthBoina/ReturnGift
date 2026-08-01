@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.konan.properties.hasProperty
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
@@ -26,7 +25,7 @@ fun readLocalOrEnvInt(key: String, defaultValue: Int): Int {
 android {
     namespace = "com.returngift.agent"
     compileSdk {
-        version = release(36) {
+        version = release(37) {
             minorApiLevel = 1
         }
     }
@@ -185,6 +184,9 @@ dependencies {
     // NanoHTTPD 嵌入式 HTTP 服务器（局域网配置服务）
     implementation(libs.nanohttpd)
 
+    // SnakeYAML for parsing skill YAML files
+    implementation(libs.snakeyaml)
+
 
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core)
@@ -269,7 +271,7 @@ fun getParameter(key: String, defaultValue: String): String {
     val localProperties = Properties()
     if (localPropertiesFile.exists()) {
         localProperties.load(localPropertiesFile.inputStream())
-        val hasLocalProperty = localProperties.hasProperty(key)
+        val hasLocalProperty = localProperties.containsKey(key)
         if (hasLocalProperty) {
             val property = localProperties[key] as String?
             if (!property.isNullOrEmpty()) {

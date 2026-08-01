@@ -180,11 +180,11 @@ object YamlSkillLoader {
         }
     }
 
-    // ── Map extension helpers ──────────────────────────────────────────────
-    private fun Map<String, Any>.str(key: String, default: String = "") =
+    // Map extension helpers
+    private fun Map<String, Any>.str(key: String, default: String = ""): String =
         this[key]?.toString() ?: default
 
-    private fun Map<String, Any>.int(key: String, default: Int = 0) =
+    private fun Map<String, Any>.int(key: String, default: Int = 0): Int =
         (this[key] as? Number)?.toInt() ?: default
 
     @Suppress("UNCHECKED_CAST")

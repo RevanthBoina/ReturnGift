@@ -49,13 +49,13 @@ class CloudDeepAgentService(
         private const val EXECUTION_TIMEOUT_MS = 30_000L
         private const val MAX_PAYLOAD_SIZE = 1024 * 1024 // 1 MB
         private const val AES_KEY_SIZE = 256
-        private const val GCM_TAG_LENGTH = 128
+        const val GCM_TAG_LENGTH = 128
         private const val NONCE_SIZE = 12
     }
 
     private val gson = Gson()
     private val encryption = E2EEncryption()
-    private val sandbox = SandboxExecutor()
+    private val sandbox = SandboxExecutor(context)
     private val humanGate = HumanInTheLoopGate(context)
 
     override fun serve(session: NanoHTTPD.IHTTPSession): NanoHTTPD.Response {
@@ -176,13 +176,13 @@ class CloudDeepAgentService(
             sandbox.execute(task.language, task.code, timeout)
         }
 
-        val result: SandboxResult
+        var result: SandboxExecutor.SandboxResult
         try {
             result = future.get(timeout + 5000, TimeUnit.MILLISECONDS) // Extra buffer for process overhead
         } catch (e: Exception) {
             XLog.e(TAG, "Execution failed or timed out: ${e.message}")
             future.cancel(true)
-            result = SandboxResult(
+            result = SandboxExecutor.SandboxResult(
                 success = false,
                 output = "",
                 error = "Execution timeout (${timeout}ms) or error: ${e.message}",
@@ -221,13 +221,13 @@ class CloudDeepAgentService(
 
     private fun handleGateStatus(session: NanoHTTPD.IHTTPSession): NanoHTTPD.Response {
         val gateId = session.parms["gateId"] ?: return corsResponse(errorResponse(-1, "missing gateId"))
-        val status = humanGate.getStatus(gateId)
+        val gateState = humanGate.getStatus(gateId)
         return corsResponse(newFixedLengthResponse(
             NanoHTTPD.Response.Status.OK, MIME_JSON,
             gson.toJson(GateStatusResponse(
                 gateId = gateId,
-                status = status?.name ?: "NOT_FOUND",
-                approved = status?.approved
+                status = gateState?.status?.name ?: "NOT_FOUND",
+                approved = gateState?.approved
             ))
         ))
     }
@@ -351,7 +351,7 @@ class E2EEncryption {
         val cipher = Cipher.getInstance(AES_GCM)
         val nonce = ByteArray(12)
         SecureRandom().nextBytes(nonce)
-        val spec = GCMParameterSpec(GCM_TAG_LENGTH, nonce)
+        val spec = GCMParameterSpec(CloudDeepAgentService.GCM_TAG_LENGTH, nonce)
         cipher.init(Cipher.ENCRYPT_MODE, masterKey, spec)
         val ciphertext = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
         return ciphertext to nonce
@@ -366,7 +366,7 @@ class E2EEncryption {
             throw SecurityException("Key version mismatch: $keyId != $currentKeyId")
         }
         val cipher = Cipher.getInstance(AES_GCM)
-        val spec = GCMParameterSpec(GCM_TAG_LENGTH, nonce)
+        val spec = GCMParameterSpec(CloudDeepAgentService.GCM_TAG_LENGTH, nonce)
         cipher.init(Cipher.DECRYPT_MODE, masterKey, spec)
         val plaintext = cipher.doFinal(ciphertext)
         return String(plaintext, StandardCharsets.UTF_8)
@@ -396,7 +396,7 @@ class E2EEncryption {
  * Sandboxed code execution for Python and JavaScript.
  * Uses ProcessBuilder with strict resource limits and 30s hard timeout.
  */
-class SandboxExecutor {
+class SandboxExecutor(private val context: Context) {
 
     companion object {
         private const val TAG = "SandboxExecutor"
@@ -461,8 +461,8 @@ class SandboxExecutor {
                     try {
                         bytesRead = inputStream.read(buffer)
                         if (bytesRead == -1) break
-                        if (outputStream.size + bytesRead > MAX_OUTPUT_SIZE) {
-                            outputStream.write(buffer, 0, MAX_OUTPUT_SIZE - outputStream.size)
+                        if (outputStream.size() + bytesRead > MAX_OUTPUT_SIZE) {
+                            outputStream.write(buffer, 0, MAX_OUTPUT_SIZE - outputStream.size())
                             break
                         }
                         outputStream.write(buffer, 0, bytesRead)
