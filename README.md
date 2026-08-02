@@ -10,6 +10,7 @@ ReturnGift transforms your phone into an intelligent assistant powered by on-dev
 [![Android](https://img.shields.io/badge/Android-9%2B%20(API%2028)-green.svg)](https://developer.android.com/about)
 [![Architecture](https://img.shields.io/badge/Architecture-arm64-blue.svg)](#requirements)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Download APK](https://img.shields.io/badge/Download-APK-success.svg)](https://github.com/RevanthBoina/ReturnGift/releases/latest/download/ReturnGift-release.apk)
 
 [Features](#features) • [Architecture](#architecture) • [Releases](#releases) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Contributing](#contributing)
 
@@ -193,7 +194,7 @@ flowchart LR
 [![Release](https://img.shields.io/github/v/release/RevanthBoina/ReturnGift?include_prereleases&label=latest)](https://github.com/RevanthBoina/ReturnGift/releases/latest)
 
 **Download the latest APK:**
-- 📥 [ReturnGift Latest Release](https://github.com/RevanthBoina/ReturnGift/releases/latest/download/ReturnGift.apk)
+- 📥 [ReturnGift Latest Release](https://github.com/RevanthBoina/ReturnGift/releases/latest/download/ReturnGift-release.apk)
 
 **All Releases:**
 - 📦 [View all releases](https://github.com/RevanthBoina/ReturnGift/releases)
