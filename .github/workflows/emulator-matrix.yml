@@ -126,8 +126,12 @@ jobs:
           target: ${{ matrix.target }}
           arch: ${{ matrix.arch }}
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: >
+            -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio 
+            -no-boot-anim -camera-back none -wipe-data
+            -keyset /dev/null
           disable-animations: true
+          emulator-boot-timeout: 180
           # NOTE: reactivecircus/android-emulator-runner@v2 runs each LINE of the
           # `script:` block as a separate `sh -c <line>` call (variables and
           # if/then/fi don't persist across lines). So we keep `script:` to a
