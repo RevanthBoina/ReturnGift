@@ -39,6 +39,18 @@ echo "::endgroup::"
 
 echo "::group::Launch app"
 adb logcat -c
+
+# Wait for device to be fully ready
+sleep 5
+
+# Disable keyguard in headless CI to avoid input service issues
+adb shell settings put global device_provisioned 1 || true
+adb shell settings put secure user_setup_complete 1 || true
+adb shell svc power stayon true || true
+
+# Try to unlock if locked (ignore failures in headless mode)
+adb shell input keyevent 82 2>/dev/null || true
+
 # Correct component is com.returngift.agent/.ui.splash.SplashActivity
 # (the .ui.splash. path is the actual class location; earlier rev had a stale
 # com.apk.claw.android.ui.splash.SplashActivity name from a pre-rename build).
