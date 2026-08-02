@@ -11,7 +11,7 @@ ReturnGift transforms your phone into an intelligent assistant powered by on-dev
 [![Architecture](https://img.shields.io/badge/Architecture-arm64-blue.svg)](#requirements)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-[Features](#features) • [Architecture](#architecture) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Contributing](#contributing)
+[Features](#features) • [Architecture](#architecture) • [Releases](#releases) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Contributing](#contributing)
 
 </div>
 
@@ -183,6 +183,35 @@ flowchart LR
 ```
 
 ### Repository Structure
+
+---
+
+## Releases
+
+### Latest Release
+
+[![Release](https://img.shields.io/github/v/release/RevanthBoina/ReturnGift?include_prereleases&label=latest)](https://github.com/RevanthBoina/ReturnGift/releases/latest)
+
+**Download the latest APK:**
+- 📥 [ReturnGift Latest Release](https://github.com/RevanthBoina/ReturnGift/releases/latest/download/ReturnGift.apk)
+
+**All Releases:**
+- 📦 [View all releases](https://github.com/RevanthBoina/ReturnGift/releases)
+
+### Release Changelog
+
+<!-- CHANGELOG_START -->
+### v1.0.0
+- Initial release build
+- On-device Android agent with LiteRT-LM inference
+- 3-tier execution pipeline (deterministic → skill → agent loop)
+- YAML-defined skills for extensible task automation
+- Privacy-first architecture — all data stays on device
+<!-- CHANGELOG_END -->
+
+---
+
+### Requirements
 
 ```
 ReturnGift/
