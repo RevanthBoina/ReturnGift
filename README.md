@@ -59,6 +59,11 @@ graph LR
 - **LoRA-based skills** — extend capabilities without retraining
 - **No cloud dependency** — works offline, preserves privacy
 
+### ☁️ Cloud LLM Support
+- **OmniRoute integration** — unified gateway to 268+ LLM providers (Claude, GPT-4, Gemini, Groq, and more)
+- **Multi-provider routing** — use `auto` mode or select specific models
+- **Free tier access** — Kiro, Pollinations, and other free providers included
+
 ### 🎯 Intelligent Routing
 - **3-tier pipeline** — deterministic → skill → agent loop
 - **Semantic skill retrieval** — finds the right skill using embeddings
@@ -545,6 +550,15 @@ adb shell am broadcast -a com.returngift.agent.DEBUG_REPORT
 
 ### Q: Can I add custom skills?
 **A:** Yes. Add YAML files to `skill_library/skills/`. See existing skills for the format.
+
+### Q: What cloud LLM providers are supported?
+**A:** ReturnGift supports:
+- **OmniRoute** (recommended) — Unified gateway to 268+ providers with `auto` mode
+- **OpenAI** — GPT-4o, GPT-4o Mini, GPT-4.1, etc.
+- **Anthropic** — Claude Sonnet, Claude Haiku
+- **Custom** — Any OpenAI-compatible API endpoint
+
+OmniRoute provides access to free tiers from providers like Kiro, Pollinations, and Groq.
 
 ---
 

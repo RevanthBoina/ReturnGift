@@ -35,6 +35,7 @@ data class CloudModelConfig(
     val agentProvider: LlmProvider
         get() = when (provider) {
             CloudProvider.ANTHROPIC -> LlmProvider.ANTHROPIC
+            CloudProvider.OMNIROUTE -> LlmProvider.OMNIROUTE
             else -> LlmProvider.OPENAI
         }
 }
