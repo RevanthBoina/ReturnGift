@@ -37,16 +37,20 @@ echo "::group::Verify package installed"
 adb shell pm list packages | grep com.returngift.agent || { echo "Package not installed!"; exit 1; }
 echo "::endgroup::"
 
+echo "::group::Wait for device"
+# Wait for emulator to be fully ready
+adb wait-for-device
+adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
+echo "Device ready!"
+echo "::endgroup::"
+
 echo "::group::Launch app"
 adb logcat -c
 
-# Wait for device to be fully ready
-sleep 5
-
 # Disable keyguard in headless CI to avoid input service issues
-adb shell settings put global device_provisioned 1 || true
-adb shell settings put secure user_setup_complete 1 || true
-adb shell svc power stayon true || true
+adb shell settings put global device_provisioned 1 2>/dev/null || true
+adb shell settings put secure user_setup_complete 1 2>/dev/null || true
+adb shell svc power stayon true 2>/dev/null || true
 
 # Try to unlock if locked (ignore failures in headless mode)
 adb shell input keyevent 82 2>/dev/null || true
