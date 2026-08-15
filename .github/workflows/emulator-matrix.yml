@@ -4,11 +4,21 @@ name: Android Emulator Matrix QA
 # launches the app, and captures logcat. Catches launch crashes /
 # regression on Android version differences without a physical device farm.
 
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
+    # Skip docs and release workflow changes to avoid unnecessary runs
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 jobs:
