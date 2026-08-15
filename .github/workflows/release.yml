@@ -1,5 +1,10 @@
 name: Release APK
 
+# Cancel in-progress runs for the same tag
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     tags:
@@ -93,8 +98,18 @@ jobs:
       - name: Build signed release APK
         run: ./gradlew assembleRelease
 
-      - name: Generate release checksums
-        run: sha256sum app/build/outputs/apk/release/*.apk > app/build/outputs/apk/release/SHA256SUMS.txt
+      - name: Generate release checksums and rename APK
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No APK found in app/build/outputs/apk/release/"
+            exit 1
+          fi
+          # Copy to ReturnGift.apk for consistent download link
+          cp "$APK_PATH" app/build/outputs/apk/release/ReturnGift.apk
+          # Generate checksums for both files
+          sha256sum app/build/outputs/apk/release/ReturnGift.apk > app/build/outputs/apk/release/SHA256SUMS.txt
+          echo "Built APK: $(ls -la app/build/outputs/apk/release/ReturnGift.apk)"
 
       - name: Extract release notes from README
         env:

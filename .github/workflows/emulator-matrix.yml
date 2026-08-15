@@ -4,11 +4,21 @@ name: Android Emulator Matrix QA
 # launches the app, and captures logcat. Catches launch crashes /
 # regression on Android version differences without a physical device farm.
 
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
+    # Skip docs and release workflow changes to avoid unnecessary runs
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 jobs:
@@ -98,44 +108,18 @@ jobs:
           name: debug-apk
           path: apk
 
-      - name: Cache AVD
-        uses: actions/cache@v6
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-${{ matrix.api-level }}-${{ matrix.target }}
-
-      - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
+      - name: Run smoke test with emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
           target: ${{ matrix.target }}
           arch: ${{ matrix.arch }}
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
-
-      - name: Run smoke test
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ matrix.api-level }}
-          target: ${{ matrix.target }}
-          arch: ${{ matrix.arch }}
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-options: >
-            -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio 
-            -no-boot-anim -camera-back none -wipe-data
-            -keyset /dev/null
+            -no-window -gpu swiftshader_indirect -noaudio 
+            -no-boot-anim -camera-back none
           disable-animations: true
-          emulator-boot-timeout: 180
-          # NOTE: reactivecircus/android-emulator-runner@v2 runs each LINE of the
-          # `script:` block as a separate `sh -c <line>` call (variables and
-          # if/then/fi don't persist across lines). So we keep `script:` to a
-          # single command and put real logic in scripts/emulator-smoke.sh.
+          emulator-boot-timeout: 300
           script: bash scripts/emulator-smoke.sh ${{ matrix.api-level }}
 
       - name: Upload logs + screenshot
