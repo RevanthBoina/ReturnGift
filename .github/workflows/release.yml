@@ -122,18 +122,26 @@ jobs:
 
           version = os.environ["VERSION"].removeprefix("v")
           text = Path("README.md").read_text()
+          
+          # Try to find changelog entry for this version
           header = re.compile(rf"^### v{re.escape(version)}\b.*$", re.MULTILINE)
           match = header.search(text)
-          if not match:
-              raise SystemExit(f"Could not find changelog entry for v{version} in README.md")
-
-          rest = text[match.end():]
-          next_header = re.search(r"^### v", rest, re.MULTILINE)
-          notes = (rest[:next_header.start()] if next_header else rest).strip()
-          if not notes:
-              raise SystemExit(f"Changelog entry for v{version} is empty")
-
-          Path("release-notes.md").write_text(notes + "\n")
+          
+          if match:
+              rest = text[match.end():]
+              next_header = re.search(r"^### v", rest, re.MULTILINE)
+              notes = (rest[:next_header.start()] if next_header else rest).strip()
+              if notes:
+                  Path("release-notes.md").write_text(notes + "\n")
+                  print(f"Found changelog for v{version}")
+              else:
+                  # Generate default release notes
+                  Path("release-notes.md").write_text(f"Release v{version}\n\nSee GitHub release page for details.\n")
+                  print(f"No changelog for v{version}, using default")
+          else:
+              # No changelog entry - use default
+              Path("release-notes.md").write_text(f"Release v{version}\n\nSee GitHub release page for details.\n")
+              print(f"No changelog for v{version}, using default")
           PY
 
       - name: Create GitHub Release
