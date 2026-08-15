@@ -202,7 +202,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     // LiteRT-LM on-device LLM inference (Google AI Edge)
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.15.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.16.0")
 
     // ZXing 二维码/条形码扫描
     implementation(libs.zxing)
