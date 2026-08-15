@@ -32,7 +32,6 @@ updates:
           - "io.gitlab.arturbosch.*"
     labels:
       - "dependencies"
-      - "automerge"
     # Allow auto-merge for patch and minor updates
     allow:
       - dependency-type: "all"
