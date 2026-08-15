@@ -20,6 +20,7 @@ object LlmClientFactory {
             LlmProvider.OPENAI -> OpenAiLlmClient(config, httpClientBuilder)
             LlmProvider.ANTHROPIC -> AnthropicLlmClient(config, httpClientBuilder)
             LlmProvider.LOCAL -> LocalLlmClient(config)
+            LlmProvider.OMNIROUTE -> OmniRouteLlmClient(config, httpClientBuilder)
         }
     }
 }

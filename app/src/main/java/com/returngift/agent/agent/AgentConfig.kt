@@ -3,7 +3,7 @@
 
 package com.returngift.agent.agent
 
-enum class LlmProvider { OPENAI, ANTHROPIC, LOCAL }
+enum class LlmProvider { OPENAI, ANTHROPIC, LOCAL, OMNIROUTE }
 
 data class AgentConfig(
     val apiKey: String,

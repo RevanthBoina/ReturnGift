@@ -63,6 +63,29 @@ enum class CloudProvider(
         defaultBaseUrl = "",
         models = emptyList(),
         showBaseUrl = true
+    ),
+    OMNIROUTE(
+        displayName = "OmniRoute",
+        defaultBaseUrl = "http://localhost:20128/v1",
+        models = listOf(
+            // Auto mode - OmniRoute selects the best model
+            CloudModel("auto", "Auto (Best Available)", 0.0, 0.0, ModelTier.SMART, 200_000, recommended = true),
+            // Popular providers accessible via OmniRoute
+            CloudModel("anthropic/claude-opus-4-5", "Claude Opus 4.5", 15.00, 75.00, ModelTier.PRO, 200_000),
+            CloudModel("anthropic/claude-sonnet-4-5", "Claude Sonnet 4.5", 3.00, 15.00, ModelTier.SMART, 200_000),
+            CloudModel("anthropic/claude-haiku-4-5", "Claude Haiku 4.5", 0.80, 4.00, ModelTier.FAST, 200_000),
+            CloudModel("openai/gpt-4o", "GPT-4o", 2.50, 10.00, ModelTier.SMART, 128_000),
+            CloudModel("openai/gpt-4o-mini", "GPT-4o Mini", 0.15, 0.60, ModelTier.FAST, 128_000),
+            CloudModel("google/gemini-2.5-pro", "Gemini 2.5 Pro", 1.25, 10.00, ModelTier.PRO, 1_000_000),
+            CloudModel("google/gemini-2.5-flash", "Gemini 2.5 Flash", 0.15, 0.60, ModelTier.FAST, 1_000_000),
+            CloudModel("groq/llama-3.1-70b", "Groq Llama 3.1 70B", 0.00, 0.00, ModelTier.SMART, 128_000),
+            CloudModel("groq/mixtral-8x7b", "Groq Mixtral 8x7B", 0.00, 0.00, ModelTier.FAST, 32_000),
+            CloudModel("ollama/llama3.1:70b", "Ollama Llama 3.1 70B", 0.00, 0.00, ModelTier.SMART, 128_000),
+            // Free providers
+            CloudModel("kiro/gpt-4o-chat", "Kiro GPT-4o (Free)", 0.00, 0.00, ModelTier.SMART, 128_000),
+            CloudModel("pollinations/ai/chat", "Pollinations AI (Free)", 0.00, 0.00, ModelTier.FAST, 16_384),
+        ),
+        showBaseUrl = true
     );
 
     companion object {
