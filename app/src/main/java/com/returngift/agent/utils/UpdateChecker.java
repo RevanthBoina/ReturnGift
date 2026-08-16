@@ -25,7 +25,7 @@ import java.util.concurrent.Executors;
 public class UpdateChecker {
 
     private static final String TAG = "UpdateChecker";
-    private static final String GITHUB_API = "https://api.github.com/repos/returngift/returngift/releases/latest";
+    private static final String GITHUB_API = "https://api.github.com/repos/RevanthBoina/ReturnGift/releases/latest";
     private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // Once per day
 
     public static void checkForUpdate(Activity activity) {
@@ -47,6 +47,7 @@ public class UpdateChecker {
 
                 HttpURLConnection conn = (HttpURLConnection) new URL(GITHUB_API).openConnection();
                 conn.setRequestProperty("Accept", "application/vnd.github.v3+json");
+                conn.setRequestProperty("User-Agent", "ReturnGift-App-Updater");
                 conn.setConnectTimeout(5000);
                 conn.setReadTimeout(5000);
 
@@ -63,7 +64,31 @@ public class UpdateChecker {
 
                 JSONObject release = new JSONObject(sb.toString());
                 String latestTag = release.getString("tag_name").replaceFirst("^v", "").replaceFirst("-.*", "");
+                // Prefer a direct APK asset download URL so "Download" installs straight away;
+                // fall back to the release HTML page if no asset is found.
                 String downloadUrl = release.getString("html_url");
+                try {
+                    if (release.has("assets")) {
+                        org.json.JSONArray assets = release.getJSONArray("assets");
+                        String bestApk = null;
+                        for (int i = 0; i < assets.length(); i++) {
+                            JSONObject asset = assets.getJSONObject(i);
+                            String name = asset.optString("name", "");
+                            String browserUrl = asset.optString("browser_download_url", "");
+                            // Prefer the stable canonical name, else any APK asset.
+                            if (name.equals("ReturnGift-release.apk") || name.equals("ReturnGift.apk")) {
+                                bestApk = browserUrl;
+                                break;
+                            }
+                            if (bestApk == null && name.endsWith(".apk")) {
+                                bestApk = browserUrl;
+                            }
+                        }
+                        if (bestApk != null) downloadUrl = bestApk;
+                    }
+                } catch (Exception assetEx) {
+                    XLog.w(TAG, "Asset lookup failed, using release page URL", assetEx);
+                }
 
                 XLog.i(TAG, "Current: " + currentVersion + ", Latest: " + latestTag);
 
@@ -113,7 +138,23 @@ public class UpdateChecker {
                     .setTitle("Update Available")
                     .setMessage(message.toString())
                     .setPositiveButton("Download", (d, w) -> {
-                        activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                        // Open with the package-installer MIME type when it's a direct APK URL
+                        // so Android offers to install it; otherwise fall back to the browser
+                        // (release page) so the user can pick the asset manually.
+                        try {
+                            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                            if (url.endsWith(".apk")) {
+                                intent.setType("application/vnd.android.package-archive");
+                                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            }
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            activity.startActivity(intent);
+                        } catch (Exception viewEx) {
+                            XLog.w(TAG, "Failed to open update URL, falling back to browser", viewEx);
+                            Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            activity.startActivity(fallback);
+                        }
                     })
                     .setNegativeButton("Later", null)
                     .show();

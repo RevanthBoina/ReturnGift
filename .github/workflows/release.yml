@@ -66,12 +66,30 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
+      - name: Derive APK version from tag
+        id: ver
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Tag form: v1.1.0 or v1.1.0-20260816...
+          base="${TAG#v}"            # strip leading v
+          semver="${base%%-*}"        # strip -suffix -> 1.1.0
+          # versionCode = major*10000 + minor*100 + patch (monotonic, fits in int)
+          IFS='.' read -r major minor patch <<< "$semver"
+          major=${major:-0}; minor=${minor:-0}; patch=${patch:-0}
+          code=$(( major*10000 + minor*100 + patch ))
+          echo "version_name=$semver" >> "$GITHUB_OUTPUT"
+          echo "version_code=$code" >> "$GITHUB_OUTPUT"
+          echo "Derived from $TAG -> versionName=$semver versionCode=$code"
+
       - name: Prepare release signing
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RETURNGIFT_VERSION_NAME: ${{ steps.ver.outputs.version_name }}
+          RETURNGIFT_VERSION_CODE: ${{ steps.ver.outputs.version_code }}
         run: |
           missing=0
           for var in ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
@@ -93,23 +111,30 @@ jobs:
           KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
           KEY_ALIAS=$ANDROID_KEY_ALIAS
           KEY_PASSWORD=$ANDROID_KEY_PASSWORD
+          RETURNGIFT_VERSION_NAME=$RETURNGIFT_VERSION_NAME
+          RETURNGIFT_VERSION_CODE=$RETURNGIFT_VERSION_CODE
           EOF
 
       - name: Build signed release APK
+        env:
+          RETURNGIFT_VERSION_NAME: ${{ steps.ver.outputs.version_name }}
+          RETURNGIFT_VERSION_CODE: ${{ steps.ver.outputs.version_code }}
         run: ./gradlew assembleRelease
 
       - name: Generate release checksums and rename APK
         run: |
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" ! -name "ReturnGift*.apk" | head -1)
           if [ -z "$APK_PATH" ]; then
             echo "::error::No APK found in app/build/outputs/apk/release/"
             exit 1
           fi
-          # Copy to ReturnGift.apk for consistent download link
-          cp "$APK_PATH" app/build/outputs/apk/release/ReturnGift.apk
-          # Generate checksums for both files
-          sha256sum app/build/outputs/apk/release/ReturnGift.apk > app/build/outputs/apk/release/SHA256SUMS.txt
-          echo "Built APK: $(ls -la app/build/outputs/apk/release/ReturnGift.apk)"
+          OUT=app/build/outputs/apk/release
+          # Publish under the canonical name used by the README download badge and the
+          # in-app UpdateChecker so /latest/download/ReturnGift-release.apk always resolves.
+          cp "$APK_PATH" "$OUT/ReturnGift-release.apk"
+          cp "$APK_PATH" "$OUT/ReturnGift.apk"
+          sha256sum "$OUT/ReturnGift-release.apk" "$OUT/ReturnGift.apk" > "$OUT/SHA256SUMS.txt"
+          echo "Built APK: $(ls -la "$OUT"/ReturnGift-release.apk)"
 
       - name: Extract release notes from README
         env:
@@ -121,27 +146,29 @@ jobs:
           from pathlib import Path
 
           version = os.environ["VERSION"].removeprefix("v")
+          # Match the semver base (strip any -suffix), e.g. 1.1.0-20260816 -> 1.1.0
+          base = version.split("-")[0]
           text = Path("README.md").read_text()
-          
-          # Try to find changelog entry for this version
-          header = re.compile(rf"^### v{re.escape(version)}\b.*$", re.MULTILINE)
+
+          # Try to find changelog entry for this version (### v1.1.0 ...)
+          header = re.compile(rf"^### v{re.escape(base)}\b.*$", re.MULTILINE)
           match = header.search(text)
-          
+
           if match:
               rest = text[match.end():]
               next_header = re.search(r"^### v", rest, re.MULTILINE)
               notes = (rest[:next_header.start()] if next_header else rest).strip()
               if notes:
                   Path("release-notes.md").write_text(notes + "\n")
-                  print(f"Found changelog for v{version}")
+                  print(f"Found changelog for v{base}")
               else:
                   # Generate default release notes
                   Path("release-notes.md").write_text(f"Release v{version}\n\nSee GitHub release page for details.\n")
-                  print(f"No changelog for v{version}, using default")
+                  print(f"No changelog body for v{base}, using default")
           else:
               # No changelog entry - use default
               Path("release-notes.md").write_text(f"Release v{version}\n\nSee GitHub release page for details.\n")
-              print(f"No changelog for v{version}, using default")
+              print(f"No changelog for v{base}, using default")
           PY
 
       - name: Create GitHub Release

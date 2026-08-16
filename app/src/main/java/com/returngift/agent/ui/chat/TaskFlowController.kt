@@ -16,10 +16,12 @@ import com.returngift.agent.AppCapabilityCoordinator
 import com.returngift.agent.AppViewModel
 import com.returngift.agent.ServiceBindingState
 import com.returngift.agent.TaskEvent
+import com.returngift.agent.channel.Channel
 import com.returngift.agent.agent.DirectDeviceDataGuard
 import com.returngift.agent.agent.PipelineRouter
 import com.returngift.agent.agent.TaskPromptEnvelope
 import com.returngift.agent.agent.llm.ModelConfigRepository
+import com.returngift.agent.floating.FloatingCircleManager
 import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.service.ForegroundService
 import com.returngift.agent.service.AutoReplyManager
@@ -185,12 +187,52 @@ class TaskFlowController(
                     appViewModel.startTask(text, taskId, agentPromptOverride = agentPromptOverride) { event ->
                         activity.runOnUiThread { handleTaskEvent(event) }
                     }
+                    // Move ReturnGift to the background once a device-automation task starts
+                    // so the agent loop observes the target app's screen (via Accessibility's
+                    // active window) instead of its own chat UI. The floating pill keeps the
+                    // user informed and offers a way back / stop.
+                    if (isDeviceAutomationTask(text)) {
+                        minimizeToBackground(text)
+                    }
                 } catch (e: Exception) {
                     XLog.e(TAG, "sendTask failed: ${e.message}", e)
                     addSystem("Error: ${e.message}")
                     cleanupAfterTask()
                 }
             }
+        }
+    }
+
+    /**
+     * Tasks that drive another app's UI need ReturnGift out of the foreground so the
+     * AccessibilityService's active window is the target app, not this chat screen.
+     * Pure info/device-data queries and chats keep the chat UI visible.
+     */
+    private fun isDeviceAutomationTask(text: String): Boolean {
+        val p = text.lowercase()
+        val automationKeywords = listOf(
+            "open ", "launch ", "tap ", "click ", "type ", "send ", "search ",
+            "play ", "install ", "go to ", "navigate ", "turn on ", "turn off ",
+            "close ", "swipe ", "scroll ", "compose ", "find ", "call ", "dial ",
+            "post ", "share ", "set an alarm", "set a reminder", "message "
+        )
+        if (p.contains("monitor ")) return false
+        if (automationKeywords.any { p.contains(it) }) return true
+        return false
+    }
+
+    private fun minimizeToBackground(taskText: String) {
+        try {
+            FloatingCircleManager.ensureShowing()
+            FloatingCircleManager.showTaskNotify(taskText, Channel.LOCAL)
+            // moveTaskToBack requires a non-finishing activity; falls back silently if it fails.
+            val moved = activity.moveTaskToBack(true)
+            XLog.i(TAG, "minimizeToBackground: moveTaskToBack=$moved (task started in background)")
+            if (!moved) {
+                XLog.w(TAG, "minimizeToBackground: moveTaskToBack returned false; task still running")
+            }
+        } catch (e: Exception) {
+            XLog.e(TAG, "minimizeToBackground failed", e)
         }
     }
 

@@ -730,6 +730,18 @@ When in doubt, rerun the smaller bundle first, then expand only if something dri
 - [ ] **F4. Floating button stop**: tap floating button during task → task cancels
 - [ ] **F5. Second task works**: complete task 1 → start task 2 → floating button, top bar, stop button all work
 - [ ] **F6. No stuck typing indicator**: after task completes → "..." is replaced by answer or removed
+- [ ] **F7. Device-automation task minimizes ReturnGift** `[LOGCAT-DEBUG]`: send a task that opens another app (e.g. "Open WhatsApp") → ReturnGift chat moves to background (`TaskFlowController: minimizeToBackground: moveTaskToBack=true` in logcat) → floating pill visible → agent's first `get_screen_info` after `open_app` returns the TARGET app's tree, NOT ReturnGift's own chat UI
+- [ ] **F8. Info/chat tasks stay foreground**: send a pure chat or device-data query (e.g. "What's my battery level?") → ReturnGift stays foreground (no `moveTaskToBack` log) → answer renders in chat
+- [ ] **F9. Auto-return after background task**: after F7 task completes → ReturnGift chat auto-returns to foreground with the result bubble (`onComplete: auto-returning to ReturnGift chatroom` in logcat)
+- [ ] **F10. Title reads ReturnGift** `[RELEASE-OK]`: chat homepage TopAppBar shows "Return**Gift**" (Gift in accent color), no "PokeClaw" anywhere on screen
+
+## U. In-App Update
+
+- [ ] **U1. Update dialog appears for older builds** `[RELEASE-OK]`: install a release APK whose `versionName` < latest GitHub release tag (e.g. install v1.0.0 while v1.1.0 is published)  ->  on launch (after the 24h cooldown, or after clearing `last_update_check`) an "Update Available" dialog shows with the remote version and a Download button (`UpdateChecker: Current: 1.0.0, Latest: 1.1.0` in logcat)
+- [ ] **U2. No update dialog when already latest**: install the latest release APK  ->  no update dialog (remote tag semver == local versionName)
+- [ ] **U3. Download opens installer**: tap Download on the update dialog  ->  Android package installer opens with the `ReturnGift-release.apk` asset (direct install), not just the browser release page
+- [ ] **U4. Update installs over existing**: the new APK has a higher `versionCode` and the same signing key  ->  "Update app?" install succeeds without uninstalling first
+- [ ] **U5. API endpoint correct** `[LOGCAT-DEBUG]`: logcat shows no GitHub API 404/403; `User-Agent: ReturnGift-App-Updater` is sent
 
 ## G. Empty State (v9 design)
 
@@ -1239,6 +1251,29 @@ adb shell run-as com.returngift.agent strings /data/data/com.returngift.agent/fi
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-16 — Background task execution + homepage title fix
+
+Fix for reported issue: "When I give a task to open an app and perform anything, it opens the app then it checks the screen by coming back to the ReturnGift application itself. So the AI always gets the screen of ReturnGift."
+
+Root cause: when a device-automation task started, ReturnGift's chat Activity stayed in the foreground. The AccessibilityService's `getRootInActiveWindow()` therefore returned ReturnGift's own chat UI after `open_app`, so the agent observed ReturnGift instead of the target app.
+
+Change: `TaskFlowController.sendTask` now calls `moveTaskToBack(true)` + shows the floating pill for device-automation tasks (detected by `isDeviceAutomationTask`). Pure chat / device-data queries stay foreground. Auto-return to chat on completion was already wired (`autoReturnToChat` for `Channel.LOCAL`).
+
+Also: replaced hardcoded `"Poke"`+`"Claw"` homepage title in `ChatScreen.ChatTopBar` with `"Return"`+`"Gift"` (accent on "Gift").
+
+Tests added: F7, F8, F9, F10. Not yet run — pending debug APK build on a device with Android SDK (not available in this sandbox).
+
+```
+[2026-08-16] [PENDING]  F7-F10  Code change landed; runtime QA pending device build. See F7 (minimize + target-screen observed), F8 (info tasks stay fg), F9 (auto-return), F10 (title = ReturnGift).
+[2026-08-16] [PENDING]  U1-U5   In-app update mechanism fixed + release workflow version injection. Runtime QA pending device build.
+```
+
+### 2026-08-16 � In-app update + release versioning fixes
+
+The in-app "Update Available" dialog never appeared because `UpdateChecker.GITHUB_API` pointed at the wrong repo (`returngift/returngift`) and the request omitted the `User-Agent` header (GitHub API returns 403 without one). Fixed endpoint to `RevanthBoina/ReturnGift`, added `User-Agent: ReturnGift-App-Updater`, resolve the direct APK asset `browser_download_url` (prefers `ReturnGift-release.apk`), and open it with `application/vnd.android.package-archive` so tapping Download launches the installer.
+
+The release workflow (`release.yml`) did not set `RETURNGIFT_VERSION_NAME`/`RETURNGIFT_VERSION_CODE`, so every APK reported `1.0.0` / code 1 � meaning updates could never install over each other (versionCode didn't increase) and the "newer version" check was unreliable. Added a "Derive APK version from tag" step that computes `versionName` = tag semver (e.g. `1.1.0`) and `versionCode` = `major*10000+minor*100+patch`, injected into both env and `local.properties` for the gradle build. Also publishes the canonical `ReturnGift-release.apk` asset name (matches README download badge + UpdateChecker) and fixed the release-notes regex to match the semver base of timestamped tags.
 
 ### 2026-05-28 — v0.7.1-debug W7 PromptUtils runtime verification (Pixel 8 Pro, Android 16)
 
