@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # 通用配置
 # ============================================================
 -keepattributes SourceFile,LineNumberTable
@@ -238,11 +238,14 @@
 -dontwarn kotlin.**
 
 # ============================================================
-# AndroidX
+# AndroidX & Jetpack Compose
+# Note: AndroidX libraries supply consumer ProGuard rules automatically.
+# Avoid blanket -keep class androidx.** to allow R8 dead-code and unused icon elimination.
 # ============================================================
 -dontwarn androidx.**
--keep class androidx.** { *; }
--keep interface androidx.** { *; }
+-keepclassmembers class androidx.lifecycle.ViewModel {
+    <init>(...);
+}
 
 # ============================================================
 # glide-transformations (wasabeef)

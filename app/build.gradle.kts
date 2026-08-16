@@ -64,8 +64,8 @@ android {
         applicationId = "com.returngift.agent"
         minSdk = 28
         targetSdk = 36
-        versionCode = readLocalOrEnvInt("RETURNGIFT_VERSION_CODE", 1)
-        versionName = readLocalOrEnvString("RETURNGIFT_VERSION_NAME", "1.0.0")
+        versionCode = readLocalOrEnvInt("RETURNGIFT_VERSION_CODE", 10500)
+        versionName = readLocalOrEnvString("RETURNGIFT_VERSION_NAME", "1.5.0")
         buildConfigField("String", "VERSION_INFO", getVersionGit())
         buildConfigField("String", "APP_ORIGIN", "\"ReturnGift — private internal build\"")
         buildConfigField("String", "BUILD_FINGERPRINT", "\"${getBuildFingerprint()}\"")
@@ -127,6 +127,11 @@ android {
                 "META-INF/LICENSE.txt",
                 "META-INF/NOTICE",
                 "META-INF/NOTICE.txt",
+                "META-INF/INDEX.LIST",
+                "META-INF/*.kotlin_module",
+                "META-INF/io.netty.versions.properties",
+                "**/descriptor.proto",
+                "mozilla/public-suffix-list.txt",
             )
         }
     }

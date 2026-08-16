@@ -207,6 +207,11 @@ flowchart LR
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v1.5.0
+- **R8 Code & DEX Shrinking**: Refined ProGuard rules to allow R8 aggressive dead-code and unused icon elimination across AndroidX / Compose, significantly reducing DEX method count and app footprint.
+- **Packaging Resource Optimization**: Stripped redundant metadata files, descriptor proto models, and unneeded Kotlin module manifests to optimize APK archive efficiency.
+- **Enhanced Runtime Performance**: Reduced initial ClassLoader overhead and runtime memory pressure for faster startup and smoother chat interactions.
+
 ### v1.1.0
 - **Background task execution**: device-automation tasks now minimize ReturnGift on start so the agent observes the target app's screen (not its own chat UI) via the Accessibility active window
 - **Homepage title**: replaced the leftover "PokeClaw" toolbar title with "ReturnGift"
