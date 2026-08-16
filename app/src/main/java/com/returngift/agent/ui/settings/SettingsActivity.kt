@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.ui.settings
@@ -513,6 +513,15 @@ class SettingsActivity : BaseActivity() {
         }
 
         aboutGroup.addMenuItem(
+            leadingIcon = android.R.drawable.ic_popup_sync,
+            title = "Check for Updates",
+            onClick = { checkAndShowUpdateDialog() },
+            showDivider = true
+        ).apply {
+            setTrailingText("Update")
+        }
+
+        aboutGroup.addMenuItem(
             leadingIcon = android.R.drawable.ic_menu_send,
             title = "Report a Bug",
             onClick = { reportBug() },
@@ -534,7 +543,7 @@ class SettingsActivity : BaseActivity() {
             leadingIcon = android.R.drawable.ic_menu_share,
             title = "GitHub",
             onClick = {
-                startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/private/returngift".toUri()))
+                startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/RevanthBoina/ReturnGift".toUri()))
             },
             showDivider = true
         ).apply {
@@ -545,11 +554,11 @@ class SettingsActivity : BaseActivity() {
             leadingIcon = android.R.drawable.ic_menu_compass,
             title = "Built by",
             onClick = {
-                startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/ithiria894".toUri()))
+                startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/ProxyStar4u".toUri()))
             },
             showDivider = false
         ).apply {
-            setTrailingText("ithiria894")
+            setTrailingText("ProxyStar4u")
         }
     }
 
@@ -850,5 +859,108 @@ class SettingsActivity : BaseActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun checkAndShowUpdateDialog() {
+        val checkingDialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Checking for Updates")
+            .setMessage("Connecting to release server...")
+            .setCancelable(false)
+            .create()
+
+        checkingDialog.show()
+
+        com.returngift.agent.utils.AppUpdateManager.checkForUpdates(force = true) { state ->
+            checkingDialog.dismiss()
+            when (state) {
+                is com.returngift.agent.utils.AppUpdateManager.UpdateState.UpdateAvailable -> {
+                    showUpdateAvailableDialog(state.releaseInfo)
+                }
+                is com.returngift.agent.utils.AppUpdateManager.UpdateState.UpToDate -> {
+                    com.returngift.agent.widget.AlertDialog.show(
+                        context = this,
+                        title = "Up to Date",
+                        message = "You are running the latest version of ReturnGift (v${state.currentVersion}).",
+                        actionTitle = "OK",
+                        onAction = { }
+                    )
+                }
+                is com.returngift.agent.utils.AppUpdateManager.UpdateState.Failed -> {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("Update Check Failed")
+                        .setMessage(state.errorMessage)
+                        .setPositiveButton("Retry") { _, _ -> checkAndShowUpdateDialog() }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+                else -> {}
+            }
+        }
+    }
+
+    private fun showUpdateAvailableDialog(releaseInfo: com.returngift.agent.utils.AppUpdateManager.ReleaseInfo) {
+        val mbSize = if (releaseInfo.apkSizeBytes > 0) {
+            String.format("%.1f MB", releaseInfo.apkSizeBytes / (1024.0 * 1024.0))
+        } else "Universal APK"
+
+        val message = buildString {
+            append("Version: v").append(releaseInfo.versionName).append(" (").append(mbSize).append(")\n\n")
+            append("Release Notes:\n").append(releaseInfo.releaseNotes.take(600))
+            if (releaseInfo.releaseNotes.length > 600) append("...")
+            append("\n\nWould you like to download and install this update now?")
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Update Available: v${releaseInfo.versionName}")
+            .setMessage(message)
+            .setPositiveButton("Download & Install") { _, _ ->
+                startDownloadAndInstallFlow(releaseInfo)
+            }
+            .setNegativeButton("Later", null)
+            .show()
+    }
+
+    private fun startDownloadAndInstallFlow(releaseInfo: com.returngift.agent.utils.AppUpdateManager.ReleaseInfo) {
+        val progressDialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Downloading Update")
+            .setMessage("Initializing download...")
+            .setCancelable(false)
+            .setNegativeButton("Cancel") { _, _ ->
+                com.returngift.agent.utils.AppUpdateManager.cancelDownload()
+            }
+            .create()
+
+        progressDialog.show()
+
+        com.returngift.agent.utils.AppUpdateManager.startDownload(releaseInfo) { state ->
+            when (state) {
+                is com.returngift.agent.utils.AppUpdateManager.UpdateState.Downloading -> {
+                    val currentMb = String.format("%.1f", state.downloadedBytes / (1024.0 * 1024.0))
+                    val totalMb = if (state.totalBytes > 0) {
+                        String.format("%.1f MB", state.totalBytes / (1024.0 * 1024.0))
+                    } else "Unknown"
+                    progressDialog.setMessage("Downloading: ${state.progressPercent}%\n($currentMb MB / $totalMb)")
+                }
+                is com.returngift.agent.utils.AppUpdateManager.UpdateState.Verifying -> {
+                    progressDialog.setMessage("Verifying package integrity & SHA-256...")
+                }
+                is com.returngift.agent.utils.AppUpdateManager.UpdateState.ReadyToInstall -> {
+                    progressDialog.dismiss()
+                    com.returngift.agent.utils.AppUpdateManager.installApk(this, state.apkFile)
+                }
+                is com.returngift.agent.utils.AppUpdateManager.UpdateState.Failed -> {
+                    progressDialog.dismiss()
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("Update Failed")
+                        .setMessage("${state.errorMessage}\nPhase: ${state.failedPhase}")
+                        .setPositiveButton("Retry") { _, _ ->
+                            startDownloadAndInstallFlow(releaseInfo)
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+                else -> {}
+            }
+        }
     }
 }

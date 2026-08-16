@@ -226,8 +226,9 @@ object RuntimeLearning {
     
     fun save() {
         try {
-            val traceDir = File(android.os.Environment.getExternalStorageDirectory(), TRACE_DIR)
-            val playbookDir = File(android.os.Environment.getExternalStorageDirectory(), PLAYBOOK_DIR)
+            val baseDir = com.returngift.agent.ClawApplication.instance.filesDir
+            val traceDir = File(baseDir, TRACE_DIR)
+            val playbookDir = File(baseDir, PLAYBOOK_DIR)
             traceDir.mkdirs()
             playbookDir.mkdirs()
             
@@ -249,8 +250,9 @@ object RuntimeLearning {
     
     fun load() {
         try {
-            val traceDir = File(android.os.Environment.getExternalStorageDirectory(), TRACE_DIR)
-            val playbookDir = File(android.os.Environment.getExternalStorageDirectory(), PLAYBOOK_DIR)
+            val baseDir = com.returngift.agent.ClawApplication.instance.filesDir
+            val traceDir = File(baseDir, TRACE_DIR)
+            val playbookDir = File(baseDir, PLAYBOOK_DIR)
             if (!traceDir.exists() || !playbookDir.exists()) return
             
             traceDir.listFiles()?.filter { it.name.endsWith("_traces.json") }?.forEach { file ->

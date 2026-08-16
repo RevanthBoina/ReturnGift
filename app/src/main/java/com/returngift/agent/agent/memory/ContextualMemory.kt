@@ -273,8 +273,7 @@ object ContextualMemory {
     
     fun save() {
         try {
-            // TODO: Deprecated API usage. Replace with context-aware path (e.g. context.filesDir).
-            val file = File(android.os.Environment.getExternalStorageDirectory(), MEMORY_FILE)
+            val file = File(com.returngift.agent.ClawApplication.instance.filesDir, MEMORY_FILE)
             
             val json = JSONObject()
             val factsArray = JSONArray()
@@ -313,8 +312,7 @@ object ContextualMemory {
     
     fun load() {
         try {
-            // TODO: Deprecated API usage. Replace with context-aware path (e.g. context.filesDir).
-            val file = File(android.os.Environment.getExternalStorageDirectory(), MEMORY_FILE)
+            val file = File(com.returngift.agent.ClawApplication.instance.filesDir, MEMORY_FILE)
             if (!file.exists()) return
             
             val json = JSONObject(file.readText())

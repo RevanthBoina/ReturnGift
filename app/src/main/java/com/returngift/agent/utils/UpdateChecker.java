@@ -4,170 +4,74 @@
 package com.returngift.agent.utils;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.pm.ApplicationInfo;
-import android.content.Intent;
-import android.net.Uri;
-
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.concurrent.Executors;
 
 /**
  * Checks GitHub Releases for a newer version of ReturnGift.
- * Call checkForUpdate() once in onCreate — it runs on a background thread,
- * shows a dialog on the main thread if a newer version exists.
+ * Delegates to AppUpdateManager for verified download, SHA-256 validation,
+ * and package installer dispatch.
  */
 public class UpdateChecker {
 
-    private static final String TAG = "UpdateChecker";
-    private static final String GITHUB_API = "https://api.github.com/repos/RevanthBoina/ReturnGift/releases/latest";
-    private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // Once per day
-    private static final java.util.concurrent.ExecutorService executor = Executors.newSingleThreadExecutor();
-
     public static void checkForUpdate(Activity activity) {
-        boolean debugBuild = (activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
-        XLog.d(TAG, "Checking for updates on " + (debugBuild ? "debug" : "release") + " build");
-
-        // Only check once per day
-        long lastCheck = com.returngift.agent.utils.KVUtils.INSTANCE.getLong("last_update_check", 0);
-        long now = System.currentTimeMillis();
-        if (now - lastCheck < CHECK_INTERVAL_MS) {
-            XLog.d(TAG, "Skipping update check, last check was " + ((now - lastCheck) / 1000 / 60) + " min ago");
-            return;
-        }
-
-        executor.execute(() -> {
-            try {
-                String currentVersion = activity.getPackageManager()
-                        .getPackageInfo(activity.getPackageName(), 0).versionName;
-
-                HttpURLConnection conn = (HttpURLConnection) new URL(GITHUB_API).openConnection();
-                conn.setRequestProperty("Accept", "application/vnd.github.v3+json");
-                conn.setRequestProperty("User-Agent", "ReturnGift-App-Updater");
-                conn.setConnectTimeout(5000);
-                conn.setReadTimeout(5000);
-
-                if (conn.getResponseCode() != 200) {
-                    XLog.w(TAG, "GitHub API returned " + conn.getResponseCode());
-                    return;
-                }
-
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) sb.append(line);
-                reader.close();
-
-                JSONObject release = new JSONObject(sb.toString());
-                String latestTag = release.getString("tag_name").replaceFirst("^v", "").replaceFirst("-.*", "");
-                String downloadUrl = resolveDownloadUrl(release);
-
-                XLog.i(TAG, "Current: " + currentVersion + ", Latest: " + latestTag);
-
-                // Save check time
-                com.returngift.agent.utils.KVUtils.INSTANCE.putLong("last_update_check", now);
-
-                if (isNewer(latestTag, currentVersion)) {
-                    activity.runOnUiThread(() -> showUpdateDialog(activity, latestTag, downloadUrl, debugBuild));
-                }
-
-            } catch (Exception e) {
-                XLog.w(TAG, "Update check failed", e);
+        AppUpdateManager.INSTANCE.checkForUpdates(false, state -> {
+            if (state instanceof AppUpdateManager.UpdateState.UpdateAvailable) {
+                AppUpdateManager.ReleaseInfo releaseInfo = 
+                        ((AppUpdateManager.UpdateState.UpdateAvailable) state).getReleaseInfo();
+                activity.runOnUiThread(() -> showUpdateDialog(activity, releaseInfo));
             }
+            return null;
         });
     }
 
-    /**
-     * Resolve the best download URL for a release: prefer a direct APK asset
-     * (canonical ReturnGift-release.apk, else any .apk), falling back to the
-     * release's HTML page so the user can pick an asset manually.
-     */
-    private static String resolveDownloadUrl(JSONObject release) {
-        String downloadUrl = release.optString("html_url", "");
+    private static void showUpdateDialog(Activity activity, AppUpdateManager.ReleaseInfo info) {
         try {
-            if (release.has("assets")) {
-                org.json.JSONArray assets = release.getJSONArray("assets");
-                String bestApk = null;
-                for (int i = 0; i < assets.length(); i++) {
-                    JSONObject asset = assets.getJSONObject(i);
-                    String name = asset.optString("name", "");
-                    String browserUrl = asset.optString("browser_download_url", "");
-                    if (name.equals("ReturnGift-release.apk") || name.equals("ReturnGift.apk")) {
-                        bestApk = browserUrl;
-                        break;
-                    }
-                    if (bestApk == null && name.endsWith(".apk")) {
-                        bestApk = browserUrl;
-                    }
-                }
-                if (bestApk != null) downloadUrl = bestApk;
-            }
-        } catch (Exception assetEx) {
-            XLog.w(TAG, "Asset lookup failed, using release page URL", assetEx);
-        }
-        return downloadUrl;
-    }
+            android.app.AlertDialog progressDialog = new android.app.AlertDialog.Builder(activity)
+                    .setTitle("Downloading Update...")
+                    .setMessage("Starting download...")
+                    .setCancelable(false)
+                    .setNegativeButton("Cancel", (d, w) -> AppUpdateManager.INSTANCE.cancelDownload())
+                    .create();
 
-    /**
-     * Compare semantic versions. Returns true if remote > local.
-     */
-    private static boolean isNewer(String remote, String local) {
-        try {
-            String[] r = remote.split("\\.");
-            String[] l = local.split("\\.");
-            for (int i = 0; i < Math.max(r.length, l.length); i++) {
-                int rv = i < r.length ? Integer.parseInt(r[i]) : 0;
-                int lv = i < l.length ? Integer.parseInt(l[i]) : 0;
-                if (rv > lv) return true;
-                if (rv < lv) return false;
-            }
-        } catch (NumberFormatException e) {
-            XLog.w(TAG, "Version parse error: remote=" + remote + " local=" + local);
-        }
-        return false;
-    }
-
-    private static void showUpdateDialog(Activity activity, String version, String url, boolean debugBuild) {
-        try {
-            StringBuilder message = new StringBuilder()
-                    .append("ReturnGift v")
-                    .append(version)
-                    .append(" is available. You are running an older version.\n\n")
-                    .append("Would you like to download the update?");
-            if (debugBuild) {
-                message.append("\n\nThis build is debuggable. If Android blocks the install, uninstall the old debug build first, then install the new APK.");
-            }
-            new AlertDialog.Builder(activity)
-                    .setTitle("Update Available")
-                    .setMessage(message.toString())
-                    .setPositiveButton("Download", (d, w) -> {
-                        // Open with the package-installer MIME type when it's a direct APK URL
-                        // so Android offers to install it; otherwise fall back to the browser
-                        // (release page) so the user can pick the asset manually.
-                        try {
-                            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                            if (url.endsWith(".apk")) {
-                                intent.setType("application/vnd.android.package-archive");
-                                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            new android.app.AlertDialog.Builder(activity)
+                    .setTitle("Update Available: v" + info.getVersionName())
+                    .setMessage("A new version of ReturnGift is available.\n\n" +
+                            info.getReleaseNotes() + "\n\n" +
+                            "Would you like to install it now?")
+                    .setPositiveButton("Update Now", (d, w) -> {
+                        progressDialog.show();
+                        AppUpdateManager.INSTANCE.startDownload(info, downloadState -> {
+                            if (downloadState instanceof AppUpdateManager.UpdateState.Downloading) {
+                                AppUpdateManager.UpdateState.Downloading ds = 
+                                        (AppUpdateManager.UpdateState.Downloading) downloadState;
+                                long mbDownloaded = ds.getDownloadedBytes() / (1024 * 1024);
+                                long mbTotal = ds.getTotalBytes() / (1024 * 1024);
+                                progressDialog.setMessage("Downloading: " + ds.getProgressPercent() + "% (" + 
+                                        mbDownloaded + " MB / " + (mbTotal > 0 ? mbTotal : "?") + " MB)");
+                            } else if (downloadState instanceof AppUpdateManager.UpdateState.Verifying) {
+                                progressDialog.setMessage("Verifying APK integrity & SHA256...");
+                            } else if (downloadState instanceof AppUpdateManager.UpdateState.ReadyToInstall) {
+                                progressDialog.dismiss();
+                                AppUpdateManager.UpdateState.ReadyToInstall ready = 
+                                        (AppUpdateManager.UpdateState.ReadyToInstall) downloadState;
+                                AppUpdateManager.INSTANCE.installApk(activity, ready.getApkFile());
+                            } else if (downloadState instanceof AppUpdateManager.UpdateState.Failed) {
+                                progressDialog.dismiss();
+                                AppUpdateManager.UpdateState.Failed f = 
+                                        (AppUpdateManager.UpdateState.Failed) downloadState;
+                                new android.app.AlertDialog.Builder(activity)
+                                        .setTitle("Update Failed")
+                                        .setMessage(f.getErrorMessage())
+                                        .setPositiveButton("Retry", (rd, rw) -> showUpdateDialog(activity, info))
+                                        .setNegativeButton("Cancel", null)
+                                        .show();
                             }
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            activity.startActivity(intent);
-                        } catch (Exception viewEx) {
-                            XLog.w(TAG, "Failed to open update URL, falling back to browser", viewEx);
-                            Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            activity.startActivity(fallback);
-                        }
+                            return null;
+                        });
                     })
                     .setNegativeButton("Later", null)
                     .show();
         } catch (Exception e) {
-            XLog.w(TAG, "Failed to show update dialog", e);
+            XLog.w("UpdateChecker", "Failed to show update dialog", e);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿# OEM Coverage Tiers — What Each QA Path Actually Tests
+# OEM Coverage Tiers — What Each QA Path Actually Tests
 
 > Source of truth for the cross-OEM testing strategy from `STRATEGY.md` §7.
 > Updated 2026-05-26 when the emulator matrix CI started working.
@@ -140,7 +140,7 @@ adb over network without extra setup.
 
 **Limitation vs Firebase Test Lab:** browser-only, manual, no scripted automation. Use it for human-driven repro of OEM-specific issues, not for CI.
 
-**Account-recovery note:** The Samsung account ithiria137 was created fresh on 2026-05-28 to bypass a 2FA lockout on an older `ithiria894` Samsung account (registered phone number is no longer Nicole's). If 137 ever gets locked out the same way, create another fresh Samsung account on a different Google identity rather than fighting Samsung's phone-recovery flow.
+**Account-recovery note:** The Samsung account ithiria137 was created fresh on 2026-05-28 to bypass a 2FA lockout on an older `ProxyStar4u` Samsung account (registered phone number is no longer Nicole's). If 137 ever gets locked out the same way, create another fresh Samsung account on a different Google identity rather than fighting Samsung's phone-recovery flow.
 
 **RTL 2FA setup gotcha:** Samsung Developer Portal enrollment does NOT enable RTL device reservation by itself. The first time you click a device from the catalog, Samsung redirects to a re-OAuth (different `client_id=njoy59b58h`), re-shows US-region terms, then forces a "Add your phone number" 2FA setup screen. The SMS code timer is ~3 min. If you let the code expire and click Send Code again, Samsung rate-limits the account ("Too many verification attempts… try again in a few hours") and the entire RTL flow is unreachable for hours. **Mitigation:** when the SMS arrives, type the code into the verification box and submit IMMEDIATELY — do not pile up exploratory clicks while the timer counts down. If you trip the rate limit, wait several hours before trying again.
 

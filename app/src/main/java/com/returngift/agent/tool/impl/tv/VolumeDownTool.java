@@ -31,6 +31,19 @@ public class VolumeDownTool extends BaseKeyTool {
     }
 
     @Override
+    public ToolResult execute(java.util.Map<String, Object> params) {
+        try {
+            android.media.AudioManager audio = (android.media.AudioManager) ClawApplication.Companion.getInstance()
+                    .getSystemService(android.content.Context.AUDIO_SERVICE);
+            if (audio != null) {
+                audio.adjustVolume(android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI);
+                return ToolResult.success("Decreased volume");
+            }
+        } catch (Exception ignored) {}
+        return super.execute(params);
+    }
+
+    @Override
     protected int getKeyCode() {
         return KeyEvent.KEYCODE_VOLUME_DOWN;
     }
