@@ -64,31 +64,7 @@ public class UpdateChecker {
 
                 JSONObject release = new JSONObject(sb.toString());
                 String latestTag = release.getString("tag_name").replaceFirst("^v", "").replaceFirst("-.*", "");
-                // Prefer a direct APK asset download URL so "Download" installs straight away;
-                // fall back to the release HTML page if no asset is found.
-                String downloadUrl = release.getString("html_url");
-                try {
-                    if (release.has("assets")) {
-                        org.json.JSONArray assets = release.getJSONArray("assets");
-                        String bestApk = null;
-                        for (int i = 0; i < assets.length(); i++) {
-                            JSONObject asset = assets.getJSONObject(i);
-                            String name = asset.optString("name", "");
-                            String browserUrl = asset.optString("browser_download_url", "");
-                            // Prefer the stable canonical name, else any APK asset.
-                            if (name.equals("ReturnGift-release.apk") || name.equals("ReturnGift.apk")) {
-                                bestApk = browserUrl;
-                                break;
-                            }
-                            if (bestApk == null && name.endsWith(".apk")) {
-                                bestApk = browserUrl;
-                            }
-                        }
-                        if (bestApk != null) downloadUrl = bestApk;
-                    }
-                } catch (Exception assetEx) {
-                    XLog.w(TAG, "Asset lookup failed, using release page URL", assetEx);
-                }
+                String downloadUrl = resolveDownloadUrl(release);
 
                 XLog.i(TAG, "Current: " + currentVersion + ", Latest: " + latestTag);
 
@@ -103,6 +79,37 @@ public class UpdateChecker {
                 XLog.w(TAG, "Update check failed", e);
             }
         });
+    }
+
+    /**
+     * Resolve the best download URL for a release: prefer a direct APK asset
+     * (canonical ReturnGift-release.apk, else any .apk), falling back to the
+     * release's HTML page so the user can pick an asset manually.
+     */
+    private static String resolveDownloadUrl(JSONObject release) {
+        String downloadUrl = release.optString("html_url", "");
+        try {
+            if (release.has("assets")) {
+                org.json.JSONArray assets = release.getJSONArray("assets");
+                String bestApk = null;
+                for (int i = 0; i < assets.length(); i++) {
+                    JSONObject asset = assets.getJSONObject(i);
+                    String name = asset.optString("name", "");
+                    String browserUrl = asset.optString("browser_download_url", "");
+                    if (name.equals("ReturnGift-release.apk") || name.equals("ReturnGift.apk")) {
+                        bestApk = browserUrl;
+                        break;
+                    }
+                    if (bestApk == null && name.endsWith(".apk")) {
+                        bestApk = browserUrl;
+                    }
+                }
+                if (bestApk != null) downloadUrl = bestApk;
+            }
+        } catch (Exception assetEx) {
+            XLog.w(TAG, "Asset lookup failed, using release page URL", assetEx);
+        }
+        return downloadUrl;
     }
 
     /**
