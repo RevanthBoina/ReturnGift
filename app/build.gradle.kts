@@ -260,10 +260,19 @@ androidComponents {
         variant.outputs.forEach { output ->
             if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
                 val versionName = android.defaultConfig.versionName ?: "0.0.0"
-                val fileName = if (variant.buildType == "release") {
-                    "ReturnGift-release.apk"
+                val baseName = if (variant.buildType == "release") {
+                    "ReturnGift-release"
                 } else {
-                    "ReturnGift_v${versionName}_${getDateTime()}.apk"
+                    "ReturnGift_v${versionName}_${getDateTime()}"
+                }
+                // Use filter suffix for split APKs, plain name for universal
+                val filterName = output.filters
+                    .firstOrNull { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }
+                    ?.identifier
+                val fileName = if (filterName != null) {
+                    "${baseName}-${filterName}.apk"
+                } else {
+                    "${baseName}.apk"
                 }
                 println("output file name: $fileName")
                 output.outputFileName.set(fileName)
