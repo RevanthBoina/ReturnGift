@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import dev.langchain4j.http.client.HttpClient;
 import dev.langchain4j.http.client.HttpClientBuilder;
 
+import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
 import okhttp3.logging.HttpLoggingInterceptor;
 import okhttp3.Interceptor;
@@ -26,6 +27,13 @@ import okhttp3.MediaType;
 public class OkHttpClientBuilderAdapter implements HttpClientBuilder {
 
     private static final String TAG = "OkHttp";
+
+    private static final OkHttpClient ROOT_CLIENT = new OkHttpClient.Builder()
+            .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .build();
 
     private Duration connectTimeout = Duration.ofSeconds(60);
     private Duration readTimeout = Duration.ofSeconds(300);
@@ -125,7 +133,7 @@ public class OkHttpClientBuilderAdapter implements HttpClientBuilder {
             return response;
         };
 
-        OkHttpClient.Builder builder = new OkHttpClient.Builder()
+        OkHttpClient.Builder builder = ROOT_CLIENT.newBuilder()
                 .connectTimeout(connectTimeout.toMillis(), TimeUnit.MILLISECONDS)
                 .readTimeout(readTimeout.toMillis(), TimeUnit.MILLISECONDS)
                 .writeTimeout(readTimeout.toMillis(), TimeUnit.MILLISECONDS)

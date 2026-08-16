@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent
@@ -13,6 +13,7 @@ import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.utils.AppLogStore
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
+import com.returngift.agent.agent.llm.EngineHolder
 import com.blankj.utilcode.util.NetworkUtils
 
 /**
@@ -100,4 +101,8 @@ class ClawApplication : BaseApp() {
         NetworkUtils.registerNetworkStatusChangedListener(networkListener)
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        EngineHolder.onTrimMemory(level)
+    }
 }

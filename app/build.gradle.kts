@@ -135,6 +135,15 @@ android {
             )
         }
     }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = true
+        }
+    }
 }
 
 // L3 fix: previously, a missing local.properties / env signing config silently produced

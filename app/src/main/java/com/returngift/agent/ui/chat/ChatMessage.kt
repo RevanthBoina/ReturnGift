@@ -1,8 +1,11 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.ui.chat
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class ChatMessage(
     val role: Role,
     val content: String,
@@ -13,6 +16,7 @@ data class ChatMessage(
     enum class Role { USER, ASSISTANT, SYSTEM, TOOL_GROUP }
 }
 
+@Immutable
 data class ToolStep(
     val toolName: String,
     val summary: String,

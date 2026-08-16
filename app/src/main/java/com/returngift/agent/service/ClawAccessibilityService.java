@@ -42,6 +42,11 @@ public class ClawAccessibilityService extends AccessibilityService {
     private static final String TAG = "ClawA11yService";
     private static volatile ClawAccessibilityService instance;
 
+    private volatile boolean isTaskActive = false;
+
+    public void setTaskActive(boolean active) { this.isTaskActive = active; }
+    public boolean isTaskActive() { return isTaskActive; }
+
     public static ClawAccessibilityService getInstance() {
         return instance;
     }
@@ -134,6 +139,7 @@ public class ClawAccessibilityService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (!isTaskActive && event.getEventType() != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) return;
         KVUtils.INSTANCE.noteAccessibilityHeartbeat();
         
         // Forward to screen capture manager for fixture capture

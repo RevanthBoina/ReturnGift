@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent.llm
@@ -7,6 +7,7 @@ import com.returngift.agent.utils.XLog
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import android.content.ComponentCallbacks2
 
 /**
  * Process-wide singleton that keeps a single LiteRT-LM Engine alive across
@@ -122,5 +123,13 @@ object EngineHolder {
     @Synchronized
     fun getBackendLabel(modelPath: String? = null): String? {
         return if (modelPath == null || currentModelPath == modelPath) currentBackendLabel else null
+    }
+
+    @Synchronized
+    fun onTrimMemory(level: Int) {
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            XLog.w(TAG, "onTrimMemory level $level: releasing engine to free memory")
+            close()
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.ui.chat
@@ -514,9 +514,9 @@ private fun ChatTopBar(
                 onDismissRequest = { showModelMenu = false },
             ) {
                 val kvUtils = com.returngift.agent.utils.KVUtils
-                val apiKey = kvUtils.getLlmApiKey()
-                val baseUrl = kvUtils.getLlmBaseUrl()
-                val currentModel = kvUtils.getLlmModelName()
+                val apiKey = remember { kvUtils.getLlmApiKey() }
+                val baseUrl = remember { kvUtils.getLlmBaseUrl() }
+                val currentModel = remember { kvUtils.getLlmModelName() }
 
                 if (selectedTab == "cloud") {
                     // Cloud models: from configured provider
@@ -561,7 +561,7 @@ private fun ChatTopBar(
                     )
                 } else {
                     // Local models: downloaded models
-                    val localPath = kvUtils.getLocalModelPath()
+                    val localPath = remember { kvUtils.getLocalModelPath() }
                     if (localPath.isNotEmpty() && java.io.File(localPath).exists()) {
                         val localName = java.io.File(localPath).nameWithoutExtension
                             .replace("-", " ").replace("_", " ")
@@ -657,8 +657,7 @@ private fun MessageList(
             },
         contentPadding = PaddingValues(vertical = 8.dp),
     ) {
-        items(messages.size) { index ->
-            val message = messages[index]
+        items(items = messages, key = { it.timestamp }) { message ->
             when (message.role) {
                 ChatMessage.Role.USER -> UserBubble(message.content, message.timestamp, colors)
                 ChatMessage.Role.ASSISTANT -> AssistantBubble(message.content, message.timestamp, colors, message.modelName)
@@ -1405,27 +1404,26 @@ private fun QuickTasksPanel(
 ) {
     var expanded by remember { mutableStateOf(true) }
 
-    // Cloud-only tasks at the top (multi-step, Siri/GA can't do these)
     // Cloud-only tasks (multi-step, Siri can't do)
-    val cloudOnlyTasks = listOf(
-        "�� Open Reddit and search for returngift",
+    val cloudOnlyTasks = remember { listOf(
+        "🌐 Open Reddit and search for returngift",
         "🎬 Search YouTube for funny cat fails",
         "📦 Install Telegram from Play Store",
         "🐦 Check what's trending on Twitter and tell me",
         "💬 Check my latest WhatsApp chat and summarize it",
         "📋 Copy the latest email subject and Google it",
         "📧 Write an email saying I'll be late today",
-    )
+    ) }
     // Reasoning tasks (1-2 tool calls + LLM analysis) — impressive, work on both
-    val reasoningTasks = listOf(
+    val reasoningTasks = remember { listOf(
         "📵 Check my notifications — anything important?",
         "📋 Read my clipboard and explain what it says",
         "🧹 Check my storage and apps — what can I delete?",
         "🔔 Read my notifications and summarize",
         "🔋 Check my battery and tell me if I need to charge",
-    )
+    ) }
     // Simple deterministic tasks (1 tool, no reasoning)
-    val deterministicTasks = listOf(
+    val deterministicTasks = remember { listOf(
         "💬 Send hi to Mom on WhatsApp",
         "📱 What apps do I have?",
         "🌡️ How hot is my phone?",
@@ -1434,7 +1432,8 @@ private fun QuickTasksPanel(
         "📞 Call Mom",
         "💾 How much storage do I have?",
         "📲 What Android version am I running?",
-    )
+    ) }
+
     // Cloud: cloud-only → reasoning → deterministic
     // Local: reasoning first (impressive) → deterministic
     val quickTasks = if (isLocalModel) {

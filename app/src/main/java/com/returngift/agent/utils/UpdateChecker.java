@@ -27,6 +27,7 @@ public class UpdateChecker {
     private static final String TAG = "UpdateChecker";
     private static final String GITHUB_API = "https://api.github.com/repos/RevanthBoina/ReturnGift/releases/latest";
     private static final long CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // Once per day
+    private static final java.util.concurrent.ExecutorService executor = Executors.newSingleThreadExecutor();
 
     public static void checkForUpdate(Activity activity) {
         boolean debugBuild = (activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
@@ -40,7 +41,7 @@ public class UpdateChecker {
             return;
         }
 
-        Executors.newSingleThreadExecutor().execute(() -> {
+        executor.execute(() -> {
             try {
                 String currentVersion = activity.getPackageManager()
                         .getPackageInfo(activity.getPackageName(), 0).versionName;

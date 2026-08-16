@@ -1,10 +1,12 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.ui.chat
 
 import android.content.Context
 import com.returngift.agent.utils.KVUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Owns persisted conversation identity and markdown-backed history operations.
@@ -32,64 +34,64 @@ class ConversationStore(
         ?: newConversationId()
         private set
 
-    fun refreshSidebar(): List<ChatHistoryManager.ConversationSummary> {
-        return ChatHistoryManager.listConversations(context)
+    suspend fun refreshSidebar(): List<ChatHistoryManager.ConversationSummary> = withContext(Dispatchers.IO) {
+        return@withContext ChatHistoryManager.listConversations(context)
     }
 
-    fun restoreLastConversation(): SessionSnapshot? {
+    suspend fun restoreLastConversation(): SessionSnapshot? = withContext(Dispatchers.IO) {
         val conversations = refreshSidebar()
-        val match = conversations.firstOrNull { it.id == currentConversationId } ?: return null
-        return SessionSnapshot(
+        val match = conversations.firstOrNull { it.id == currentConversationId } ?: return@withContext null
+        return@withContext SessionSnapshot(
             conversationId = currentConversationId,
             messages = ChatHistoryManager.load(match.file),
             conversations = conversations
         )
     }
 
-    fun saveCurrent(messages: List<ChatMessage>, modelName: String): List<ChatHistoryManager.ConversationSummary> {
+    suspend fun saveCurrent(messages: List<ChatMessage>, modelName: String): List<ChatHistoryManager.ConversationSummary> = withContext(Dispatchers.IO) {
         ChatHistoryManager.save(context, currentConversationId, messages, modelName)
         persistCurrentConversationId()
-        return refreshSidebar()
+        return@withContext refreshSidebar()
     }
 
-    fun startNewConversation(
+    suspend fun startNewConversation(
         currentMessages: List<ChatMessage>,
         modelName: String
-    ): SessionSnapshot {
+    ): SessionSnapshot = withContext(Dispatchers.IO) {
         saveCurrent(currentMessages, modelName)
         currentConversationId = newConversationId()
         persistCurrentConversationId()
-        return SessionSnapshot(
+        return@withContext SessionSnapshot(
             conversationId = currentConversationId,
             messages = emptyList(),
             conversations = refreshSidebar()
         )
     }
 
-    fun openConversation(
+    suspend fun openConversation(
         target: ChatHistoryManager.ConversationSummary,
         currentMessages: List<ChatMessage>,
         modelName: String
-    ): SessionSnapshot {
+    ): SessionSnapshot = withContext(Dispatchers.IO) {
         saveCurrent(currentMessages, modelName)
         currentConversationId = target.id
         persistCurrentConversationId()
-        return SessionSnapshot(
+        return@withContext SessionSnapshot(
             conversationId = currentConversationId,
             messages = ChatHistoryManager.load(target.file),
             conversations = refreshSidebar()
         )
     }
 
-    fun renameConversation(
+    suspend fun renameConversation(
         target: ChatHistoryManager.ConversationSummary,
         newTitle: String
-    ): Boolean {
-        return ChatHistoryManager.rename(target.file, newTitle)
+    ): Boolean = withContext(Dispatchers.IO) {
+        return@withContext ChatHistoryManager.rename(target.file, newTitle)
     }
 
-    fun deleteConversation(target: ChatHistoryManager.ConversationSummary): Boolean {
-        return ChatHistoryManager.delete(target.file)
+    suspend fun deleteConversation(target: ChatHistoryManager.ConversationSummary): Boolean = withContext(Dispatchers.IO) {
+        return@withContext ChatHistoryManager.delete(target.file)
     }
 
     private fun persistCurrentConversationId() {

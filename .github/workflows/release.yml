@@ -127,7 +127,10 @@ jobs:
           OUT=app/build/outputs/apk/release
           # Locate the built release APK (gradle names it ReturnGift-release.apk or
           # ReturnGift_v<ver>_<ts>.apk depending on variant config). Pick the first .apk.
-          APK_PATH=$(find "$OUT" -maxdepth 1 -name "*.apk" | head -1)
+          APK_PATH=$(find "$OUT" -maxdepth 1 -name "*.apk" | grep -v "arm64" | head -1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find "$OUT" -maxdepth 1 -name "*.apk" | head -1)
+          fi
           if [ -z "$APK_PATH" ]; then
             echo "::error::No APK found in $OUT"
             ls -la "$OUT" || true
@@ -143,7 +146,13 @@ jobs:
           if [ "$(basename "$APK_PATH")" != "ReturnGift.apk" ]; then
             cp "$APK_PATH" "$OUT/ReturnGift.apk"
           fi
-          ( cd "$OUT" && sha256sum ReturnGift-release.apk ReturnGift.apk > SHA256SUMS.txt )
+          
+          ARM64_APK=$(find "$OUT" -maxdepth 1 -name "*arm64*.apk" | head -1)
+          if [ -n "$ARM64_APK" ] && [ "$(basename "$ARM64_APK")" != "ReturnGift-arm64.apk" ]; then
+            cp "$ARM64_APK" "$OUT/ReturnGift-arm64.apk"
+          fi
+          
+          ( cd "$OUT" && sha256sum *.apk > SHA256SUMS.txt )
           echo "Published APKs:" && ls -la "$OUT"/*.apk
 
       - name: Extract release notes from README

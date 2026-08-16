@@ -8,6 +8,7 @@ import com.returngift.agent.utils.XLog
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -32,7 +33,7 @@ object ContextualMemory {
     private val historicalMemories = ConcurrentHashMap<String, Memory>()
     
     // Layer 1: Short-term conversation buffer
-    private val conversationBuffer = mutableListOf<ConversationTurn>()
+    private val conversationBuffer = Collections.synchronizedList(mutableListOf<ConversationTurn>())
     
     // Embedding cache for memory retrieval
     private val embeddingCache = ConcurrentHashMap<String, FloatArray>()
@@ -262,6 +263,7 @@ object ContextualMemory {
     
     fun save() {
         try {
+            // TODO: Deprecated API usage. Replace with context-aware path (e.g. context.filesDir).
             val file = File(android.os.Environment.getExternalStorageDirectory(), MEMORY_FILE)
             
             val json = JSONObject()
@@ -301,6 +303,7 @@ object ContextualMemory {
     
     fun load() {
         try {
+            // TODO: Deprecated API usage. Replace with context-aware path (e.g. context.filesDir).
             val file = File(android.os.Environment.getExternalStorageDirectory(), MEMORY_FILE)
             if (!file.exists()) return
             
@@ -338,6 +341,7 @@ object ContextualMemory {
                 historicalMemories[memory.id] = memory
             }
             
+            // TODO: Embeddings should be recomputed via EmbeddingService after load if they were not serialized.
             XLog.i(TAG, "Loaded ${structuredFacts.size} facts and ${historicalMemories.size} memories")
         } catch (e: Exception) {
             XLog.e(TAG, "Failed to load memory state", e)

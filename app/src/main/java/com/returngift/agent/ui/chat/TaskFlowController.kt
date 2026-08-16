@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.ui.chat
@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.Lifecycle
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.returngift.agent.AppCapabilityCoordinator
@@ -316,10 +317,12 @@ class TaskFlowController(
         XLog.i(TAG, "startMonitor: enabled auto-reply for '${target.displayLabel}'")
 
         Handler(Looper.getMainLooper()).postDelayed({
-            uiState.isAwaitingReply.value = false
-            uiState.isTaskRunning.value = false
-            addSystem("✓ Auto-reply is now active for ${target.displayLabel}.\nMonitoring in background — you can stop anytime from the bar above.")
-            XLog.i(TAG, "startMonitor: monitor active, staying in ReturnGift")
+            if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                uiState.isAwaitingReply.value = false
+                uiState.isTaskRunning.value = false
+                addSystem("✓ Auto-reply is now active for ${target.displayLabel}.\nMonitoring in background — you can stop anytime from the bar above.")
+                XLog.i(TAG, "startMonitor: monitor active, staying in ReturnGift")
+            }
         }, 1500)
     }
 
@@ -405,13 +408,15 @@ class TaskFlowController(
         appViewModel.clearTaskCallback()
         onTaskSettled?.invoke()
         Handler(Looper.getMainLooper()).postDelayed({
-            try {
-                chatSessionController.loadModelIfReady(
-                    conversationId = currentConversationId(),
-                    visibleMessages = uiState.messages.toList(),
-                )
-            } catch (e: Exception) {
-                XLog.e(TAG, "cleanupAfterTask: loadModel error", e)
+            if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                try {
+                    chatSessionController.loadModelIfReady(
+                        conversationId = currentConversationId(),
+                        visibleMessages = uiState.messages.toList(),
+                    )
+                } catch (e: Exception) {
+                    XLog.e(TAG, "cleanupAfterTask: loadModel error", e)
+                }
             }
         }, 500)
     }

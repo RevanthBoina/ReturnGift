@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.ui.chat
@@ -11,6 +11,8 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
@@ -112,7 +114,7 @@ class ComposeChatActivity : ComponentActivity() {
         override fun run() {
             _needsPermission.value =
                 AppCapabilityCoordinator.accessibilityState(this@ComposeChatActivity) != ServiceBindingState.READY
-            permHandler.postDelayed(this, 1000)
+            permHandler.postDelayed(this, 3000)
         }
     }
 
@@ -144,7 +146,7 @@ class ComposeChatActivity : ComponentActivity() {
             val activeTasks by activeTaskShellController.activeTasks.collectAsState()
 
             ChatScreen(
-                messages = _messages.toList(),
+                messages = _messages,
                 modelStatus = _modelStatus.value,
                 needsPermission = _needsPermission.value,
                 isAwaitingReply = _isAwaitingReply.value,
@@ -166,17 +168,21 @@ class ComposeChatActivity : ComponentActivity() {
                 onOpenModels = { startActivity(Intent(this, LlmConfigActivity::class.java)) },
                 onFixPermissions = { startActivity(Intent(this, SettingsActivity::class.java)) },
                 onAttach = { Toast.makeText(this, "Image upload coming soon", Toast.LENGTH_SHORT).show() },
-                conversations = _conversations.toList(),
+                conversations = _conversations,
                 onSelectConversation = { loadConversation(it) },
                 onDeleteConversation = { conv ->
-                    val deleted = conversationStore.deleteConversation(conv)
-                    XLog.i(TAG, "Delete conversation: ${conv.file.absolutePath} deleted=$deleted")
-                    refreshSidebarHistory()
+                    lifecycleScope.launch {
+                        val deleted = conversationStore.deleteConversation(conv)
+                        XLog.i(TAG, "Delete conversation: ${conv.file.absolutePath} deleted=$deleted")
+                        refreshSidebarHistory()
+                    }
                 },
                 onRenameConversation = { conv, newName ->
-                    val renamed = conversationStore.renameConversation(conv, newName)
-                    XLog.i(TAG, "Rename conversation: '${conv.title}' → '$newName' renamed=$renamed")
-                    refreshSidebarHistory()
+                    lifecycleScope.launch {
+                        val renamed = conversationStore.renameConversation(conv, newName)
+                        XLog.i(TAG, "Rename conversation: '${conv.title}' → '$newName' renamed=$renamed")
+                        refreshSidebarHistory()
+                    }
                 },
                 activeTasks = activeTasks,
                 onStopTask = { contact ->
@@ -203,16 +209,17 @@ class ComposeChatActivity : ComponentActivity() {
 
         refreshSidebarHistory()
 
-        // Restore last conversation if Activity was recreated (e.g., system killed it during a task)
-        if (_messages.isEmpty()) {
-            conversationStore.restoreLastConversation()?.let { restored ->
-                syncSidebar(restored.conversations)
-                if (restored.messages.isNotEmpty()) {
-                    _messages.addAll(restored.messages)
-                    XLog.i(
-                        TAG,
-                        "Restored ${restored.messages.size} messages from conversation ${restored.conversationId}"
-                    )
+        lifecycleScope.launch {
+            if (_messages.isEmpty()) {
+                conversationStore.restoreLastConversation()?.let { restored ->
+                    syncSidebar(restored.conversations)
+                    if (restored.messages.isNotEmpty()) {
+                        _messages.addAll(restored.messages)
+                        XLog.i(
+                            TAG,
+                            "Restored ${restored.messages.size} messages from conversation ${restored.conversationId}"
+                        )
+                    }
                 }
             }
         }
@@ -253,7 +260,7 @@ class ComposeChatActivity : ComponentActivity() {
         _isTaskRunning.value = appViewModel.isTaskRunning()
         refreshSidebarHistory()
         permHandler.removeCallbacks(permPoller)
-        permHandler.postDelayed(permPoller, 1000)
+        permHandler.postDelayed(permPoller, 3000)
         activeTaskShellController.onResume()
         if (!deferLocalChatBootstrapForAutoTask) {
             chatSessionController.onResume(
@@ -389,32 +396,40 @@ class ComposeChatActivity : ComponentActivity() {
     }
 
     private fun newChat() {
-        val session = conversationStore.startNewConversation(_messages, currentConversationModelName())
-        syncSidebar(session.conversations)
-        _messages.clear()
-        _sessionTokens.value = 0
-        _sessionCost.value = 0.0
-        _isAwaitingReply.value = false
-        _isTaskRunning.value = false
-        chatSessionController.startNewConversationRuntime()
+        lifecycleScope.launch {
+            val session = conversationStore.startNewConversation(_messages, currentConversationModelName())
+            syncSidebar(session.conversations)
+            _messages.clear()
+            _sessionTokens.value = 0
+            _sessionCost.value = 0.0
+            _isAwaitingReply.value = false
+            _isTaskRunning.value = false
+            chatSessionController.startNewConversationRuntime()
+        }
     }
 
     private fun loadConversation(conv: ChatHistoryManager.ConversationSummary) {
-        val session = conversationStore.openConversation(conv, _messages, currentConversationModelName())
-        syncSidebar(session.conversations)
-        _messages.clear()
-        _messages.addAll(session.messages)
-        _isAwaitingReply.value = false
-        _isTaskRunning.value = false
-        chatSessionController.restoreConversationRuntime(session.conversationId, session.messages)
+        lifecycleScope.launch {
+            val session = conversationStore.openConversation(conv, _messages, currentConversationModelName())
+            syncSidebar(session.conversations)
+            _messages.clear()
+            _messages.addAll(session.messages)
+            _isAwaitingReply.value = false
+            _isTaskRunning.value = false
+            chatSessionController.restoreConversationRuntime(session.conversationId, session.messages)
+        }
     }
 
     private fun saveChat() {
-        syncSidebar(conversationStore.saveCurrent(_messages, currentConversationModelName()))
+        lifecycleScope.launch {
+            syncSidebar(conversationStore.saveCurrent(_messages, currentConversationModelName()))
+        }
     }
 
     private fun refreshSidebarHistory() {
-        syncSidebar(conversationStore.refreshSidebar())
+        lifecycleScope.launch {
+            syncSidebar(conversationStore.refreshSidebar())
+        }
     }
 
     private fun syncSidebar(convos: List<ChatHistoryManager.ConversationSummary>) {
