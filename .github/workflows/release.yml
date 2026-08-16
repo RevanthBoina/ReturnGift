@@ -123,18 +123,28 @@ jobs:
 
       - name: Generate release checksums and rename APK
         run: |
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" ! -name "ReturnGift*.apk" | head -1)
+          set -e
+          OUT=app/build/outputs/apk/release
+          # Locate the built release APK (gradle names it ReturnGift-release.apk or
+          # ReturnGift_v<ver>_<ts>.apk depending on variant config). Pick the first .apk.
+          APK_PATH=$(find "$OUT" -maxdepth 1 -name "*.apk" | head -1)
           if [ -z "$APK_PATH" ]; then
-            echo "::error::No APK found in app/build/outputs/apk/release/"
+            echo "::error::No APK found in $OUT"
+            ls -la "$OUT" || true
             exit 1
           fi
-          OUT=app/build/outputs/apk/release
+          echo "Source APK: $APK_PATH"
           # Publish under the canonical name used by the README download badge and the
           # in-app UpdateChecker so /latest/download/ReturnGift-release.apk always resolves.
-          cp "$APK_PATH" "$OUT/ReturnGift-release.apk"
-          cp "$APK_PATH" "$OUT/ReturnGift.apk"
-          sha256sum "$OUT/ReturnGift-release.apk" "$OUT/ReturnGift.apk" > "$OUT/SHA256SUMS.txt"
-          echo "Built APK: $(ls -la "$OUT"/ReturnGift-release.apk)"
+          # If the source already has that name, copy to the .apk alias instead.
+          if [ "$(basename "$APK_PATH")" != "ReturnGift-release.apk" ]; then
+            cp "$APK_PATH" "$OUT/ReturnGift-release.apk"
+          fi
+          if [ "$(basename "$APK_PATH")" != "ReturnGift.apk" ]; then
+            cp "$APK_PATH" "$OUT/ReturnGift.apk"
+          fi
+          ( cd "$OUT" && sha256sum ReturnGift-release.apk ReturnGift.apk > SHA256SUMS.txt )
+          echo "Published APKs:" && ls -la "$OUT"/*.apk
 
       - name: Extract release notes from README
         env:
