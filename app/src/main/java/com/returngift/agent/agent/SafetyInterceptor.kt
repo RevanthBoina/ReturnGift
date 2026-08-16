@@ -44,7 +44,17 @@ object SafetyInterceptor {
         "pay now", "complete payment", "enter upi pin", "enter cvv",
         "confirm transaction", "checkout", "billing address",
         "card number", "expiry date", "upi id", "bank account",
-        "send money", "make payment", "paytm", "gpay", "phonepe"
+        "send money", "make payment", "paytm", "gpay", "phonepe",
+        "credit card", "debit card", "payment method", "net banking",
+        "enter otp", "cvv/cvc", "bhim upi"
+    )
+
+    private val BLOCKED_PAYMENT_PACKAGES = setOf(
+        "com.google.android.apps.nbu.paisa.user", // Google Pay
+        "net.one97.paytm",                       // Paytm
+        "com.phonepe.app",                       // PhonePe
+        "in.org.npci.upiapp",                    // BHIM
+        "com.cred.club"                          // CRED
     )
 
     /**
@@ -57,6 +67,31 @@ object SafetyInterceptor {
                 val msg = "Safety: Payment feature is currently disabled. Action containing '$kw' was blocked."
                 XLog.w(TAG, msg)
                 return msg
+            }
+        }
+        return null
+    }
+
+    /**
+     * Proactive check against opening or interacting with known banking / payment app packages.
+     */
+    fun checkPackageSafety(packageName: String): String? {
+        if (packageName.trim() in BLOCKED_PAYMENT_PACKAGES) {
+            val msg = "Safety: Payment app '$packageName' is blocked because payment features are disabled."
+            XLog.w(TAG, msg)
+            return msg
+        }
+        return null
+    }
+
+    /**
+     * Inspect screen text hierarchy for active checkout/payment flows.
+     */
+    fun checkScreenTextForPayment(screenText: String): String? {
+        val lower = screenText.lowercase()
+        for (kw in PAYMENT_KEYWORDS) {
+            if (lower.contains(kw)) {
+                return "Payment or checkout UI detected on screen ('$kw'). Payments are disabled; please complete manually."
             }
         }
         return null
@@ -80,6 +115,14 @@ object SafetyInterceptor {
         val paymentBlock = checkPaymentSafety(allParamText)
         if (paymentBlock != null) return paymentBlock
 
+        // 0b. Block opening payment apps
+        if (toolName == "open_app") {
+            params["package_name"]?.toString()?.let { pkg ->
+                val pkgBlock = checkPackageSafety(pkg)
+                if (pkgBlock != null) return pkgBlock
+            }
+        }
+
         val skillId = activeSkillId ?: return null
         val yaml = SkillRegistry.getYamlMeta(skillId) ?: return null
         val safety = yaml.safety
@@ -92,7 +135,6 @@ object SafetyInterceptor {
         }
 
         // 2. Blocklist pattern check
-        val allParamText = params.values.joinToString(" ") { it.toString() }
         for (pattern in safety.blocklistPatterns) {
             try {
                 if (Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(allParamText)) {

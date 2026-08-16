@@ -209,6 +209,32 @@ object SharedKnowledgeStore {
     }
 
     /**
+     * Recall knowledge items filtered by specific category.
+     */
+    fun recallByCategory(category: Category, limit: Int = 20): List<KnowledgeItem> {
+        val results = mutableListOf<KnowledgeItem>()
+        try {
+            val db = getDb()
+            val cursor = db.query(
+                TABLE_KNOWLEDGE,
+                null,
+                "category = ?",
+                arrayOf(category.name),
+                null, null,
+                "use_count DESC, last_used_at DESC",
+                limit.toString()
+            )
+            while (cursor.moveToNext()) {
+                results.add(parseCursorItem(cursor))
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to recall knowledge by category: ${e.message}", e)
+        }
+        return results
+    }
+
+    /**
      * Mark an item as used to reinforce its recency and frequency score.
      */
     fun recordUsed(key: String) {
@@ -221,5 +247,84 @@ object SharedKnowledgeStore {
         } catch (e: Exception) {
             XLog.w(TAG, "Failed to record knowledge usage: ${e.message}")
         }
+    }
+
+    /**
+     * Apply recency decay to older unused facts and prune items below min confidence.
+     */
+    fun decay(decayDays: Int = 14, minConfidence: Float = 0.2f) {
+        try {
+            val db = getDb()
+            val cutoff = System.currentTimeMillis() - (decayDays * 24 * 60 * 60 * 1000L)
+            
+            // Reduce confidence for untouched facts older than decay cutoff
+            db.execSQL(
+                "UPDATE $TABLE_KNOWLEDGE SET confidence = confidence * 0.85 WHERE last_used_at < ? AND category != 'USER_PREFERENCE'",
+                arrayOf(cutoff)
+            )
+            
+            // Delete noisy / low confidence items
+            val deleted = db.delete(
+                TABLE_KNOWLEDGE,
+                "confidence < ? AND category != 'USER_PREFERENCE'",
+                arrayOf(minConfidence.toString())
+            )
+            if (deleted > 0) {
+                XLog.i(TAG, "Pruned $deleted stale knowledge items below confidence $minConfidence")
+            }
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to apply knowledge decay: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Explicitly delete a knowledge key.
+     */
+    fun delete(key: String): Boolean {
+        return try {
+            val db = getDb()
+            val count = db.delete(TABLE_KNOWLEDGE, "key_name = ?", arrayOf(key.trim()))
+            count > 0
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to delete knowledge item '$key': ${e.message}", e)
+            false
+        }
+    }
+
+    /**
+     * Clear all shared knowledge.
+     */
+    fun clearAll() {
+        try {
+            val db = getDb()
+            db.delete(TABLE_KNOWLEDGE, null, null)
+            XLog.i(TAG, "Cleared all shared knowledge")
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to clear knowledge: ${e.message}", e)
+        }
+    }
+
+    private fun parseCursorItem(cursor: android.database.Cursor): KnowledgeItem {
+        val id = cursor.getString(cursor.getColumnIndexOrThrow("id"))
+        val catStr = cursor.getString(cursor.getColumnIndexOrThrow("category"))
+        val key = cursor.getString(cursor.getColumnIndexOrThrow("key_name"))
+        val value = cursor.getString(cursor.getColumnIndexOrThrow("value_text"))
+        val confidence = cursor.getFloat(cursor.getColumnIndexOrThrow("confidence"))
+        val sourceTask = cursor.getString(cursor.getColumnIndexOrThrow("source_task")) ?: ""
+        val createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("created_at"))
+        val lastUsedAt = cursor.getLong(cursor.getColumnIndexOrThrow("last_used_at"))
+        val useCount = cursor.getInt(cursor.getColumnIndexOrThrow("use_count"))
+
+        return KnowledgeItem(
+            id = id,
+            category = try { Category.valueOf(catStr) } catch (_: Exception) { Category.TASK_FACT },
+            key = key,
+            value = value,
+            confidence = confidence,
+            sourceTask = sourceTask,
+            createdAt = createdAt,
+            lastUsedAt = lastUsedAt,
+            useCount = useCount
+        )
     }
 }

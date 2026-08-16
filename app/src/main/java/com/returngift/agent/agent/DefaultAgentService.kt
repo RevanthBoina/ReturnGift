@@ -482,12 +482,14 @@ class DefaultAgentService : AgentService {
         ExecutionTracker.beginTask(taskId, rawUserRequest, "agent_loop")
 
         val sharedKnowledgeSection = SharedKnowledgeStore.getRelevantContext(rawUserRequest)
+        val activeSessionsSection = AppSessionManager.getSessionSummary()
         val learnedProcedure = LearnedProcedureStore.findProcedure(rawUserRequest)
         val learnedProcedureSection = learnedProcedure?.let { LearnedProcedureStore.toProcedurePrompt(it) } ?: ""
 
         val fullSystemPrompt = buildString {
             append(basePrompt)
             if (sharedKnowledgeSection.isNotEmpty()) append("\n\n").append(sharedKnowledgeSection)
+            if (activeSessionsSection.isNotEmpty()) append("\n\n").append(activeSessionsSection)
             if (learnedProcedureSection.isNotEmpty()) append("\n\n").append(learnedProcedureSection)
             append(playbookSection)
             append(inAppSearchGuard.buildPromptSection())
@@ -839,6 +841,11 @@ class DefaultAgentService : AgentService {
                         finishData ?: "Task completed",
                         sourceTask = rawUserRequest
                     )
+                    // Periodic maintenance
+                    ExecutionTracker.pruneOldTrajectories(100)
+                    SharedKnowledgeStore.decay()
+                    LearnedProcedureStore.prune()
+
                     callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
                     return
                 }
@@ -850,7 +857,7 @@ class DefaultAgentService : AgentService {
                     lastSuccess = result.isSuccess,
                     consecutiveActionsWithoutObserve = consecutiveActionsWithoutObserve,
                     isFollowingProcedure = isFollowingProcedure,
-                    screenHashChanged = true
+                    screenHashChanged = (consecutiveActionsWithoutObserve > 0)
                 )
 
                 val combinedResultData: String = if (toolName in ACTION_TOOLS && obsDecision != ObservationPolicy.ObservationDecision.SKIP) {

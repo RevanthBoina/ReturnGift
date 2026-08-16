@@ -241,10 +241,11 @@ object LearnedProcedureStore {
     fun toProcedurePrompt(procedure: LearnedProcedure): String {
         return buildString {
             append("## Proven Procedure (Learned from previous successful executions):\n")
-            append("Pattern: ${procedure.taskPattern} (Success rate: ${(procedure.successRate * 100).toInt()}%)\n")
+            append("Pattern: ${procedure.taskPattern} (Success rate: ${(procedure.successRate * 100).toInt()}%, Avg duration: ${procedure.avgDurationMs / 1000}s)\n")
             append("Recommended action sequence:\n")
             procedure.steps.forEachIndexed { index, step ->
-                append("${index + 1}. Call `${step.toolName}`\n")
+                val paramHint = if (step.params.isNotEmpty() && step.params != "{}") " with args ${step.params}" else ""
+                append("${index + 1}. Call `${step.toolName}`$paramHint\n")
             }
             append("Follow this sequence if applicable, but verify screen transitions.\n\n")
         }
@@ -263,6 +264,102 @@ object LearnedProcedureStore {
             )
         } catch (e: Exception) {
             XLog.w(TAG, "Failed to record procedure outcome: ${e.message}")
+        }
+    }
+
+    /**
+     * Retrieve all stored learned procedures.
+     */
+    fun getAllProcedures(): List<LearnedProcedure> {
+        val list = mutableListOf<LearnedProcedure>()
+        try {
+            val db = getDb()
+            val cursor = db.query(TABLE_PROCEDURES, null, null, null, null, null, "success_count DESC")
+            while (cursor.moveToNext()) {
+                val id = cursor.getString(cursor.getColumnIndexOrThrow("id"))
+                val pattern = cursor.getString(cursor.getColumnIndexOrThrow("task_pattern"))
+                val appSeqJson = cursor.getString(cursor.getColumnIndexOrThrow("app_sequence"))
+                val stepsJson = cursor.getString(cursor.getColumnIndexOrThrow("steps_json"))
+                val successCount = cursor.getInt(cursor.getColumnIndexOrThrow("success_count"))
+                val failureCount = cursor.getInt(cursor.getColumnIndexOrThrow("failure_count"))
+                val avgDuration = cursor.getLong(cursor.getColumnIndexOrThrow("avg_duration_ms"))
+                val lastUsedAt = cursor.getLong(cursor.getColumnIndexOrThrow("last_used_at"))
+                val createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("created_at"))
+
+                val apps = try {
+                    val arr = JSONArray(appSeqJson)
+                    (0 until arr.length()).map { arr.getString(it) }
+                } catch (_: Exception) { emptyList() }
+
+                val steps = try {
+                    val arr = JSONArray(stepsJson)
+                    (0 until arr.length()).map { idx ->
+                        val obj = arr.getJSONObject(idx)
+                        LearnedStep(
+                            toolName = obj.optString("tool", ""),
+                            params = obj.optString("params", "{}"),
+                            summary = obj.optString("summary", "")
+                        )
+                    }
+                } catch (_: Exception) { emptyList() }
+
+                list.add(
+                    LearnedProcedure(
+                        id = id,
+                        taskPattern = pattern,
+                        appSequence = apps,
+                        steps = steps,
+                        successCount = successCount,
+                        failureCount = failureCount,
+                        avgDurationMs = avgDuration,
+                        lastUsedAt = lastUsedAt,
+                        createdAt = createdAt
+                    )
+                )
+            }
+            cursor.close()
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to get all procedures: ${e.message}", e)
+        }
+        return list
+    }
+
+    /**
+     * Prune obsolete or failing procedures.
+     */
+    fun prune(minSuccessRate: Float = 0.5f, maxAgeDays: Int = 30) {
+        try {
+            val db = getDb()
+            val cutoff = System.currentTimeMillis() - (maxAgeDays * 24 * 60 * 60 * 1000L)
+            val all = getAllProcedures()
+            var deletedCount = 0
+            for (proc in all) {
+                val totalRuns = proc.successCount + proc.failureCount
+                val shouldPrune = (totalRuns >= 3 && proc.successRate < minSuccessRate) ||
+                        (proc.lastUsedAt < cutoff && proc.successCount < 2)
+                if (shouldPrune) {
+                    db.delete(TABLE_PROCEDURES, "id = ?", arrayOf(proc.id))
+                    deletedCount++
+                }
+            }
+            if (deletedCount > 0) {
+                XLog.i(TAG, "Pruned $deletedCount stale or low-success learned procedures")
+            }
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to prune procedures: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Delete a single procedure by ID.
+     */
+    fun delete(procedureId: String): Boolean {
+        return try {
+            val db = getDb()
+            db.delete(TABLE_PROCEDURES, "id = ?", arrayOf(procedureId)) > 0
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to delete procedure: ${e.message}", e)
+            false
         }
     }
 

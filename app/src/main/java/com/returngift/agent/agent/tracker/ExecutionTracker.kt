@@ -333,4 +333,110 @@ object ExecutionTracker {
             return null
         }
     }
+
+    /**
+     * Retrieve a list of recent task trajectories for diagnostics.
+     */
+    fun getRecentTrajectories(limit: Int = 20): List<Trajectory> {
+        val trajectories = mutableListOf<Trajectory>()
+        try {
+            val db = getDb()
+            val cursor = db.query(
+                TABLE_TASKS,
+                arrayOf("task_id"),
+                null, null, null, null,
+                "started_at DESC",
+                limit.toString()
+            )
+            val taskIds = mutableListOf<String>()
+            while (cursor.moveToNext()) {
+                taskIds.add(cursor.getString(0))
+            }
+            cursor.close()
+
+            taskIds.forEach { id ->
+                getTrajectory(id)?.let { trajectories.add(it) }
+            }
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to get recent trajectories: ${e.message}", e)
+        }
+        return trajectories
+    }
+
+    /**
+     * Export trajectory to standardized JSON string format.
+     */
+    fun exportTrajectoryToJson(taskId: String): String? {
+        val trajectory = getTrajectory(taskId) ?: return null
+        return try {
+            val json = JSONObject().apply {
+                put("taskId", trajectory.taskId)
+                put("taskText", trajectory.taskText)
+                put("channel", trajectory.channel)
+                put("startedAt", trajectory.startedAt)
+                put("completedAt", trajectory.completedAt)
+                put("outcome", trajectory.outcome)
+                put("totalSteps", trajectory.totalSteps)
+                put("totalTokens", trajectory.totalTokens)
+                
+                val eventsArray = org.json.JSONArray()
+                trajectory.events.forEach { event ->
+                    val ev = JSONObject().apply {
+                        put("stepIndex", event.stepIndex)
+                        put("eventType", event.eventType.name)
+                        put("timestamp", event.timestamp)
+                        event.screenHash?.let { put("screenHash", it) }
+                        event.screenSummary?.let { put("screenSummary", it) }
+                        event.actionTool?.let { put("actionTool", it) }
+                        event.actionParams?.let { put("actionParams", it) }
+                        put("resultSuccess", event.resultSuccess)
+                        event.resultSummary?.let { put("resultSummary", it) }
+                        put("latencyMs", event.latencyMs)
+                        event.appPackage?.let { put("appPackage", it) }
+                    }
+                    eventsArray.put(ev)
+                }
+                put("events", eventsArray)
+            }
+            json.toString(2)
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to export trajectory to JSON: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Prune old trajectories to bound storage usage on mobile device.
+     */
+    fun pruneOldTrajectories(keepCount: Int = 100) {
+        try {
+            val db = getDb()
+            val cursor = db.query(
+                TABLE_TASKS,
+                arrayOf("task_id"),
+                null, null, null, null,
+                "started_at DESC",
+                null
+            )
+            val total = cursor.count
+            if (total > keepCount) {
+                cursor.moveToPosition(keepCount - 1)
+                val taskIdsToDelete = mutableListOf<String>()
+                while (cursor.moveToNext()) {
+                    taskIdsToDelete.add(cursor.getString(0))
+                }
+                cursor.close()
+
+                taskIdsToDelete.forEach { id ->
+                    db.delete(TABLE_TASKS, "task_id = ?", arrayOf(id))
+                    db.delete(TABLE_EVENTS, "task_id = ?", arrayOf(id))
+                }
+                XLog.i(TAG, "Pruned ${taskIdsToDelete.size} old task trajectories (retained $keepCount)")
+            } else {
+                cursor.close()
+            }
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to prune old trajectories: ${e.message}", e)
+        }
+    }
 }

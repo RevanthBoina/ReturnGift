@@ -27,6 +27,15 @@ object AppSessionManager {
         var lastAccessedAt: Long = System.currentTimeMillis()
     )
 
+    val BROWSER_PACKAGES = setOf(
+        "com.android.chrome",
+        "org.mozilla.firefox",
+        "com.microsoft.emmx",
+        "com.brave.browser",
+        "com.opera.browser",
+        "com.sec.android.app.sbrowser"
+    )
+
     private val activeSessions = ConcurrentHashMap<String, AppSession>()
 
     /**
@@ -62,6 +71,13 @@ object AppSessionManager {
     }
 
     /**
+     * Check if an app is a recognized web browser.
+     */
+    fun isBrowser(packageName: String): Boolean {
+        return packageName in BROWSER_PACKAGES
+    }
+
+    /**
      * Check if an app already has an active session that can be reused.
      */
     fun hasExistingSession(packageName: String): Boolean {
@@ -84,6 +100,32 @@ object AppSessionManager {
         return activeSessions.values.firstOrNull { session ->
             session.lastUrl?.contains(urlDomain, ignoreCase = true) == true ||
             session.activeTabTitle?.contains(urlDomain, ignoreCase = true) == true
+        }
+    }
+
+    /**
+     * Prune expired sessions older than TTL.
+     */
+    fun cleanExpiredSessions(ttlMs: Long = 30 * 60 * 1000L) {
+        val cutoff = System.currentTimeMillis() - ttlMs
+        activeSessions.entries.removeIf { it.value.lastAccessedAt < cutoff }
+    }
+
+    /**
+     * Get active session context summary for prompt injection.
+     */
+    fun getSessionSummary(): String {
+        cleanExpiredSessions()
+        if (activeSessions.isEmpty()) return ""
+        return buildString {
+            append("## Active App & Browser Sessions:\n")
+            activeSessions.values.forEach { s ->
+                val tab = s.activeTabTitle?.let { " (Tab: $it)" } ?: ""
+                val url = s.lastUrl?.let { " [URL: $it]" } ?: ""
+                val auth = if (s.isAuthenticated) " [Authenticated]" else ""
+                append("- App: ${s.packageName}$tab$url$auth\n")
+            }
+            append("\n")
         }
     }
 
