@@ -40,6 +40,28 @@ object SafetyInterceptor {
         activeSkillId = null
     }
 
+    private val PAYMENT_KEYWORDS = listOf(
+        "pay now", "complete payment", "enter upi pin", "enter cvv",
+        "confirm transaction", "checkout", "billing address",
+        "card number", "expiry date", "upi id", "bank account",
+        "send money", "make payment", "paytm", "gpay", "phonepe"
+    )
+
+    /**
+     * Global check for payment-related operations — completely blocks payment processing.
+     */
+    fun checkPaymentSafety(paramsText: String): String? {
+        val lower = paramsText.lowercase()
+        for (kw in PAYMENT_KEYWORDS) {
+            if (lower.contains(kw)) {
+                val msg = "Safety: Payment feature is currently disabled. Action containing '$kw' was blocked."
+                XLog.w(TAG, msg)
+                return msg
+            }
+        }
+        return null
+    }
+
     /**
      * @param toolName  the tool about to be executed
      * @param params    the tool parameters (used for blocklist matching)
@@ -52,6 +74,12 @@ object SafetyInterceptor {
         params: Map<String, Any>,
         context: android.content.Context?,
     ): String? {
+        val allParamText = params.values.joinToString(" ") { it.toString() }
+
+        // 0. Global Payment Safety Gate
+        val paymentBlock = checkPaymentSafety(allParamText)
+        if (paymentBlock != null) return paymentBlock
+
         val skillId = activeSkillId ?: return null
         val yaml = SkillRegistry.getYamlMeta(skillId) ?: return null
         val safety = yaml.safety

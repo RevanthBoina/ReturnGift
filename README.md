@@ -207,6 +207,15 @@ flowchart LR
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v2.1.0
+- **Shared Persistent Memory Across Chats**: Added `SharedKnowledgeStore` persistent cross-chat key-value memory layer storing user preferences, discovered facts, and app states that persist across conversations without polluting short-term dialogue context.
+- **Execution Trajectory Tracker**: Integrated `ExecutionTracker` recording append-only structured trajectories (observations, thoughts, tool actions, latencies, and outcomes) inspired by Browser Use and OpenHands event streams.
+- **Distilled Learned Procedures**: Built `LearnedProcedureStore` that automatically extracts optimal multi-step action sequences from successful task trajectories and injects proven playbooks into future similar tasks.
+- **Adaptive Observe/Act Decision Loop**: Replaced repetitive observe-after-every-touch loops with `ObservationPolicy` — acts in confident bursts for predictable sequences and observes on state changes or errors, mirroring Stagehand's observe/act separation.
+- **Persistent App & Browser Session Management**: Introduced `AppSessionManager` to reuse opened apps, browser tabs, and authenticated sessions (e.g. ChatGPT image generation) instead of repeatedly launching fresh instances.
+- **Payment Safety Hardening**: Completely disabled payment operations via global `SafetyInterceptor` blocklists and strengthened system prompt constraints against transaction/checkout flows.
+- **Background Automation Integrity**: Enforced that ReturnGift remains strictly in the background during device automation tasks, observing target apps without unneeded foreground interruptions.
+
 ### v2.0.1
 - **Release build fix**: removed ABI `splits` which collided with the single-output filename override and stalled `assembleRelease` in CI — the v2.0.0 release published with no APK asset, breaking the README download link and the in-app Update button. Builds now produce a single universal `ReturnGift-release.apk` that attaches to the release and installs on any device ABI.
 - **Release workflow**: simplified the APK rename/checksum step so the canonical `ReturnGift-release.apk` + `ReturnGift.apk` are always published to `releases/latest/download/...`.

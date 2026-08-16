@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent
@@ -29,8 +29,14 @@ import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.data.message.UserMessage
 import dev.langchain4j.agent.tool.ToolExecutionRequest
+import com.returngift.agent.agent.memory.SharedKnowledgeStore
+import com.returngift.agent.agent.memory.LearnedProcedureStore
+import com.returngift.agent.agent.tracker.ExecutionTracker
+import com.returngift.agent.agent.session.AppSessionManager
+import com.returngift.agent.agent.loop.ObservationPolicy
 import java.io.File
 import java.util.LinkedList
+import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -84,7 +90,11 @@ class DefaultAgentService : AgentService {
 - Use get_installed_apps() when the user asks what apps are installed.
 - Use input_text to type. Do NOT tap on autocomplete suggestions.
 - Never say you cannot access the user's clipboard, notifications, or phone state when a matching tool exists. Use the tool first.
-- Do NOT auto-fill passwords, confirm payments, or delete data."""
+- Reuse existing browser tabs, authenticated sessions, and opened apps instead of launching fresh ones.
+- If image generation or download fails due to temporary network errors, retry within the same existing session.
+- Never bring ReturnGift to the foreground to inspect the screen; always inspect the active target foreground app.
+- Do NOT auto-fill passwords, confirm payments, or delete data.
+- Absolutely NEVER confirm payments, enter UPI PINs, or process transactions. If a payment/checkout screen appears, immediately call finish(summary="Payment required; please complete manually")."""
 
         /** Maximum number of retries on LLM API call failure */
         private const val MAX_API_RETRIES = 3
@@ -468,8 +478,17 @@ class DefaultAgentService : AgentService {
             } else ""
         } else ""
 
+        val taskId = UUID.randomUUID().toString()
+        ExecutionTracker.beginTask(taskId, rawUserRequest, "agent_loop")
+
+        val sharedKnowledgeSection = SharedKnowledgeStore.getRelevantContext(rawUserRequest)
+        val learnedProcedure = LearnedProcedureStore.findProcedure(rawUserRequest)
+        val learnedProcedureSection = learnedProcedure?.let { LearnedProcedureStore.toProcedurePrompt(it) } ?: ""
+
         val fullSystemPrompt = buildString {
             append(basePrompt)
+            if (sharedKnowledgeSection.isNotEmpty()) append("\n\n").append(sharedKnowledgeSection)
+            if (learnedProcedureSection.isNotEmpty()) append("\n\n").append(learnedProcedureSection)
             append(playbookSection)
             append(inAppSearchGuard.buildPromptSection())
             append(emailComposeGuard.buildPromptSection())
@@ -537,6 +556,12 @@ class DefaultAgentService : AgentService {
                     val screenResult = screenTool.execute(emptyMap())
                     if (screenResult.isSuccess && !screenResult.data.isNullOrBlank()) {
                         XLog.i(TAG, "runAgentLoop: pre-warm screen attached (${screenResult.data!!.length} chars)")
+                        ExecutionTracker.recordObservation(
+                            taskId = taskId,
+                            stepIndex = 0,
+                            screenHash = screenResult.data!!.hashCode().toString(),
+                            screenSummary = screenResult.data!!
+                        )
                         "$promptForModel\n\nCurrent screen:\n${screenResult.data}"
                     } else promptForModel
                 } else promptForModel
@@ -558,6 +583,8 @@ class DefaultAgentService : AgentService {
         val stuckDetector = StuckDetector()
         val taskBudget = TaskBudget.fromSettings()
         var softLimitWarned = false
+        var consecutiveActionsWithoutObserve = 0
+        val isFollowingProcedure = (learnedProcedure != null)
         var consecutiveNoToolCalls = 0
 
         while (iterations < maxIterations && !cancelled.get()) {
@@ -640,6 +667,11 @@ class DefaultAgentService : AgentService {
                 AiMessage.from(llmResponse.text ?: "")
             }
             messages.add(aiMessage)
+            ExecutionTracker.recordThinking(
+                taskId = taskId,
+                stepIndex = iterations,
+                reasoning = llmResponse.text ?: "Calling ${llmResponse.toolExecutionRequests?.size ?: 0} tool(s)"
+            )
 
             // Push thinking content in non-streaming mode
             if (!config.streaming && !llmResponse.text.isNullOrEmpty()) {
@@ -676,11 +708,15 @@ class DefaultAgentService : AgentService {
                         continue
                     }
                     XLog.i(TAG, "runAgentLoop: text-only response, completing")
+                    ExecutionTracker.endTask(taskId, "SUCCESS", iterations, totalTokens)
+                    SharedKnowledgeStore.remember(SharedKnowledgeStore.Category.TASK_FACT, rawUserRequest, responseText, sourceTask = rawUserRequest)
+                    if (learnedProcedure != null) LearnedProcedureStore.recordOutcome(learnedProcedure.id, true)
                     callback.onComplete(iterations, responseText, totalTokens, actualModelName)
                     return
                 }
                 // Empty response with no tools — something went wrong, finish
                 XLog.w(TAG, "runAgentLoop: empty response with no tools, finishing")
+                ExecutionTracker.endTask(taskId, "COMPLETED", iterations, totalTokens)
                 callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
                 continue
             }
@@ -691,6 +727,7 @@ class DefaultAgentService : AgentService {
             // Execute tool calls
             for (toolRequest in llmResponse.toolExecutionRequests) {
                 if (cancelled.get()) {
+                    ExecutionTracker.endTask(taskId, "CANCELLED", iterations, totalTokens)
                     callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
                     return
                 }
@@ -737,6 +774,11 @@ class DefaultAgentService : AgentService {
                 directDeviceDataGuard.recordToolAttempt(toolName)
                 emailComposeGuard.recordToolAttempt(toolName)
 
+                // Track app sessions if opening an app
+                if (toolName == "open_app") {
+                    params["package_name"]?.toString()?.let { AppSessionManager.trackAppOpen(it) }
+                }
+
                 // ── Part B: allow-list gate ─────────────────────────────────────────
                 val allowListBlock = AllowListToolGate.check(
                     ClawApplication.instance, toolName, params
@@ -750,8 +792,21 @@ class DefaultAgentService : AgentService {
                 }
                 // ── End allow-list gate ─────────────────────────────────────────────
 
+                val actStartTime = System.currentTimeMillis()
                 val result = ToolRegistry.getInstance().executeTool(toolName, params)
+                val actLatency = System.currentTimeMillis() - actStartTime
                 val paramsString = if (params.isEmpty()) "" else params.toString()
+
+                ExecutionTracker.recordAction(
+                    taskId = taskId,
+                    stepIndex = iterations,
+                    toolName = toolName,
+                    params = paramsString,
+                    resultSuccess = result.isSuccess,
+                    resultSummary = result.data ?: result.error ?: "",
+                    latencyMs = actLatency
+                )
+
                 callback.onToolResult(iterations, toolName, displayName, paramsString, result)
                 if (result.isSuccess) {
                     inAppSearchGuard.recordSuccessfulTool(toolName, params)
@@ -767,6 +822,7 @@ class DefaultAgentService : AgentService {
                 // System dialog blocking detected → notify user and stop task
                 if (!result.isSuccess && result.error == GetScreenInfoTool.SYSTEM_DIALOG_BLOCKED) {
                     XLog.w(TAG, "System dialog blocked, notifying user and stopping task")
+                    ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
                     callback.onSystemDialogBlocked(iterations, totalTokens)
                     return
                 }
@@ -774,35 +830,46 @@ class DefaultAgentService : AgentService {
                 // finish tool → task complete
                 if (toolName == "finish" && result.isSuccess) {
                     val finishData = result.data
+                    ExecutionTracker.endTask(taskId, "SUCCESS", iterations, totalTokens)
+                    ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
+                    if (learnedProcedure != null) LearnedProcedureStore.recordOutcome(learnedProcedure.id, true)
+                    SharedKnowledgeStore.remember(
+                        SharedKnowledgeStore.Category.TASK_FACT,
+                        rawUserRequest,
+                        finishData ?: "Task completed",
+                        sourceTask = rawUserRequest
+                    )
                     callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
                     return
                 }
 
-                // Opt-3: Auto-attach fresh screen state after action tools.
-                // LLM sees updated UI in the same tool result → can decide next step
-                // immediately without spending an extra 5 s inference round on get_screen_info.
-                val combinedResultData: String = if (toolName in ACTION_TOOLS) {
+                // Opt-3: Adaptive Observe/Act Loop.
+                // Decides dynamically whether screen capture is necessary.
+                val obsDecision = ObservationPolicy.evaluate(
+                    lastTool = toolName,
+                    lastSuccess = result.isSuccess,
+                    consecutiveActionsWithoutObserve = consecutiveActionsWithoutObserve,
+                    isFollowingProcedure = isFollowingProcedure,
+                    screenHashChanged = true
+                )
+
+                val combinedResultData: String = if (toolName in ACTION_TOOLS && obsDecision != ObservationPolicy.ObservationDecision.SKIP) {
                     try {
+                        consecutiveActionsWithoutObserve = 0
                         Thread.sleep(SCREEN_SETTLE_MS) // let UI animate/settle
 
                         // ── Interrupt check (Part A) ────────────────────────────────────────
-                        // Inspect the accessibility window stack BEFORE capturing screen_state
-                        // so a popup/call overlay is never mistaken for the target screen.
                         val accessibilityService = ClawAccessibilityService.getInstance()
                         if (accessibilityService != null) {
                             val interruptResult = InterruptDetector.inspect(accessibilityService)
                             when (interruptResult) {
                                 is InterruptDetector.InterruptResult.AutoDismissed -> {
                                     XLog.i(TAG, "Interrupt AUTO_DISMISSED: ${interruptResult.description}")
-                                    // Press back to clear the overlay then let screen settle again
                                     try { accessibilityService.pressBack() } catch (_: Exception) {}
                                     Thread.sleep(SCREEN_SETTLE_MS)
                                 }
                                 is InterruptDetector.InterruptResult.PauseAndConfirm -> {
                                     XLog.w(TAG, "Interrupt PAUSE_AND_CONFIRM: ${interruptResult.description}")
-                                    // Surface the system-dialog-blocked callback — same UX as the
-                                    // existing SYSTEM_DIALOG_BLOCKED path so the UI shows
-                                    // "task paused — screen changed unexpectedly"
                                     callback.onSystemDialogBlocked(iterations, totalTokens)
                                     return
                                 }
@@ -816,6 +883,12 @@ class DefaultAgentService : AgentService {
                         if (screenAfter != null && screenAfter.isSuccess && !screenAfter.data.isNullOrBlank()) {
                             // Update lastScreenHash for loop detection
                             lastScreenHash = screenAfter.data!!.hashCode()
+                            ExecutionTracker.recordObservation(
+                                taskId = taskId,
+                                stepIndex = iterations,
+                                screenHash = lastScreenHash.toString(),
+                                screenSummary = screenAfter.data!!
+                            )
                             XLog.i(TAG, "Opt3: auto-attached screen after $toolName (${screenAfter.data!!.length} chars)")
                             // Screen diff: extract text lines and compare with previous
                             val currentTexts = screenAfter.data!!.lines()
@@ -841,7 +914,10 @@ class DefaultAgentService : AgentService {
                         GSON.toJson(result)
                     }
                 } else {
-                    // Record fingerprint for dead-loop detection (non-action tools path)
+                    if (toolName in ACTION_TOOLS) {
+                        consecutiveActionsWithoutObserve++
+                        XLog.i(TAG, "ObservationPolicy: skipped screen attach for predictable action '$toolName' ($consecutiveActionsWithoutObserve consecutive)")
+                    }
                     if (toolName == "get_screen_info" && result.isSuccess && result.data != null) {
                         lastScreenHash = result.data.hashCode()
                     }

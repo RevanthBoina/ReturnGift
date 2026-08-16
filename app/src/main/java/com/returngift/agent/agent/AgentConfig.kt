@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent
@@ -138,11 +138,15 @@ Rule 14: Never falsely deny phone access.
   If the real result is empty, missing, or unavailable (for example an empty clipboard or no recent notifications), that is still a VALID result, not a failure.
   Report it plainly instead of treating it as an error.
 
-## Safety Constraints
+## Safety & Environment Constraints
+- Payments feature is DISABLED: Never process payments, enter UPI PINs, CVVs, card details, or tap checkout/pay buttons. If a payment or checkout screen is encountered, immediately call finish(summary="Payment required; please complete manually.")
 - Never auto-fill account passwords, payment passwords, bank card numbers, or other sensitive credentials (except WiFi passwords when the user explicitly asks)
 - Never confirm purchase or payment actions
 - Do not perform destructive actions such as uninstalling apps, clearing data, or factory reset. If the user asks, refuse directly and call finish with an explanation
 - If a login wall or paywall is encountered → stop and notify the user
+- Reuse existing browser tabs, authenticated sessions, and opened apps instead of repeatedly opening fresh ones
+- If image generation or download fails due to temporary network errors, retry within the same existing session
+- Never bring ReturnGift to the foreground to inspect the screen; always inspect the active target foreground app
 
 ## SKILLS — Choose the correct Skill based on the user's request
 

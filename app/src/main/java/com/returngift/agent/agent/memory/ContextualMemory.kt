@@ -125,6 +125,16 @@ object ContextualMemory {
             
             structuredFacts[factId] = fact
             embeddingCache[factId] = EmbeddingService.embed("$factType: $value")
+
+            // Bridge to cross-chat SharedKnowledgeStore
+            val sharedCat = when (factType) {
+                FactType.USER_PREFERENCE -> SharedKnowledgeStore.Category.USER_PREFERENCE
+                FactType.APP_STATE -> SharedKnowledgeStore.Category.APP_STATE
+                FactType.CONTACT_INFO -> SharedKnowledgeStore.Category.ENTITY
+                FactType.RECENT_ACTION -> SharedKnowledgeStore.Category.TASK_FACT
+                FactType.ENTITY -> SharedKnowledgeStore.Category.ENTITY
+            }
+            SharedKnowledgeStore.remember(sharedCat, key, value, sourceTask = taskDescription, confidence = confidence)
             
             XLog.d(TAG, "Stored fact: $factId = $value (confidence: $confidence)")
         }
