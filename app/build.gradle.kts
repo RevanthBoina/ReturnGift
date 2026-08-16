@@ -136,14 +136,15 @@ android {
         }
     }
 
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a")
-            isUniversalApk = true
-        }
-    }
+    // NOTE: ABI splits were removed. With splits enabled, the release variant produced
+    // multiple outputs (per-ABI + universal) while onVariants below forced the SAME
+    // filename ("ReturnGift-release.apk") onto every output, colliding in the output
+    // directory and stalling assembleRelease in CI — so the v2.0.0 release published
+    // with NO APK asset, breaking both the README download link and the in-app updater
+    // (which both target .../releases/latest/download/ReturnGift-release.apk).
+    // A single universal APK is what the auto-update flow needs anyway, since the
+    // updater downloads one APK that must install on any device ABI. Re-add per-ABI
+    // splits only with ABI-aware output naming and an ABI-aware updater.
 }
 
 // L3 fix: previously, a missing local.properties / env signing config silently produced
