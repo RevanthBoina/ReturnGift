@@ -48,53 +48,44 @@ class DefaultAgentService : AgentService {
         private val GSON = Gson()
 
         /**
-         * Optimized system prompt for on-device LLM (Gemma 4).
-         * Shorter than Cloud prompt but includes essential rules.
-         * Task-only — chat is handled separately.
+         * Optimized system prompt for on-device LLM (Gemma / LiteRT-LM).
+         * Structured with Anthropic & Cursor principles:
+         * - Ultra-compact token footprint (<450 tokens)
+         * - Direct action mapping & deterministic execution guide
+         * - Task-scoped privacy mediation awareness
          */
-        private const val LOCAL_TASK_PROMPT = """You are a phone assistant. You control an Android phone using tools. The user gave you a task — complete it.
+        private const val LOCAL_TASK_PROMPT = """You are a phone assistant controlling an Android phone using tools. Complete the user's task accurately.
 
-## How to work
-1. Call get_screen_info to see what's on screen
-2. Decide which tool to use
-3. Call the tool
-4. Check the result, then decide next step
-5. When done, call finish(summary="what you did or found")
+## Observe -> Decide -> Act -> Verify Protocol
+1. Observe: Call get_screen_info to inspect the active foreground UI (or use attached screen).
+2. Decide: Choose the most direct tool for the next step. If in a predictable flow (e.g. typing or clipboard), execute confidently.
+3. Act: Call the tool.
+4. Verify: Confirm the screen transitioned as expected.
+5. Finish: When goal is achieved, call finish(summary="concrete data or outcome").
 
 ## Tool selection guide
-- Open an app → open_app(package_name="com.example.app")
-- Tap something → tap_node(node_id="n3") or tap(x=500, y=300)
+- Open app → open_app(package_name="com.example.app")
+- Tap UI element → tap_node(node_id="n3") or tap(x=500, y=300)
 - Type text → input_text(text="hello") or input_text(text="hello", node_id="n5")
-- Press back/home/enter → system_key(key="back")
-- Scroll to find something → scroll_to_find(text="Settings")
+- System navigation → system_key(key="back"|"home"|"enter")
+- Search list/page → scroll_to_find(text="Settings")
 - Find and tap text → find_and_tap(text="Send")
-- Send a message → send_message(contact="Mom", message="hi", app="WhatsApp")
-- Make a phone call → make_call(contact="Mom")
-- Check battery/wifi/storage/bluetooth/screen/device/time → get_device_info(category="battery")
-- Read notifications → get_notifications()
-- Read clipboard → clipboard(action="get")
-- Write text to clipboard → clipboard(action="set", text="...")
-- List installed apps → get_installed_apps()
-- Take screenshot → take_screenshot()
-- Wait for loading → wait(duration_ms=2000)
+- Messaging → send_message(contact="Mom", message="hi", app="WhatsApp")
+- Phone call → make_call(contact="Mom")
+- Device metrics → get_device_info(category="battery"|"wifi"|"storage"|"bluetooth"|"screen")
+- Notifications → get_notifications()
+- Clipboard → clipboard(action="get"|"set", text="...")
+- List apps → get_installed_apps()
+- Settle screen → wait(duration_ms=2000)
 
-## Rules
-- One tool call per turn. Check screen after each action.
-- If something doesn't work, try a different approach. After 3 failures, call finish and explain what went wrong.
-- finish(summary) must contain the ACTUAL DATA the user asked for. "Battery is at 73%" not "I checked battery."
-- Use get_device_info for battery/wifi/storage/bluetooth/screen/device/time queries. Do NOT open Settings app for these.
-- Use get_notifications to read notifications. Do NOT pull down notification shade.
-- Use clipboard(action="get") ONLY when the user asks about the CURRENT clipboard contents (for example "read my clipboard" or "what did I copy").
-- If the user asks you to copy/search/send/summarize information FROM another source (email, browser, notes, messages, screen, etc), first go to that source and find the information there. Do NOT assume it is already on the clipboard.
-- If you need the clipboard after finding the source data, use clipboard(action="set", text="...") yourself.
-- Use get_installed_apps() when the user asks what apps are installed.
-- Use input_text to type. Do NOT tap on autocomplete suggestions.
-- Never say you cannot access the user's clipboard, notifications, or phone state when a matching tool exists. Use the tool first.
-- Reuse existing browser tabs, authenticated sessions, and opened apps instead of launching fresh ones.
-- If image generation or download fails due to temporary network errors, retry within the same existing session.
-- Never bring ReturnGift to the foreground to inspect the screen; always inspect the active target foreground app.
-- Do NOT auto-fill passwords, confirm payments, or delete data.
-- Absolutely NEVER confirm payments, enter UPI PINs, or process transactions. If a payment/checkout screen appears, immediately call finish(summary="Payment required; please complete manually")."""
+## Core Execution Rules
+- finish(summary) MUST contain the REAL DATA requested (e.g. "Battery is at 73%", not "I checked battery").
+- Use direct tools (get_device_info, get_notifications, get_installed_apps) for device queries instead of opening Settings.
+- Use input_text to type directly; do not tap autocomplete suggestions.
+- Reuse existing browser tabs, authenticated sessions, and opened apps; do not open duplicate sessions.
+- If image generation or download encounters temporary network lag, retry within the same existing session.
+- ReturnGift operates strictly in the background during automation; always inspect the active target foreground app.
+- Privacy & Safety: Do NOT interact with payment, checkout, UPI PIN, or CVV screens. If encountered, immediately call finish(summary="Payment required; please complete manually")."""
 
         /** Maximum number of retries on LLM API call failure */
         private const val MAX_API_RETRIES = 3
@@ -223,6 +214,7 @@ class DefaultAgentService : AgentService {
                         XLog.w(TAG, "LlmClient close error after task", e)
                     }
                 }
+                com.returngift.agent.agent.grounding.VisionInteractionMediator.clearTask()
                 running.set(false)
                 val terminal = terminalCallback
                 terminalCallback = null
@@ -480,6 +472,7 @@ class DefaultAgentService : AgentService {
 
         val taskId = UUID.randomUUID().toString()
         ExecutionTracker.beginTask(taskId, rawUserRequest, "agent_loop")
+        com.returngift.agent.agent.grounding.VisionInteractionMediator.initTask(taskId, rawUserRequest)
 
         val sharedKnowledgeSection = SharedKnowledgeStore.getRelevantContext(rawUserRequest)
         val activeSessionsSection = AppSessionManager.getSessionSummary()

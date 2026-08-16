@@ -59,6 +59,12 @@ public class GetScreenInfoTool extends BaseTool {
         if (tree == null) {
             return ToolResult.error(SYSTEM_DIALOG_BLOCKED);
         }
-        return ToolResult.success(tree);
+        
+        // Pass through task-scoped privacy mediator
+        String sanitizedTree = com.returngift.agent.agent.grounding.VisionInteractionMediator.INSTANCE
+                .mediateScreenInfo(tree, null, null)
+                .getSanitizedScreenText();
+                
+        return ToolResult.success(sanitizedTree);
     }
 }
