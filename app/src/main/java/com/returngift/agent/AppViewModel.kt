@@ -112,7 +112,7 @@ class AppViewModel : ViewModel() {
         }
 
     private fun runHistoryRetention(background: Boolean, runningWorkflowId: String?) {
-        val action = {
+        val action = Runnable {
             try {
                 com.returngift.agent.agent.learning.WorkflowHistoryRetention
                     .retainNewestOnDevice(
@@ -126,7 +126,7 @@ class AppViewModel : ViewModel() {
         if (background) {
             retentionExecutor.execute(action)
         } else {
-            action.invoke()
+            action.run()
         }
     }
 
