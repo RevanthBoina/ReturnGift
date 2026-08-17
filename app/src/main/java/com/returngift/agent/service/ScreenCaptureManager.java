@@ -169,6 +169,44 @@ public class ScreenCaptureManager {
             db.execSQL("UPDATE fixtures SET validated = 1 WHERE id = ?", new Object[]{fixtureId});
             db.close();
         }
+
+        /**
+         * Retention hook used by WorkflowHistoryRetention: delete fixture rows
+         * (and their cached XML) older than the cutoff so the fixtures cache
+         * does not grow unbounded and does not outlive its workflow.
+         * Returns the number of rows removed.
+         */
+        public int pruneOlderThan(long cutoffMillis) {
+            int removed = 0;
+            try {
+                SQLiteDatabase db = openDatabase();
+                Cursor cursor = db.rawQuery(
+                    "SELECT COUNT(*) FROM fixtures WHERE captured_at < ?",
+                    new String[]{String.valueOf(cutoffMillis)});
+                if (cursor.moveToFirst()) removed = cursor.getInt(0);
+                cursor.close();
+                db.execSQL("DELETE FROM fixtures WHERE captured_at < ?",
+                    new Object[]{cutoffMillis});
+                db.close();
+                XLog.i(TAG, "Pruned " + removed + " stale fixture rows older than " + cutoffMillis);
+            } catch (Exception e) {
+                XLog.w(TAG, "Failed to prune fixtures DB rows", e);
+            }
+            return removed;
+        }
+    }
+
+    /**
+     * Static entry point for the workflow retention policy. Opens the fixtures
+     * DB via the shared FixtureStore and prunes rows older than [cutoffMillis].
+     */
+    public static int pruneFixturesOlderThan(Context context, long cutoffMillis) {
+        try {
+            return new FixtureStore(context).pruneOlderThan(cutoffMillis);
+        } catch (Exception e) {
+            XLog.w(TAG, "pruneFixturesOlderThan failed", e);
+            return 0;
+        }
     }
 
     public static class FixtureEntry {

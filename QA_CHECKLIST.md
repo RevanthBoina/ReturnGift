@@ -743,6 +743,22 @@ When in doubt, rerun the smaller bundle first, then expand only if something dri
 - [ ] **U4. Update installs over existing**: the new APK has a higher `versionCode` and the same signing key  ->  "Update app?" install succeeds without uninstalling first
 - [ ] **U5. API endpoint correct** `[LOGCAT-DEBUG]`: logcat shows no GitHub API 404/403; `User-Agent: ReturnGift-App-Updater` is sent
 
+## WH. Workflow History Retention
+
+- [ ] **WH1. 6+ workflows — oldest deleted, newest 5 kept** `[LOGCAT-DEBUG]`: with 6+ completed conversations present, trigger a new task completion  ->  logcat `WorkflowRetention: retainNewest: total=N, keep=5 ... deleting=(N-5)`; `chats/` holds exactly the 5 newest markdown files (by created timestamp); `returngift.db` `conversations`/`messages` tables hold only those 5 ids (no orphans)
+- [ ] **WH2. Exactly 5 workflows — none deleted**: with exactly 5 conversations, complete a task  ->  `deleting=0`; all 5 markdown files remain
+- [ ] **WH3. 1–4 workflows — all retained**: with <5 conversations, complete a task  ->  `deleting=0`; all conversations remain
+- [ ] **WH4. 0 workflows — no-op**: fresh install, complete a task  ->  `No workflows to retain; nothing to do`; no crash
+- [ ] **WH5. Running workflow never deleted** `[CRITICAL]`: start a task, ensure its conversation is among the oldest 2 of 7 total, then trigger retention (e.g. via app restart while a task runs)  ->  the running conversation's id appears in `skippedRunningWorkflowId=` and its markdown file + DB rows survive even though it falls outside the keep window
+- [ ] **WH6. Chronological order preserved**: after retention with 7 workflows  ->  the 5 remaining conversations are the newest by `created`, newest-first in the sidebar
+- [ ] **WH7. Orphaned step artifacts pruned** `[LOGCAT-DEBUG]`: with artifacts in `cacheDir/failure_captures|screenshots|app_logs|http_logs|debug_reports|screen_fixtures` older than the oldest retained workflow  ->  those files are deleted (`prunedArtifacts>0`); artifacts newer than the cutoff remain; `fixtures.db` rows with `captured_at < cutoff` removed
+- [ ] **WH8. Retention survives restart**: kill the app with >5 workflows stored, relaunch  ->  on `initCommon`, retention runs and trims to 5 (`WorkflowRetention` log appears on cold start)
+- [ ] **WH9. Partial failure non-fatal**: simulate a file delete failure (read-only file)  ->  `Failed to delete workflow file for ...` logged but DB cleanup continues; no crash; remaining workflows still processed
+
+## WH-UNIT. Workflow History Retention (unit)
+
+- [x] **WH-U1..U8**: `WorkflowHistoryRetentionTest` covers 0, 1–4, 5, 6+, running-workflow safety (inside + outside keep window), keepCount=0, 12-workflow ordering, and partial-failure resilience — PASS via `./gradlew testDebugUnitTest` (CI Quality Gate)
+
 ## G. Empty State (v9 design)
 
 - [ ] **G1. Cloud empty state**: ReturnGift icon + "ReturnGift" + "Cloud AI" subtitle + "Chat and tasks work together" hint + 3 prompts (Tokyo, birthday, WhatsApp)
