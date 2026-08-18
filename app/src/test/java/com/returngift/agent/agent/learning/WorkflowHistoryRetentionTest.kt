@@ -40,7 +40,8 @@ class WorkflowHistoryRetentionTest {
             deletedIndex.add(id)
         }
 
-        fun remaining(): List<String> = live.map { it.id }
+        fun remaining(): List<String> =
+            live.sortedByDescending { it.created }.map { it.id }
     }
 
     /** In-memory pruner that records the cutoffs it was asked to prune with. */

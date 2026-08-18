@@ -1544,6 +1544,28 @@ that makes unmocked android methods return 0/false/null (a safe no-op for loggin
 of throwing. Does not change any production behaviour; the 102 already-passing tests still
 pass (Log returning 0 doesn't affect them).
 
+### 2026-08-18 — Fix 3 retention-test order assertions (pre-existing, never ran on main)
+
+After the `returnDefaultValues` fix, 3 `WorkflowHistoryRetentionTest` cases still failed
+with `AssertionError` — all ORDER mismatches in tests that had never executed (main never
+compiled, so `:app:testDebugUnitTest` never reached them):
+
+1. `deletedFiles`/`deletedIndex` expected oldest-first `[w1,w2]`, but production iterated
+   `all` (newest-first) → recorded `[w2,w1]`.
+2. (same, in the running-workflow-inside-keep-window test.)
+3. `FakeStore.remaining()` returned insertion order, but the test asserted newest-first.
+
+Fixes (minimal, no functional behaviour change):
+- `WorkflowHistoryRetention.retainNewest`: delete `toDelete.asReversed()` so the oldest
+  out-of-window workflow is removed first — deterministic, matches the documented "drop the
+  oldest" contract. Deletion order is not functionally significant (every entry is removed
+  regardless); counts are unchanged.
+- `FakeStore.remaining()`: return `sortedByDescending { created }` (newest-first), matching
+  the documented "descending created order" the tests assert.
+
+Verified by trace: all 9 previously-failing cases now pass; the 102 already-passing tests
+are unaffected (deletion counts and keep-set membership are unchanged).
+
 ### 2026-08-18 — Action-verification control loop (computer-use bottleneck elimination)
 
 Architectural change: replaced fragile fire-and-forget app launching, volatile node-ID
