@@ -18,6 +18,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -43,6 +44,7 @@ import androidx.compose.ui.res.painterResource
 import com.returngift.agent.R
 import com.returngift.agent.agent.skill.Skill
 import com.returngift.agent.agent.skill.SkillCategory
+import com.returngift.agent.agent.skill.SkillRegistry
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -2147,7 +2149,12 @@ private fun TaskSkillsPanel(
             items(taskMessages.size) { index ->
                 val msg = taskMessages[index]
                 if (msg.role == ChatMessage.Role.USER) {
-                    UserBubble(msg.content, msg.timestamp, colors)
+                    UserBubble(
+                        text = msg.content,
+                        timestamp = msg.timestamp,
+                        isEdited = false,
+                        colors = colors,
+                    )
                 } else {
                     SystemMessage(msg.content, colors)
                 }
