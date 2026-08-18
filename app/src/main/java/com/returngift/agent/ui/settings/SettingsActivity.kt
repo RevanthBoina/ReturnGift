@@ -606,7 +606,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         developerGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_compose,
+            leadingIcon = android.R.drawable.ic_menu_add,
             title = "Commit Code Change",
             onClick = { promptCodeChange() },
             showDivider = false
@@ -740,7 +740,7 @@ class SettingsActivity : BaseActivity() {
                         is com.returngift.agent.dev.GitHubCodeEngine.CodeResult.Error ->
                             "Failed: ${result.message}"
                     }
-                    android.app.AlertDialog.Builder(this)
+                    android.app.AlertDialog.Builder(this@SettingsActivity)
                         .setTitle(if (result is com.returngift.agent.dev.GitHubCodeEngine.CodeResult.PullRequestOpened) "PR Opened" else "Failed")
                         .setMessage(msg)
                         .setPositiveButton("OK", null)

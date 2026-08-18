@@ -62,3 +62,45 @@
 - **Settings**: a new "Developer" group in `SettingsActivity` (layout id `developerGroup` in `activity_settings.xml`): GitHub Repository, GitHub Token (PAT), Dev OTA Channel toggle, Check Dev Update Now, Commit Code Change (opens a PR; runs on `lifecycleScope.launch`).
 - **PAT scopes**: fine-grained PAT must have Contents (Read+Write), Pull requests (Write), Metadata (Read). The dev OTA path additionally needs Releases (Read) for private repos.
 - **AI disclosure**: PRs opened by the code engine include a note that the PR was created by an AI agent (OpenHands) on behalf of the user; the CI PR comment includes the same note.
+
+## Known CI compile pitfalls (do NOT repeat) — enforced + documented
+These three mistakes broke the first `Auto Build & Test` run (PR #47, 2026-08-18). Two are
+grep-enforced by `scripts/ci-preflight.sh` (runs as the FIRST CI step, before Gradle, so we
+fail in seconds not minutes); the third needs AST analysis and is enforced by review + this
+list. Any code change — including one submitted from inside ReturnGift via the embedded
+GitHub code engine — MUST NOT reintroduce them.
+
+1. **`android.R.drawable.ic_menu_compose` does not exist.** Only a fixed set of `ic_menu_*`
+   drawables ship in the platform (`ic_menu_add`, `ic_menu_edit`, `ic_menu_save`,
+   `ic_menu_close_clear_cancel`, `ic_menu_info_details`, `ic_menu_search`, …). Always pick a
+   real one. ENFORCED by preflight `no-ic_menu_compose`.
+2. **`return` is prohibited in a default parameter value.** `fun f(x: T = y ?: return)` does
+   NOT compile — Kotlin forbids non-local return in default-argument expressions. Move the
+   null check into the function body: make the param nullable (`x: T? = null`) and
+   `val resolved = x ?: default ?: run { ...; return }` at the top of the body. This bit
+   `AppUpdateManager.startDownload` (pre-existing latent bug that surfaced in CI).
+   ENFORCED by preflight `no-return-in-default-arg` (catches the `?: return` elvis shape).
+3. **Bare `this` inside a coroutine lambda is a `CoroutineScope`, not the Activity.**
+   `lifecycleScope.launch { AlertDialog.Builder(this) ... }` yields "Argument type mismatch:
+   actual type is 'CoroutineScope', but 'Context!' was expected." Always qualify with the
+   enclosing Activity: `this@SettingsActivity` (or `this@YourActivity`). NOT grep-enforceable
+   (would be all false positives) — enforced by review + this list.
+4. **Java tool files in a sub-package that use `ToolResult`/`BaseTool`/`ToolParameter` must
+   import them explicitly.** The `tool/impl/tv/*` tools live in
+   `com.returngift.agent.tool.impl.tv`, NOT in `com.returngift.agent.tool`, so same-package
+   lookup does NOT apply. `VolumeUpTool.java`/`VolumeDownTool.java` were missing
+   `import com.returngift.agent.tool.ToolResult;` (pre-existing on main, surfaced once the
+   Kotlin compile was fixed and the build reached `:app:compileDebugJavaWithJavac`).
+   ENFORCED by preflight `missing-import-ToolResult/BaseTool/ToolParameter` (per-file audit).
+5. **Unit tests that exercise `XLog`-logged code throw `RuntimeException` ("not mocked").**
+   `XLog` calls `android.util.Log.*`, whose default unit-test stub throws. Set
+   `testOptions { unitTests { isReturnDefaultValues = true } }` in `app/build.gradle.kts`
+   so unmocked android methods return 0/false/null (safe no-op for logging) instead of
+   throwing. (`AppLogStore.log` is already a no-op in tests — `resolveLogDir()` returns
+   null when `appContext` is unset — so `Log` is the only offender.) NOT a code bug; a
+   test-config gap. Latent on main (main never reached the test phase).
+
+The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
+checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
+semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnitTest` +
+`lintDebug`), fronted by `scripts/ci-preflight.sh`.

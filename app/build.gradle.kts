@@ -145,6 +145,18 @@ android {
     // A single universal APK is what the auto-update flow needs anyway, since the
     // updater downloads one APK that must install on any device ABI. Re-add per-ABI
     // splits only with ABI-aware output naming and an ABI-aware updater.
+
+    // Unit tests run on a plain JVM where android.* stubs throw "not mocked" by default.
+    // Production code logs through XLog -> android.util.Log; without this flag every test
+    // exercising a logged code path (e.g. WorkflowHistoryRetentionTest) fails with
+    // RuntimeException instead of testing real behaviour. returnDefaultValues makes
+    // unmocked android methods return 0/false/null (a safe no-op for logging) per
+    // https://developer.android.com/training/testing/unit-tests/local-unit-tests#error-not-mocked
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 // L3 fix: previously, a missing local.properties / env signing config silently produced

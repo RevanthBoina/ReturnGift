@@ -1425,6 +1425,14 @@ on-device syntax pre-validation so uncompilable Kotlin is never pushed.
 - **PASS**: only the stable `releases/latest` check runs; `checkForDevUpdate` is a no-op
   (returns UpToDate("dev channel disabled")); no extra GitHub API calls.
 
+### SD9. CI pre-flight catches known compile pitfalls `[CI]`
+- **Act**: open a PR that reintroduces `android.R.drawable.ic_menu_compose`, a
+  `?: return` in a default parameter value, or a Java tool file that uses
+  `ToolResult`/`BaseTool`/`ToolParameter` without importing it.
+- **PASS**: the `CI pre-flight (known-pitfall grep guards)` step fails in seconds (before
+  Gradle runs) with a clear message pointing at the offending file:line. No 3-minute Gradle
+  run is wasted on a known mistake.
+
 ---
 
 ## QA Debug Changelog
@@ -1472,6 +1480,91 @@ regression.
 
 Status: code complete; validated by inspection + a compile-consistency audit (no Gradle in
 sandbox). Runtime QA must run SD1–SD8 on a real device / GitHub repo per `QA_CHECKLIST.md` SD.
+
+### 2026-08-18 — Fix 3 compile errors found by CI (PR #47 build run 32114580827)
+
+The first `Auto Build & Test` run failed at `:app:compileDebugKotlin` with three errors.
+Root cause: the inspection-only audit missed two of them (non-existent platform drawable;
+bare `this` resolving to CoroutineScope inside a `lifecycleScope.launch` lambda) and the
+third (`return` in a default parameter value) was a pre-existing latent bug in
+`AppUpdateManager.startDownload` that surfaced once CI actually compiled it.
+
+Fixes:
+- `SettingsActivity.kt`: `android.R.drawable.ic_menu_compose` (does not exist) →
+  `android.R.drawable.ic_menu_add`. Fixed the `Builder(this)` inside
+  `lifecycleScope.launch { }` → `Builder(this@SettingsActivity)` (bare `this` is a
+  CoroutineScope there).
+- `AppUpdateManager.startDownload`: removed the prohibited `lastReleaseInfo ?: return` from
+  the default argument; param is now nullable and the null check runs in the body via
+  `val resolved = releaseInfo ?: lastReleaseInfo ?: run { ...; return }`. All downstream
+  references in the lambda now use `resolved`.
+
+Repo-memory (so contributors — including the embedded code engine — never repeat this):
+- New `scripts/ci-preflight.sh`: grep guards for the two reliably-detectable pitfalls
+  (`android.R.drawable.ic_menu_compose`; `?: return` in default args). Runs as the FIRST
+  step of `auto_build_and_test.yml`, before Gradle, so known mistakes fail in seconds.
+- New AGENTS.md section "Known CI compile pitfalls (do NOT repeat)" documents all three
+  (incl. the non-grep-enforceable bare-`this`-in-coroutine one) — loaded every session.
+- New QA test SD9: a PR reintroducing a known pitfall must be failed by the pre-flight step.
+
+Status: fixes applied; preflight + YAML validated locally. Pushing to re-run CI.
+
+### 2026-08-18 — Fix Java compile error (VolumeUp/DownTool missing ToolResult import)
+
+After the 3 Kotlin fixes, the build advanced to `:app:compileDebugJavaWithJavac` and hit a
+pre-existing error: `VolumeUpTool.java` / `VolumeDownTool.java` used `ToolResult` without
+importing it (they live in sub-package `com.returngift.agent.tool.impl.tv`, so same-package
+lookup does not apply). This was latent on main — it only surfaced once the Kotlin compile
+was fixed and the build reached the Java compile step.
+
+Fixes:
+- Added `import com.returngift.agent.tool.ToolResult;` to both `VolumeUpTool.java` and
+  `VolumeDownTool.java`.
+- Extended `scripts/ci-preflight.sh` with a per-file `missing-import` audit for
+  `ToolResult` / `BaseTool` / `ToolParameter` (skips files in the declaring package, so the
+  definition files and same-package references don't false-positive). Verified to catch the
+  bug when the import is removed and pass once restored.
+- AGENTS.md pitfall #4 added; QA SD9 updated to also cover the missing-import case.
+
+### 2026-08-18 — Fix 9 unit-test failures (android.util.Log "not mocked")
+
+Once compile passed, `:app:testDebugUnitTest` failed 9 `WorkflowHistoryRetentionTest`
+cases with `java.lang.RuntimeException` (at the XLog call sites). Root cause: production
+code logs through `XLog` → `android.util.Log`, and `testOptions.unitTests.returnDefaultValues`
+defaults to `false`, so every unmocked `Log.*` call throws "Method … not mocked" in a plain
+JVM unit test. (`AppLogStore.log` is a safe no-op in tests — `resolveLogDir()` returns null
+when `appContext` was never `init`ed — so `Log` is the only offender.) This was latent on
+main: main's CI never reached the test phase because it failed at `compileDebugKotlin`
+first; my compile fix was the first build to get far enough to expose it.
+
+Fix: added `testOptions { unitTests { isReturnDefaultValues = true } }` to
+`app/build.gradle.kts` — the Android-recommended setting
+(https://developer.android.com/training/testing/unit-tests/local-unit-tests#error-not-mocked)
+that makes unmocked android methods return 0/false/null (a safe no-op for logging) instead
+of throwing. Does not change any production behaviour; the 102 already-passing tests still
+pass (Log returning 0 doesn't affect them).
+
+### 2026-08-18 — Fix 3 retention-test order assertions (pre-existing, never ran on main)
+
+After the `returnDefaultValues` fix, 3 `WorkflowHistoryRetentionTest` cases still failed
+with `AssertionError` — all ORDER mismatches in tests that had never executed (main never
+compiled, so `:app:testDebugUnitTest` never reached them):
+
+1. `deletedFiles`/`deletedIndex` expected oldest-first `[w1,w2]`, but production iterated
+   `all` (newest-first) → recorded `[w2,w1]`.
+2. (same, in the running-workflow-inside-keep-window test.)
+3. `FakeStore.remaining()` returned insertion order, but the test asserted newest-first.
+
+Fixes (minimal, no functional behaviour change):
+- `WorkflowHistoryRetention.retainNewest`: delete `toDelete.asReversed()` so the oldest
+  out-of-window workflow is removed first — deterministic, matches the documented "drop the
+  oldest" contract. Deletion order is not functionally significant (every entry is removed
+  regardless); counts are unchanged.
+- `FakeStore.remaining()`: return `sortedByDescending { created }` (newest-first), matching
+  the documented "descending created order" the tests assert.
+
+Verified by trace: all 9 previously-failing cases now pass; the 102 already-passing tests
+are unaffected (deletion counts and keep-set membership are unchanged).
 
 ### 2026-08-18 — Action-verification control loop (computer-use bottleneck elimination)
 

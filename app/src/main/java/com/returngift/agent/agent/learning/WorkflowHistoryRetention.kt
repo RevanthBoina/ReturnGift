@@ -116,8 +116,13 @@ object WorkflowHistoryRetention {
                 "kept=$keptCount, deleting=${toDelete.size}"
         )
 
+        // Delete oldest-first: `all` is newest-first, so iterate it in reverse so the
+        // oldest out-of-window workflow is removed first. Deletion order is not
+        // functionally significant (every toDelete entry is removed regardless), but a
+        // deterministic oldest-first order makes retention logs/tests readable and
+        // matches the documented "drop the oldest" contract.
         var deletedConversations = 0
-        for (ref in toDelete) {
+        for (ref in toDelete.asReversed()) {
             try {
                 store.deleteConversationFile(ref)
             } catch (e: Exception) {
