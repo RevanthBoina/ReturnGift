@@ -140,9 +140,6 @@ public class InputTextTool extends BaseTool {
             Thread.currentThread().interrupt();
             return false;
         }
-=======
-        return ToolResult.error("Failed to input text: " + injection.getMessage());
->>>>>>> c31b54a (feat(v2.2.0): Perception & Interaction architecture, real-time physics game engine, speed/accuracy optimizations)
     }
 
     /**
