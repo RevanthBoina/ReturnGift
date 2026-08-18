@@ -115,3 +115,30 @@ The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
 semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnitTest` +
 `lintDebug`), fronted by `scripts/ci-preflight.sh`.
+
+## V2.2.0 release CI breakage (verified 2026-08-18, PR #50)
+The `v2.2.0` tag (commit `5597917`, "feat(v2.2.0): Perception & Interaction architecture…")
+broke EVERY compiling workflow (Release APK, Auto Build & Test, Build Debug APK, Android
+Emulator Matrix QA, Firebase Test Lab). Two layers of errors, one masking the other:
+
+1. **`ChatScreen.kt` Kotlin compile errors (surfaced first):** the v2.2.0 commit added a
+   new `TaskSkillsPanel` composable + a `dismissKeyboardOnBackgroundTap` Modifier with
+   three issues: (a) `waitForUpOrCancellation` used but never imported — needs
+   `import androidx.compose.foundation.gestures.waitForUpOrCancellation`; (b)
+   `SkillRegistry.getUserFacing()` referenced without an import (`Skill`/`SkillCategory`
+   were imported, `SkillRegistry` was not) — this made `builtInSkills` an error type and
+   CASCADE-failed `triggerPatterns`/`name`/`description`/`size()` type inference at lines
+   2120–2129, all resolved by adding `import com.returngift.agent.agent.skill.SkillRegistry`;
+   (c) `UserBubble(msg.content, msg.timestamp, colors)` passed `ReturnGiftColors` as the
+   3rd positional arg (`isEdited: Boolean`) and omitted `colors` — fixed with named args
+   `isEdited = false` + `colors = colors`.
+2. **`InputTextTool.java` leftover merge-conflict markers (masked by #1):** the v2.2.0
+   commit left `=======` / `>>>>>>> c31b54a` markers + a stray out-of-scope `return` inside
+   `verifyEnteredText()`, causing `compileDebugJavaWithJavac` to fail with "illegal start
+   of expression". This error was INVISIBLE while `compileDebugKotlin` failed first; it
+   only surfaced once the Kotlin errors were fixed. Fix: delete the leftover markers +
+   stray return (verified the method closes cleanly). **Lesson:** when a build fails fast at
+   an early compile stage, fixing that stage can UNMASK later-stage errors (e.g. Java compile
+   after Kotlin compile). Always fix and re-run; don't assume one fix clears everything.
+   A repo-wide scan (`git grep -n "^<<<<<<< \|^=======$\|^>>>>>>> "`) confirmed
+   `InputTextTool.java` was the ONLY file with conflict markers.
