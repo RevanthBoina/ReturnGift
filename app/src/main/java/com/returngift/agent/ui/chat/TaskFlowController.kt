@@ -405,6 +405,7 @@ class TaskFlowController(
         XLog.i(TAG, "cleanupAfterTask: isProcessing=FALSE")
         uiState.isAwaitingReply.value = false
         uiState.isTaskRunning.value = false
+        removeTypingIndicator()
         appViewModel.clearTaskCallback()
         onTaskSettled?.invoke()
         Handler(Looper.getMainLooper()).postDelayed({

@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent.skill
@@ -29,7 +29,7 @@ object BuiltInSkills {
         ),
         steps = listOf(
             SkillStep("get_screen_info", description = "Check for search bar"),
-            SkillStep("find_and_tap", mapOf("text" to "Search"), description = "Tap search icon/bar", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Search"), description = "Find search icon/bar", optional = true),
             SkillStep("input_text", mapOf("text" to "{query}"), description = "Type query"),
             SkillStep("system_key", mapOf("key" to "enter"), description = "Submit search"),
             SkillStep("wait", mapOf("duration_ms" to "2000"), description = "Wait for results"),
@@ -47,7 +47,7 @@ object BuiltInSkills {
         triggerPatterns = listOf("submit", "send message", "press send"),
         steps = listOf(
             SkillStep("get_screen_info", description = "Look for submit button"),
-            SkillStep("find_and_tap", mapOf("text" to "Send|Submit|Save|Post|Done"), description = "Tap submit button"),
+            SkillStep("scroll_to_find", mapOf("text" to "Send"), description = "Find submit button", optional = true),
             SkillStep("wait", mapOf("duration_ms" to "2000"), description = "Wait for submission"),
         ),
         fallbackGoal = "Find and tap the Send, Submit, or Save button on screen."
@@ -63,15 +63,12 @@ object BuiltInSkills {
         triggerPatterns = listOf("dismiss", "close popup", "close dialog"),
         steps = listOf(
             SkillStep("get_screen_info", description = "Identify popup type"),
-            SkillStep("find_and_tap", mapOf("text" to "OK"), description = "Tap OK", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Got it"), description = "Tap Got it", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Close"), description = "Tap Close", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Close app"), description = "Tap Close app", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Dismiss"), description = "Tap Dismiss", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Not now"), description = "Tap Not now", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Cancel"), description = "Tap Cancel", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Skip"), description = "Tap Skip", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Wait"), description = "Tap Wait", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "OK"), description = "Find OK", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Got it"), description = "Find Got it", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Close"), description = "Find Close", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Dismiss"), description = "Find Dismiss", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Cancel"), description = "Find Cancel", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Skip"), description = "Find Skip", optional = true),
         ),
         fallbackGoal = "A popup or dialog is blocking. Find and tap the close/dismiss button."
     )
@@ -120,13 +117,11 @@ object BuiltInSkills {
         triggerPatterns = listOf("accept permission", "allow permission", "grant access"),
         steps = listOf(
             SkillStep("get_screen_info", description = "Check for permission dialog"),
-            SkillStep("find_and_tap", mapOf("text" to "Allow"), description = "Tap Allow", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "While using the app"), description = "Tap While using", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Accept"), description = "Tap Accept", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Agree"), description = "Tap Agree", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "Continue"), description = "Tap Continue", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "I agree"), description = "Tap I agree", optional = true),
-            SkillStep("find_and_tap", mapOf("text" to "ALLOW"), description = "Tap ALLOW caps", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Allow"), description = "Find Allow", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "While using the app"), description = "Find While using", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Accept"), description = "Find Accept", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Agree"), description = "Find Agree", optional = true),
+            SkillStep("scroll_to_find", mapOf("text" to "Continue"), description = "Find Continue", optional = true),
         ),
         fallbackGoal = "A permission or consent dialog appeared. Find and tap the Allow/Accept/Agree button."
     )

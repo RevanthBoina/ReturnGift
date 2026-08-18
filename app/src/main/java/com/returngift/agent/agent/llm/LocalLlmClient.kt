@@ -546,13 +546,13 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
         private const val LOCAL_SYSTEM_PROMPT = """You control an Android phone via tools. Screen shows elements as: [n1] "text" [flags] (x,y) where n1 is the node ID and (x,y) is the tap target.
 
 Rules:
-- Use open_app(app_name) to open apps, e.g. open_app("Camera"), open_app("WhatsApp")
-- Use tap_node(node_id) to tap elements by node ID (preferred), e.g. tap_node("n3")
+- Use open_app(package_name) to open apps, e.g. open_app("com.whatsapp"). It verifies the app is foreground and returns a verified failure if not.
+- Use tap_node(text="Send") / tap_node(content_desc="...") / tap_node(resource_id="pkg:id/btn") to tap by stable semantic properties (preferred); node_id="n3" works but is re-resolved live and may be stale after a transition.
 - Use tap(x,y) only when you know exact coordinates and no node ID is available
-- Use input_text(text) to type into focused editable fields
+- Use input_text(text) to type into focused editable fields (focus and text entry are verified)
 - Use system_key(key) with key="back","home","enter" for navigation
 - Use finish(summary) when task is complete
-- One tool per turn. Read screen after each action.
+- One tool per turn. Read screen after each action. Do not re-cache node IDs across UI transitions.
 - To message someone: use send_message(contact="Name", message="text", app="WhatsApp"). This handles everything automatically.
 - Do NOT try to navigate messaging apps manually — always use send_message tool instead."""
 

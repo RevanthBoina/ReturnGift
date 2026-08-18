@@ -1,0 +1,182 @@
+name: Auto Build & Test
+
+# PR-based workflow: never build directly on main except for the rolling dev prerelease.
+# On PR/push: run unit tests, Android Lint, build APK, attach artifact + PR comment.
+# On push to main (docs excluded): also publish a rolling dev prerelease so the
+# in-app OTA dev-channel self-updater can fetch ReturnGift-dev.apk.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.github/workflows/emulator-matrix.yml'
+      - '.github/workflows/firebase-test-lab.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  build-and-test:
+    name: Build, Test & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: CI pre-flight (known-pitfall grep guards)
+        run: ./scripts/ci-preflight.sh
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-autobuild-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-autobuild-
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Run Android Lint
+        run: ./gradlew lintDebug
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: returngift-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      - name: Upload Lint Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-reports
+          path: app/build/reports/lint-results-*.html
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Comment APK on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          name: returngift-debug-apk
+          path: pr-apk
+
+      - name: Post PR comment with download link
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -e
+          # Build the PR comment with printf (heredoc <<EOF is unreliable here because the
+          # runner's shell wrapper sometimes fails to enter the here-document, executing the
+          # markdown body as commands). printf lines are unambiguous.
+          {
+            printf '%s\n' "## Auto Build & Test"
+            printf '%s\n' ""
+            printf '%s\n' "Status: **${JOB_STATUS}**"
+            printf '%s\n' ""
+            printf '%s\n' "- Unit tests: ./gradlew testDebugUnitTest"
+            printf '%s\n' "- Android Lint: ./gradlew lintDebug"
+            printf '%s\n' "- Debug APK built and uploaded as artifact"
+            printf '%s\n' ""
+            printf '%s\n' "Download the APK from the workflow run artifacts:"
+            printf '%s\n' "[Run #${RUN_ID}](${REPO_URL}/actions/runs/${RUN_ID})"
+            printf '%s\n' ""
+            printf '%s\n' "(This comment was created by an AI agent (OpenHands) on behalf of the ReturnGift CI.)"
+          } > comment.md
+          gh pr comment "$PR_NUMBER" --body-file comment.md
+
+  dev-prerelease:
+    name: Rolling Dev Prerelease
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-autobuild-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-autobuild-
+
+      - name: Download debug APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: returngift-debug-apk
+          path: dev-apk
+
+      - name: Rename to canonical dev asset
+        id: asset
+        run: |
+          set -e
+          SRC=$(find dev-apk -maxdepth 1 -name "*.apk" | head -1)
+          if [ -z "$SRC" ]; then echo "::error::No APK artifact found"; exit 1; fi
+          cp "$SRC" dev-apk/ReturnGift-dev.apk
+          SHA=$(sha256sum dev-apk/ReturnGift-dev.apk | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          SHORT_SHA=${GITHUB_SHA::7}
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Dev APK sha256: $SHA (commit $SHORT_SHA)"
+
+      - name: Publish rolling dev prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev-latest
+          name: ReturnGift Dev Build (rolling)
+          body: |
+            Rolling dev build from `main` @ ${{ steps.asset.outputs.short_sha }}
+
+            APK SHA-256: `${{ steps.asset.outputs.sha256 }}`
+
+            This is an automatically-published development prerelease. It is signed with the
+            debug key and is intended for the in-app OTA dev-channel self-updater. It is NOT
+            a stable release — install over a debug build only.
+          files: |
+            dev-apk/ReturnGift-dev.apk
+          prerelease: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

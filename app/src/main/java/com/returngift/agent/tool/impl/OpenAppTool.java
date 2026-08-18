@@ -85,18 +85,28 @@ public class OpenAppTool extends BaseTool {
             if (resolved != null) {
                 XLog.i(TAG, "Resolved app name '" + packageName + "' → '" + resolved + "'");
                 packageName = resolved;
+            } else {
+                // Verified failure: app name could not be resolved to an installed package.
+                return ToolResult.error("Could not resolve app name '" + packageName
+                        + "' to an installed package. Call get_installed_apps to find the correct package name.");
             }
         }
 
-        boolean success = service.openApp(packageName);
-        if (!success) {
-            return ToolResult.error("Failed to open app: " + packageName + ". Make sure the app is installed.");
+        com.returngift.agent.core.telemetry.AppLifecycleManager.LaunchResult result =
+                com.returngift.agent.core.telemetry.AppLifecycleManager.INSTANCE.launchAndVerify(service, packageName);
+
+        if (!result.getSuccess()) {
+            // Try fallback via service.openApp
+            boolean fallbackSuccess = service.openApp(packageName);
+            if (!fallbackSuccess) {
+                return ToolResult.error("Failed to open app: " + packageName + (result.getError() != null ? " (" + result.getError() + ")" : ""));
+            }
         }
 
         // Wait for possible chain-launch intercept dialog and auto-click "Allow"
         dismissChainLaunchDialog(service);
 
-        return ToolResult.success("Opened app: " + packageName);
+        return ToolResult.success("Opened app: " + packageName + " (confirmed in foreground)");
     }
 
     /**

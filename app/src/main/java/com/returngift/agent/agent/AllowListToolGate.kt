@@ -26,7 +26,7 @@ object AllowListToolGate {
     private val PASSTHROUGH_TOOLS = setOf(
         "finish", "get_screen_info", "get_device_info", "get_notifications",
         "get_installed_apps", "take_screenshot", "wait", "clipboard",
-        "system_key", "find_node_info", "kb_write", "kb_read", "kb_search",
+        "system_key", "kb_write", "kb_read", "kb_search",
         "kb_append", "kb_add_todo", "send_file"
     )
 
@@ -72,8 +72,8 @@ object AllowListToolGate {
     }
 
     private fun resolveTargetPackage(toolName: String, params: Map<String, Any>): String? {
-        // open_app carries the package name explicitly
-        if (toolName == "open_app") {
+        // open_app / switch_app carry the package name explicitly
+        if (toolName == "open_app" || toolName == "switch_app") {
             return params["package_name"]?.toString()?.takeIf { it.isNotBlank() }
         }
         // For all UI-interaction tools resolve from the current foreground window

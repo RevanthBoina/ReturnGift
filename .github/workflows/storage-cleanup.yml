@@ -1,0 +1,114 @@
+name: Storage Cleanup
+
+# Keeps GitHub Actions storage bounded by deleting old completed workflow
+# runs (and their logs/artifacts). This is the CI-side counterpart to the
+# on-device WorkflowHistoryRetention: just as the app keeps only the newest
+# 5 workflows, CI keeps only the newest runs per workflow.
+#
+# Triggers:
+# - nightly (02:00 UTC)
+# - workflow_dispatch (manual, with a configurable keep-count)
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      keep_per_workflow:
+        description: 'Completed runs to keep per workflow file (newest first)'
+        required: false
+        default: '5'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: storage-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Delete old workflow runs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const keep = parseInt('${{ inputs.keep_per_workflow || '5' }}', 10) || 5;
+            core.info(`Keeping newest ${keep} completed runs per workflow.`);
+
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+
+            // Gather every workflow file in the repo so we only purge runs for
+            // workflows that still exist (firebase-test-lab was deleted).
+            const workflows = await github.paginate(github.rest.actions.listRepoWorkflows, {
+              owner, repo, per_page: 100
+            });
+            const wfById = new Map(workflows.map(w => [w.id, w.name]));
+
+            let totalDeleted = 0;
+            for (const wf of workflows) {
+              // Page through completed runs newest-first; skip the first `keep`,
+              // delete the rest. Only completed runs can be deleted.
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRuns,
+                { owner, repo, workflow_id: wf.id, status: 'completed', per_page: 100 }
+              );
+              core.info(`Workflow "${wf.name}" (id=${wf.id}): ${runs.length} completed runs.`);
+              for (let i = keep; i < runs.length; i++) {
+                const run = runs[i];
+                try {
+                  await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                  totalDeleted++;
+                } catch (e) {
+                  // 404 = already gone; log others but keep going.
+                  if (e.status !== 404) core.warning(`Could not delete run ${run.id}: ${e.message}`);
+                }
+              }
+            }
+
+            // Also delete logs for cancelled/failed runs older than 14 days that
+            // are still under their workflow's keep window? No — the keep window
+            // above already bounds total run count, which bounds storage.
+            core.info(`Deleted ${totalDeleted} old workflow runs.`);
+            core.setOutput('deleted', String(totalDeleted));
+
+      - name: Delete expired artifacts (safety net)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Artifacts with retention-days expire on their own, but some legacy
+            // artifacts (pre-retention-days) may linger. Delete any artifact
+            // older than 7 days as a safety net.
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            let deleted = 0;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner, repo, per_page: 100
+            });
+            for (const run of runs) {
+              let artifacts;
+              try {
+                artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                  owner, repo, run_id: run.id, per_page: 100
+                });
+              } catch (e) { continue; }
+              for (const a of artifacts) {
+                if (new Date(a.created_at).getTime() < cutoff) {
+                  try {
+                    await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: a.id });
+                    deleted++;
+                  } catch (e) {
+                    if (e.status !== 404) core.warning(`Could not delete artifact ${a.id}: ${e.message}`);
+                  }
+                }
+              }
+            }
+            core.info(`Deleted ${deleted} old artifacts.`);
+            core.setOutput('artifacts_deleted', String(deleted));

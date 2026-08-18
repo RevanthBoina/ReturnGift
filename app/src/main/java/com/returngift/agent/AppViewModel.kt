@@ -31,7 +31,7 @@ class AppViewModel : ViewModel() {
 
     val taskOrchestrator = TaskOrchestrator(
         agentConfigProvider = { getAgentConfig() },
-        onTaskFinished = { /* refresh */ }
+        onTaskFinished = { onWorkflowFinished() }
     )
 
     private val channelSetup = ChannelSetup(taskOrchestrator = taskOrchestrator)
@@ -82,6 +82,52 @@ class AppViewModel : ViewModel() {
     fun initCommon() {
         if (_commonInitialized) return
         _commonInitialized = true
+        // Retention is restart-safe: clean up overflow history on every cold start
+        // so storage never grows unbounded even if a task never completes.
+        runHistoryRetention(background = true, runningWorkflowId = null)
+    }
+
+    /**
+     * Invoked on the agent executor thread whenever a workflow completes, fails,
+     * or is cancelled. Retains the newest workflows and prunes orphaned artifacts.
+     */
+    private fun onWorkflowFinished() {
+        runHistoryRetention(
+            background = true,
+            // Never delete the workflow that is currently running (it may still be
+            // finalizing its conversation save). By the time this fires the task
+            // session is released, so fall back to the persisted current conversation.
+            runningWorkflowId = currentPersistedWorkflowId()
+        )
+    }
+
+    private fun currentPersistedWorkflowId(): String? =
+        com.returngift.agent.utils.KVUtils
+            .getString("CURRENT_CONVERSATION_ID", "")
+            .takeIf { it.isNotEmpty() }
+
+    private val retentionExecutor =
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "returngift-retention").apply { isDaemon = true }
+        }
+
+    private fun runHistoryRetention(background: Boolean, runningWorkflowId: String?) {
+        val action = Runnable {
+            try {
+                com.returngift.agent.agent.learning.WorkflowHistoryRetention
+                    .retainNewestOnDevice(
+                        context = ClawApplication.instance,
+                        runningWorkflowId = runningWorkflowId
+                    )
+            } catch (e: Exception) {
+                XLog.w(TAG, "Workflow history retention failed", e)
+            }
+        }
+        if (background) {
+            retentionExecutor.execute(action)
+        } else {
+            action.run()
+        }
     }
 
     fun initAgent() {

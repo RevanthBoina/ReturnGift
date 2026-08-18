@@ -59,6 +59,7 @@ class SettingsActivity : BaseActivity() {
     private var permOverlay: com.returngift.agent.widget.MenuItem? = null
     private var permBattery: com.returngift.agent.widget.MenuItem? = null
     private var permStorage: com.returngift.agent.widget.MenuItem? = null
+    private var permRestricted: com.returngift.agent.widget.MenuItem? = null
     private var externalAutomationItem: com.returngift.agent.widget.MenuItem? = null
     private var globalPromptItem: com.returngift.agent.widget.MenuItem? = null
     private var customModelUrlItem: com.returngift.agent.widget.MenuItem? = null
@@ -295,8 +296,29 @@ class SettingsActivity : BaseActivity() {
                     AppCapabilityCoordinator.openSystemSettings(this@SettingsActivity, AppRequirement.STORAGE)
                 }
             },
-            showDivider = false
+            showDivider = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
         )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permRestricted = permissionsGroup.addMenuItem(
+                leadingIcon = android.R.drawable.ic_dialog_info,
+                title = "Allow Restricted Settings",
+                onClick = {
+                    com.returngift.agent.widget.AlertDialog.show(
+                        context = this@SettingsActivity,
+                        title = "Allow Restricted Settings",
+                        message = "On Android 13+, the system blocks Accessibility for sideloaded apps with 'Restricted setting'.\n\nTo allow:\n1. Tap 'Open App Info' below\n2. Tap the 3-dot menu (⋮) in the top-right\n3. Tap 'Allow restricted settings'\n4. Return here and enable Accessibility.",
+                        actionTitle = "Open App Info",
+                        onAction = {
+                            AppCapabilityCoordinator.openSystemSettings(this@SettingsActivity, AppRequirement.RESTRICTED_SETTINGS)
+                        }
+                    )
+                },
+                showDivider = false
+            ).apply {
+                setTrailingText("Guide")
+            }
+        }
 
         // Channel (hidden)
         val channelGroup = findViewById<MenuGroup>(R.id.channelGroup)
@@ -560,6 +582,195 @@ class SettingsActivity : BaseActivity() {
         ).apply {
             setTrailingText("ProxyStar4u")
         }
+
+        // Developer — self-development (CI/CD OTA + embedded GitHub code engine)
+        val developerGroup = findViewById<MenuGroup>(R.id.developerGroup)
+        developerGroup.setTitle("Developer")
+
+        developerGroup.addMenuItem(
+            leadingIcon = android.R.drawable.ic_menu_edit,
+            title = "GitHub Repository",
+            onClick = { promptGitHubRepo() },
+            showDivider = true
+        ).apply {
+            setTrailingText(com.returngift.agent.dev.DevConfig.getRepoSlug())
+        }
+
+        developerGroup.addMenuItem(
+            leadingIcon = android.R.drawable.ic_lock_lock,
+            title = "GitHub Token (PAT)",
+            onClick = { promptGithubToken() },
+            showDivider = true
+        ).apply {
+            setTrailingText(if (com.returngift.agent.dev.DevConfig.hasGithubToken()) "Set" else "Not set")
+        }
+
+        developerGroup.addMenuItem(
+            leadingIcon = android.R.drawable.ic_popup_sync,
+            title = "Dev OTA Channel",
+            onClick = {
+                val enabled = !com.returngift.agent.dev.DevConfig.isDevChannelEnabled()
+                com.returngift.agent.dev.DevConfig.setDevChannelEnabled(enabled)
+                recreate()
+            },
+            showDivider = true
+        ).apply {
+            setTrailingText(if (com.returngift.agent.dev.DevConfig.isDevChannelEnabled()) "On" else "Off")
+        }
+
+        developerGroup.addMenuItem(
+            leadingIcon = android.R.drawable.stat_sys_download,
+            title = "Check Dev Update Now",
+            onClick = { checkAndShowDevUpdateDialog() },
+            showDivider = true
+        ).apply {
+            setTrailingText("OTA")
+        }
+
+        developerGroup.addMenuItem(
+            leadingIcon = android.R.drawable.ic_menu_add,
+            title = "Commit Code Change",
+            onClick = { promptCodeChange() },
+            showDivider = false
+        ).apply {
+            setTrailingText("Open PR")
+        }
+    }
+
+    private fun promptGitHubRepo() {
+        val current = com.returngift.agent.dev.DevConfig.getRepoSlug()
+        val input = android.widget.EditText(this).apply {
+            hint = "owner/repo"
+            setText(current)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("GitHub Repository")
+            .setMessage("Enter the repository in owner/repo form (e.g. RevanthBoina/ReturnGift).")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val raw = input.text.toString().trim().trim('/')
+                val parts = raw.split("/")
+                if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+                    com.returngift.agent.dev.DevConfig.setRepo(parts[0], parts[1])
+                    recreate()
+                } else {
+                    android.widget.Toast.makeText(this, "Use owner/repo form", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun promptGithubToken() {
+        val input = android.widget.EditText(this).apply {
+            hint = "github_pat_..."
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("GitHub Token (PAT)")
+            .setMessage("Paste a fine-grained PAT with Contents (Read+Write), Pull requests (Write) and Metadata (Read). It is stored encrypted on-device.")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val token = input.text.toString().trim()
+                if (token.isNotBlank()) {
+                    com.returngift.agent.dev.DevConfig.setGithubToken(token)
+                    recreate()
+                }
+            }
+            .setNeutralButton("Clear") { _, _ ->
+                com.returngift.agent.dev.DevConfig.clearGithubToken()
+                recreate()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun checkAndShowDevUpdateDialog() {
+        val checking = android.app.AlertDialog.Builder(this)
+            .setTitle("Checking Dev Update")
+            .setMessage("Fetching rolling dev-latest prerelease…")
+            .setCancelable(false)
+            .create()
+        checking.show()
+        com.returngift.agent.utils.AppUpdateManager.checkForDevUpdate(force = true) { state ->
+            checking.dismiss()
+            if (state is com.returngift.agent.utils.AppUpdateManager.UpdateState.UpdateAvailable) {
+                com.returngift.agent.utils.UpdateChecker.showUpdateForRelease(this, state.releaseInfo)
+            } else if (state is com.returngift.agent.utils.AppUpdateManager.UpdateState.Failed) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Dev Update Failed")
+                    .setMessage(state.errorMessage)
+                    .setPositiveButton("OK", null)
+                    .show()
+            } else if (state is com.returngift.agent.utils.AppUpdateManager.UpdateState.UpToDate) {
+                android.widget.Toast.makeText(this, "No dev update available (${state.currentVersion})", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun promptCodeChange() {
+        val pathInput = android.widget.EditText(this).apply {
+            hint = "app/src/main/java/.../File.kt"
+        }
+        val msgInput = android.widget.EditText(this).apply {
+            hint = "Commit message / PR title"
+        }
+        val contentInput = android.widget.EditText(this).apply {
+            hint = "Full new file content"
+            minLines = 8
+            gravity = android.view.Gravity.TOP
+        }
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(40, 40, 40, 40)
+            addView(pathInput)
+            addView(msgInput)
+            addView(contentInput)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Commit Code Change (opens a PR)")
+            .setMessage("On-device syntax validation runs before the PR is opened. CI then gates the merge.")
+            .setView(layout)
+            .setPositiveButton("Open PR") { _, _ ->
+                val path = pathInput.text.toString().trim()
+                val title = msgInput.text.toString().trim().ifEmpty { "ReturnGift code change" }
+                val content = contentInput.text.toString()
+                if (path.isEmpty() || content.isEmpty()) {
+                    android.widget.Toast.makeText(this, "Path and content required", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val progress = android.app.AlertDialog.Builder(this)
+                    .setTitle("Opening PR…")
+                    .setMessage("Validating + committing to a branch…")
+                    .setCancelable(false)
+                    .create()
+                progress.show()
+                lifecycleScope.launch {
+                    val result = com.returngift.agent.dev.GitHubCodeEngine.submitChange(
+                        path = path,
+                        newContent = content,
+                        commitMessage = title,
+                        prTitle = title,
+                        prBody = "Code change submitted from ReturnGift Developer settings.\n\n(This PR was created by an AI agent (OpenHands) on behalf of the user.)"
+                    )
+                    progress.dismiss()
+                    val msg = when (result) {
+                        is com.returngift.agent.dev.GitHubCodeEngine.CodeResult.PullRequestOpened ->
+                            "PR #${result.prNumber} opened:\n${result.prUrl}"
+                        is com.returngift.agent.dev.GitHubCodeEngine.CodeResult.ValidationFailed ->
+                            "Syntax validation failed:\n${result.errors.joinToString("\n")}"
+                        is com.returngift.agent.dev.GitHubCodeEngine.CodeResult.Error ->
+                            "Failed: ${result.message}"
+                    }
+                    android.app.AlertDialog.Builder(this@SettingsActivity)
+                        .setTitle(if (result is com.returngift.agent.dev.GitHubCodeEngine.CodeResult.PullRequestOpened) "PR Opened" else "Failed")
+                        .setMessage(msg)
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun reportBug() {

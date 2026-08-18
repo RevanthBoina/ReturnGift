@@ -18,7 +18,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,8 +43,8 @@ import androidx.compose.ui.res.painterResource
 import com.returngift.agent.R
 import com.returngift.agent.agent.skill.Skill
 import com.returngift.agent.agent.skill.SkillCategory
-import com.returngift.agent.agent.skill.SkillRegistry
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -52,6 +53,7 @@ import com.returngift.agent.utils.XLog
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -145,6 +147,7 @@ fun ChatScreen(
     onSelectConversation: (ChatHistoryManager.ConversationSummary) -> Unit,
     onDeleteConversation: (ChatHistoryManager.ConversationSummary) -> Unit = {},
     onRenameConversation: (ChatHistoryManager.ConversationSummary, String) -> Unit = { _, _ -> },
+    onEditMessage: (Int, String) -> Unit = { _, _ -> },
     activeTasks: List<String> = emptyList(),
     onStopTask: (String) -> Unit = {},
     onStopAllTasks: () -> Unit = {},
@@ -341,6 +344,7 @@ fun ChatScreen(
                             messages = messages,
                             colors = colors,
                             onBackgroundTap = dismissKeyboard,
+                            onEditMessage = onEditMessage,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -637,6 +641,7 @@ private fun MessageList(
     messages: List<ChatMessage>,
     colors: ReturnGiftColors,
     onBackgroundTap: () -> Unit = {},
+    onEditMessage: (Int, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -657,10 +662,21 @@ private fun MessageList(
             },
         contentPadding = PaddingValues(vertical = 8.dp),
     ) {
-        items(items = messages, key = { it.timestamp }) { message ->
+        itemsIndexed(items = messages, key = { _, it -> it.id }) { index, message ->
             when (message.role) {
-                ChatMessage.Role.USER -> UserBubble(message.content, message.timestamp, colors)
-                ChatMessage.Role.ASSISTANT -> AssistantBubble(message.content, message.timestamp, colors, message.modelName)
+                ChatMessage.Role.USER -> UserBubble(
+                    text = message.content,
+                    timestamp = message.timestamp,
+                    isEdited = message.isEdited,
+                    colors = colors,
+                    onEdit = { newContent -> onEditMessage(index, newContent) }
+                )
+                ChatMessage.Role.ASSISTANT -> AssistantBubble(
+                    text = message.content,
+                    timestamp = message.timestamp,
+                    colors = colors,
+                    modelName = message.modelName
+                )
                 ChatMessage.Role.SYSTEM -> SystemMessage(message.content, colors)
                 ChatMessage.Role.TOOL_GROUP -> ToolGroup(message, colors)
             }
@@ -671,7 +687,16 @@ private fun MessageList(
 // ======================== BUBBLES ========================
 
 @Composable
-private fun UserBubble(text: String, timestamp: Long, colors: ReturnGiftColors) {
+private fun UserBubble(
+    text: String,
+    timestamp: Long,
+    isEdited: Boolean,
+    colors: ReturnGiftColors,
+    onEdit: (String) -> Unit = {}
+) {
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editText by remember(text, showEditDialog) { mutableStateOf(text) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -681,6 +706,11 @@ private fun UserBubble(text: String, timestamp: Long, colors: ReturnGiftColors) 
             Surface(
                 color = colors.userBubble,
                 shape = RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp),
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = { showEditDialog = true }
+                    )
+                }
             ) {
                 Text(
                     text = text,
@@ -691,19 +721,72 @@ private fun UserBubble(text: String, timestamp: Long, colors: ReturnGiftColors) 
                 )
             }
         }
-        Text(
-            text = formatBubbleTimestamp(timestamp),
-            fontSize = 9.sp,
-            color = colors.textTertiary,
+        Row(
             modifier = Modifier
                 .align(Alignment.End)
                 .padding(end = 6.dp, top = 1.dp, bottom = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isEdited) {
+                Text(
+                    text = "(edited)",
+                    fontSize = 9.sp,
+                    color = colors.textTertiary,
+                )
+            }
+            Text(
+                text = formatBubbleTimestamp(timestamp),
+                fontSize = 9.sp,
+                color = colors.textTertiary,
+            )
+        }
+    }
+
+    if (showEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Edit Message", color = colors.textPrimary) },
+            text = {
+                OutlinedTextField(
+                    value = editText,
+                    onValueChange = { editText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary,
+                        focusedBorderColor = colors.accent,
+                        unfocusedBorderColor = colors.inputBorder,
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (editText.isNotBlank() && editText != text) {
+                            onEdit(editText.trim())
+                        }
+                        showEditDialog = false
+                    }
+                ) {
+                    Text("Save", color = colors.accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) {
+                    Text("Cancel", color = colors.textSecondary)
+                }
+            },
+            containerColor = colors.surface,
         )
     }
 }
 
 @Composable
 private fun AssistantBubble(text: String, timestamp: Long, colors: ReturnGiftColors, modelName: String? = null) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -741,27 +824,45 @@ private fun AssistantBubble(text: String, timestamp: Long, colors: ReturnGiftCol
                     shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp),
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.aiBubbleBorder),
                 ) {
-                    Text(
-                        text = text,
-                        color = colors.aiText,
-                        fontSize = 15.sp,
-                        lineHeight = 21.sp,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = text,
+                            color = colors.aiText,
+                            fontSize = 15.sp,
+                            lineHeight = 21.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
                 }
             }
         }
         if (text != "...") {
-            val footer = listOfNotNull(
-                modelName?.takeIf { it.isNotBlank() },
-                formatBubbleTimestamp(timestamp)
-            ).joinToString(" · ")
-            Text(
-                text = footer,
-                fontSize = 9.sp,
-                color = colors.textTertiary,
-                modifier = Modifier.padding(start = 40.dp, top = 1.dp, bottom = 2.dp),
-            )
+            Row(
+                modifier = Modifier.padding(start = 40.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val footer = listOfNotNull(
+                    modelName?.takeIf { it.isNotBlank() },
+                    formatBubbleTimestamp(timestamp)
+                ).joinToString(" · ")
+                Text(
+                    text = footer,
+                    fontSize = 9.sp,
+                    color = colors.textTertiary,
+                )
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy response",
+                    tint = colors.textTertiary,
+                    modifier = Modifier
+                        .size(13.dp)
+                        .clickable {
+                            clipboardManager.setText(AnnotatedString(text))
+                            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                )
+            }
         }
     }
 }
@@ -1403,79 +1504,77 @@ private fun QuickTasksPanel(
     colors: ReturnGiftColors,
 ) {
     var expanded by remember { mutableStateOf(true) }
-
-    // Cloud-only tasks (multi-step, Siri can't do)
-    val cloudOnlyTasks = remember { listOf(
-        "🌐 Open Reddit and search for returngift",
-        "🎬 Search YouTube for funny cat fails",
-        "📦 Install Telegram from Play Store",
-        "🐦 Check what's trending on Twitter and tell me",
-        "💬 Check my latest WhatsApp chat and summarize it",
-        "📋 Copy the latest email subject and Google it",
-        "📧 Write an email saying I'll be late today",
-    ) }
-    // Reasoning tasks (1-2 tool calls + LLM analysis) — impressive, work on both
-    val reasoningTasks = remember { listOf(
-        "📵 Check my notifications — anything important?",
-        "📋 Read my clipboard and explain what it says",
-        "🧹 Check my storage and apps — what can I delete?",
-        "🔔 Read my notifications and summarize",
-        "🔋 Check my battery and tell me if I need to charge",
-    ) }
-    // Simple deterministic tasks (1 tool, no reasoning)
-    val deterministicTasks = remember { listOf(
-        "💬 Send hi to Mom on WhatsApp",
-        "📱 What apps do I have?",
-        "🌡️ How hot is my phone?",
-        "🔵 Is bluetooth on?",
-        "🔋 How much battery left?",
-        "📞 Call Mom",
-        "💾 How much storage do I have?",
-        "📲 What Android version am I running?",
-    ) }
-
-    // Cloud: cloud-only → reasoning → deterministic
-    // Local: reasoning first (impressive) → deterministic
-    val quickTasks = if (isLocalModel) {
-        reasoningTasks + deterministicTasks
-    } else {
-        cloudOnlyTasks + reasoningTasks + deterministicTasks
+    var taskVersion by remember { mutableStateOf(0) }
+    val quickTasks = remember(isLocalModel, taskVersion) {
+        QuickTaskRepository.getTasks(isLocalModel)
     }
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var newTaskText by remember { mutableStateOf("") }
+    var taskToDelete by remember { mutableStateOf<String?>(null) }
+    var showResetDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.background(colors.surface),
     ) {
         HorizontalDivider(color = colors.divider, thickness = 1.dp)
 
-        // Handle bar — ▲ Quick Tasks ▲
+        // Handle bar — ▲ Quick Task Templates ▲ + Add/Reset actions
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.Center,
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = "Toggle",
-                tint = colors.accent,
-                modifier = Modifier.size(12.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                "Quick Task Templates",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = colors.accent,
-            )
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = "Toggle",
-                tint = colors.accent,
-                modifier = Modifier.size(12.dp),
-            )
+            Row(
+                modifier = Modifier
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Toggle",
+                    tint = colors.accent,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Quick Task Templates",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.accent,
+                )
+            }
+
+            if (expanded) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Reset",
+                        fontSize = 10.sp,
+                        color = colors.textTertiary,
+                        modifier = Modifier
+                            .clickable { showResetDialog = true }
+                            .padding(4.dp)
+                    )
+                    Text(
+                        "+ Add",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.accent,
+                        modifier = Modifier
+                            .clickable {
+                                newTaskText = ""
+                                showAddDialog = true
+                            }
+                            .padding(4.dp)
+                    )
+                }
+            }
         }
 
         // Collapsible content
@@ -1494,11 +1593,15 @@ private fun QuickTasksPanel(
                         shape = RoundedCornerShape(9.dp),
                         color = colors.background,
                         border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.inputBorder),
+                        modifier = Modifier.pointerInput(task) {
+                            detectTapGestures(
+                                onTap = { onFillTask(task.substringAfter(" ")) },
+                                onLongPress = { taskToDelete = task }
+                            )
+                        }
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onFillTask(task.substringAfter(" ")) },
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(
@@ -1516,6 +1619,97 @@ private fun QuickTasksPanel(
                         }
                     }
                 }
+            }
+
+            // Dialogs for Quick Tasks
+            if (showAddDialog) {
+                AlertDialog(
+                    onDismissRequest = { showAddDialog = false },
+                    title = { Text("Add Quick Task Template", color = colors.textPrimary) },
+                    text = {
+                        OutlinedTextField(
+                            value = newTaskText,
+                            onValueChange = { newTaskText = it },
+                            placeholder = { Text("e.g. ⚡ Open Spotify and play daily mix", color = colors.textTertiary) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = colors.textPrimary,
+                                unfocusedTextColor = colors.textPrimary,
+                                focusedBorderColor = colors.accent,
+                                unfocusedBorderColor = colors.inputBorder,
+                            )
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                if (newTaskText.isNotBlank()) {
+                                    QuickTaskRepository.addTask(newTaskText.trim(), isLocalModel)
+                                    taskVersion++
+                                }
+                                showAddDialog = false
+                            }
+                        ) {
+                            Text("Add", color = colors.accent)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAddDialog = false }) {
+                            Text("Cancel", color = colors.textSecondary)
+                        }
+                    },
+                    containerColor = colors.surface,
+                )
+            }
+
+            taskToDelete?.let { task ->
+                AlertDialog(
+                    onDismissRequest = { taskToDelete = null },
+                    title = { Text("Delete Quick Task?", color = colors.textPrimary) },
+                    text = { Text("Remove '$task' from templates?", color = colors.textSecondary) },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                QuickTaskRepository.removeTask(task, isLocalModel)
+                                taskVersion++
+                                taskToDelete = null
+                            }
+                        ) {
+                            Text("Delete", color = Color(0xFFFF5252))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { taskToDelete = null }) {
+                            Text("Cancel", color = colors.textSecondary)
+                        }
+                    },
+                    containerColor = colors.surface,
+                )
+            }
+
+            if (showResetDialog) {
+                AlertDialog(
+                    onDismissRequest = { showResetDialog = false },
+                    title = { Text("Reset Templates?", color = colors.textPrimary) },
+                    text = { Text("Restore default quick task templates?", color = colors.textSecondary) },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                QuickTaskRepository.resetToDefaults(isLocalModel)
+                                taskVersion++
+                                showResetDialog = false
+                            }
+                        ) {
+                            Text("Reset", color = colors.accent)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showResetDialog = false }) {
+                            Text("Cancel", color = colors.textSecondary)
+                        }
+                    },
+                    containerColor = colors.surface,
+                )
             }
 
             // Background section — always visible, NOT inside scroll
