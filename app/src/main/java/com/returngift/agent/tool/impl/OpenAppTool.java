@@ -85,18 +85,43 @@ public class OpenAppTool extends BaseTool {
             if (resolved != null) {
                 XLog.i(TAG, "Resolved app name '" + packageName + "' → '" + resolved + "'");
                 packageName = resolved;
+            } else {
+                // Verified failure: app name could not be resolved to an installed package.
+                return ToolResult.error("Could not resolve app name '" + packageName
+                        + "' to an installed package. Call get_installed_apps to find the correct package name.");
             }
         }
 
-        boolean success = service.openApp(packageName);
-        if (!success) {
-            return ToolResult.error("Failed to open app: " + packageName + ". Make sure the app is installed.");
+        // Deterministic, verified foreground launch. openAppForeground returns a verified
+        // failure state (not a blind success) if the app does not reach the foreground.
+        ClawAccessibilityService.LaunchResult launch =
+                service.openAppForeground(packageName, 8000L);
+
+        if (!launch.success) {
+            // The AI must NOT continue under the assumption that the app opened.
+            return ToolResult.error(launch.error != null ? launch.error
+                    : ("Failed to open app: " + packageName + ". Foreground=" + launch.foregroundPackage));
         }
 
         // Wait for possible chain-launch intercept dialog and auto-click "Allow"
         dismissChainLaunchDialog(service);
 
-        return ToolResult.success("Opened app: " + packageName);
+        // Re-verify foreground after dismissing any intercept dialog (the dialog may have
+        // stolen focus; once dismissed, confirm the target is back in front).
+        if (!service.isForeground(packageName)) {
+            XLog.w(TAG, "After chain-launch dialog handling, " + packageName
+                    + " is not foreground (=" + service.getForegroundPackage() + "); re-launching");
+            ClawAccessibilityService.LaunchResult relaunch =
+                    service.openAppForeground(packageName, 6000L);
+            if (!relaunch.success) {
+                return ToolResult.error(relaunch.error != null ? relaunch.error
+                        : ("App " + packageName + " lost foreground after launch dialog. Foreground="
+                                + relaunch.foregroundPackage));
+            }
+        }
+
+        return ToolResult.success("Opened and verified app in foreground: " + packageName
+                + " (foreground=" + launch.foregroundPackage + ")");
     }
 
     /**

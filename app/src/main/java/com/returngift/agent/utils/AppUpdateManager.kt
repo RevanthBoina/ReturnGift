@@ -47,6 +47,10 @@ object AppUpdateManager {
     private const val GITHUB_API_LATEST = "https://api.github.com/repos/RevanthBoina/ReturnGift/releases/latest"
     private const val CONNECT_TIMEOUT_MS = 10000
     private const val READ_TIMEOUT_MS = 15000
+    private const val DEV_UPDATE_THROTTLE_MS = 24L * 60 * 60 * 1000  // 24h
+    private const val KV_LAST_DEV_CHECK = "last_dev_update_check"
+    private const val DEV_TAG = "dev-latest"
+    private const val DEV_ASSET_NAME = "ReturnGift-dev.apk"
 
     sealed class UpdateState {
         object Idle : UpdateState()
@@ -160,6 +164,112 @@ object AppUpdateManager {
     }
 
     /**
+     * Dev-channel OTA: check the rolling `dev-latest` prerelease published by
+     * auto_build_and_test.yml on every push to main, and offer to self-update.
+     *
+     * Uses the user's GitHub PAT ([com.returngift.agent.dev.DevConfig.getGithubToken]) so it
+     * works for private repos and to authenticate the asset download. Throttled to once per
+     * 24h (the stable-channel throttle was previously written but never read — this path
+     * implements the guard explicitly). Set [force] to bypass the throttle (used by the
+     * Settings → Developer → Check now action).
+     */
+    fun checkForDevUpdate(
+        force: Boolean = false,
+        onResult: ((UpdateState) -> Unit)? = null
+    ) {
+        if (!com.returngift.agent.dev.DevConfig.isDevChannelEnabled()) {
+            onResult?.invoke(UpdateState.UpToDate("dev channel disabled"))
+            return
+        }
+        if (!force) {
+            val last = KVUtils.getLong(KV_LAST_DEV_CHECK, 0L)
+            if (System.currentTimeMillis() - last < DEV_UPDATE_THROTTLE_MS) {
+                XLog.i(TAG, "Dev update check throttled; skipping")
+                onResult?.invoke(UpdateState.UpToDate("throttled"))
+                return
+            }
+        }
+        scope.launch {
+            _updateState.value = UpdateState.Checking
+            onResult?.invoke(UpdateState.Checking)
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val token = com.returngift.agent.dev.DevConfig.getGithubToken()
+                    val slug = com.returngift.agent.dev.DevConfig.getRepoSlug()
+                    if (token.isBlank()) {
+                        return@withContext UpdateState.Failed("No GitHub token configured", true, "CHECKING")
+                    }
+                    val urlStr = "https://api.github.com/repos/$slug/releases/tags/$DEV_TAG"
+                    val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        setRequestProperty("Accept", "application/vnd.github.v3+json")
+                        setRequestProperty("User-Agent", "ReturnGift-App-Updater")
+                        setRequestProperty("Authorization", "Bearer $token")
+                        connectTimeout = CONNECT_TIMEOUT_MS
+                        readTimeout = READ_TIMEOUT_MS
+                    }
+                    if (conn.responseCode != 200) {
+                        return@withContext UpdateState.Failed(
+                            "Dev release not found (HTTP ${conn.responseCode})", true, "CHECKING")
+                    }
+                    val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                    val releaseInfo = parseDevReleaseJson(json)
+                    lastReleaseInfo = releaseInfo
+                    KVUtils.putLong(KV_LAST_DEV_CHECK, System.currentTimeMillis())
+                    // For the dev channel we offer the update whenever a build exists whose
+                    // commit differs from the installed one (BuildConfig includes the origin
+                    // fingerprint). A versionName/Code check is not reliable for rolling
+                    // dev builds, so we always offer and let the user decide.
+                    UpdateState.UpdateAvailable(releaseInfo)
+                } catch (e: Exception) {
+                    XLog.e(TAG, "Dev update check failed", e)
+                    UpdateState.Failed(e.message ?: "dev check failed", true, "CHECKING")
+                }
+            }
+            _updateState.value = result
+            onResult?.invoke(result)
+        }
+    }
+
+    private fun parseDevReleaseJson(release: JSONObject): ReleaseInfo {
+        val tagName = release.optString("tag_name", DEV_TAG)
+        val body = release.optString("body", "ReturnGift dev build (rolling).")
+        val htmlUrl = release.optString("html_url", "")
+        var apkUrl = ""
+        var apkName = DEV_ASSET_NAME
+        var apkSize: Long = 0
+        var sha256Url: String? = null
+        if (release.has("assets")) {
+            val assets = release.getJSONArray("assets")
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.optString("name", "")
+                val url = asset.optString("browser_download_url", "")
+                if (name.equals(DEV_ASSET_NAME, ignoreCase = true) || name.endsWith(".apk")) {
+                    apkUrl = url
+                    apkName = name
+                    apkSize = asset.optLong("size", 0)
+                }
+            }
+        }
+        // Derive a pseudo versionCode from the release body's commit SHA is not possible
+        // without parsing; use a stable high code so the installer treats it as newer than
+        // debug builds (debug is code 1). Real gating is CI + signing key.
+        val versionCode = 99990000
+        return ReleaseInfo(
+            tagName = tagName,
+            versionName = "dev",
+            versionCode = versionCode,
+            releaseNotes = body,
+            apkDownloadUrl = apkUrl,
+            apkFileName = apkName,
+            apkSizeBytes = apkSize,
+            sha256Url = sha256Url,
+            htmlUrl = htmlUrl
+        )
+    }
+
+    /**
      * Start downloading the release APK with progress tracking.
      */
     fun startDownload(
@@ -186,7 +296,9 @@ object AppUpdateManager {
 
                     val downloadedFile = downloadFileWithRedirects(
                         urlStr = releaseInfo.apkDownloadUrl,
-                        destFile = targetApk
+                        destFile = targetApk,
+                        bearerToken = if (releaseInfo.versionName == "dev")
+                            com.returngift.agent.dev.DevConfig.getGithubToken() else null
                     ) { progress, current, total ->
                         scope.launch(Dispatchers.Main) {
                             val state = UpdateState.Downloading(progress, current, total)
@@ -289,10 +401,13 @@ object AppUpdateManager {
 
     /**
      * Download file following HTTP 301/302 redirects (e.g. GitHub S3 release assets).
+     * For private-repo dev assets, pass a [bearerToken] so the redirect target is fetched
+     * with authorization.
      */
     private fun downloadFileWithRedirects(
         urlStr: String,
         destFile: File,
+        bearerToken: String? = null,
         onProgress: (progress: Int, currentBytes: Long, totalBytes: Long) -> Unit
     ): File {
         var currentUrl = urlStr
@@ -304,6 +419,9 @@ object AppUpdateManager {
             conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
                 instanceFollowRedirects = false
                 setRequestProperty("User-Agent", "ReturnGift-App-Updater")
+                if (!bearerToken.isNullOrBlank()) {
+                    setRequestProperty("Authorization", "Bearer $bearerToken")
+                }
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
             }
