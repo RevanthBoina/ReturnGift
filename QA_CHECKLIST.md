@@ -1426,8 +1426,9 @@ on-device syntax pre-validation so uncompilable Kotlin is never pushed.
   (returns UpToDate("dev channel disabled")); no extra GitHub API calls.
 
 ### SD9. CI pre-flight catches known compile pitfalls `[CI]`
-- **Act**: open a PR that reintroduces `android.R.drawable.ic_menu_compose` or a
-  `?: return` in a default parameter value.
+- **Act**: open a PR that reintroduces `android.R.drawable.ic_menu_compose`, a
+  `?: return` in a default parameter value, or a Java tool file that uses
+  `ToolResult`/`BaseTool`/`ToolParameter` without importing it.
 - **PASS**: the `CI pre-flight (known-pitfall grep guards)` step fails in seconds (before
   Gradle runs) with a clear message pointing at the offending file:line. No 3-minute Gradle
   run is wasted on a known mistake.
@@ -1507,6 +1508,23 @@ Repo-memory (so contributors — including the embedded code engine — never re
 - New QA test SD9: a PR reintroducing a known pitfall must be failed by the pre-flight step.
 
 Status: fixes applied; preflight + YAML validated locally. Pushing to re-run CI.
+
+### 2026-08-18 — Fix Java compile error (VolumeUp/DownTool missing ToolResult import)
+
+After the 3 Kotlin fixes, the build advanced to `:app:compileDebugJavaWithJavac` and hit a
+pre-existing error: `VolumeUpTool.java` / `VolumeDownTool.java` used `ToolResult` without
+importing it (they live in sub-package `com.returngift.agent.tool.impl.tv`, so same-package
+lookup does not apply). This was latent on main — it only surfaced once the Kotlin compile
+was fixed and the build reached the Java compile step.
+
+Fixes:
+- Added `import com.returngift.agent.tool.ToolResult;` to both `VolumeUpTool.java` and
+  `VolumeDownTool.java`.
+- Extended `scripts/ci-preflight.sh` with a per-file `missing-import` audit for
+  `ToolResult` / `BaseTool` / `ToolParameter` (skips files in the declaring package, so the
+  definition files and same-package references don't false-positive). Verified to catch the
+  bug when the import is removed and pass once restored.
+- AGENTS.md pitfall #4 added; QA SD9 updated to also cover the missing-import case.
 
 ### 2026-08-18 — Action-verification control loop (computer-use bottleneck elimination)
 

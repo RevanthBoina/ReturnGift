@@ -43,6 +43,36 @@ run_check "no-return-in-default-arg" \
   '\?: return[),]' \
   "return is prohibited in a default parameter value — move the null check into the function body."
 
+# Pitfall 3 (pre-existing on main, surfaced 2026-08-18): Java tool files that use a type
+# from com.returngift.agent.tool without importing it. The tv/* tools live in a sub-package
+# (com.returngift.agent.tool.impl.tv), so same-package rules do NOT apply — they must import
+# ToolResult/BaseTool/ToolParameter explicitly. This caught VolumeUpTool/VolumeDownTool.
+
+audit_missing_import() {
+  local symbol="$1" fsym="$2"
+  local hits=""
+  while IFS= read -r f; do
+    # Skip the definition file itself and anything in the declaring package
+    # (same-package references need no import).
+    if grep -qE "^package com\.returngift\.agent\.tool;" "$f"; then
+      continue
+    fi
+    if grep -qE "\b${fsym}\b" "$f" && ! grep -q "import com.returngift.agent.tool.${fsym};" "$f"; then
+      hits="${hits}    ${f} (uses ${fsym}, no import)\n"
+    fi
+  done < <(grep -rln --include='*.java' -E "\b${fsym}\b" app/src/main/java 2>/dev/null || true)
+  if [ -n "$hits" ]; then
+    red "PREFLIGHT FAIL [missing-import-${fsym}]: Java file uses ${symbol} without importing it."
+    printf '%b' "$hits"
+    fail=1
+  else
+    grn "OK missing-import-${fsym}"
+  fi
+}
+audit_missing_import "com.returngift.agent.tool.ToolResult" "ToolResult"
+audit_missing_import "com.returngift.agent.tool.BaseTool" "BaseTool"
+audit_missing_import "com.returngift.agent.tool.ToolParameter" "ToolParameter"
+
 if [ "$fail" -ne 0 ]; then
   red ""
   red "CI pre-flight found known-pitfall patterns. Fix them before Gradle runs."

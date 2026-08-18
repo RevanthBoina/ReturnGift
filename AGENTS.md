@@ -85,6 +85,13 @@ GitHub code engine — MUST NOT reintroduce them.
    actual type is 'CoroutineScope', but 'Context!' was expected." Always qualify with the
    enclosing Activity: `this@SettingsActivity` (or `this@YourActivity`). NOT grep-enforceable
    (would be all false positives) — enforced by review + this list.
+4. **Java tool files in a sub-package that use `ToolResult`/`BaseTool`/`ToolParameter` must
+   import them explicitly.** The `tool/impl/tv/*` tools live in
+   `com.returngift.agent.tool.impl.tv`, NOT in `com.returngift.agent.tool`, so same-package
+   lookup does NOT apply. `VolumeUpTool.java`/`VolumeDownTool.java` were missing
+   `import com.returngift.agent.tool.ToolResult;` (pre-existing on main, surfaced once the
+   Kotlin compile was fixed and the build reached `:app:compileDebugJavaWithJavac`).
+   ENFORCED by preflight `missing-import-ToolResult/BaseTool/ToolParameter` (per-file audit).
 
 The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
