@@ -1526,6 +1526,24 @@ Fixes:
   bug when the import is removed and pass once restored.
 - AGENTS.md pitfall #4 added; QA SD9 updated to also cover the missing-import case.
 
+### 2026-08-18 — Fix 9 unit-test failures (android.util.Log "not mocked")
+
+Once compile passed, `:app:testDebugUnitTest` failed 9 `WorkflowHistoryRetentionTest`
+cases with `java.lang.RuntimeException` (at the XLog call sites). Root cause: production
+code logs through `XLog` → `android.util.Log`, and `testOptions.unitTests.returnDefaultValues`
+defaults to `false`, so every unmocked `Log.*` call throws "Method … not mocked" in a plain
+JVM unit test. (`AppLogStore.log` is a safe no-op in tests — `resolveLogDir()` returns null
+when `appContext` was never `init`ed — so `Log` is the only offender.) This was latent on
+main: main's CI never reached the test phase because it failed at `compileDebugKotlin`
+first; my compile fix was the first build to get far enough to expose it.
+
+Fix: added `testOptions { unitTests { isReturnDefaultValues = true } }` to
+`app/build.gradle.kts` — the Android-recommended setting
+(https://developer.android.com/training/testing/unit-tests/local-unit-tests#error-not-mocked)
+that makes unmocked android methods return 0/false/null (a safe no-op for logging) instead
+of throwing. Does not change any production behaviour; the 102 already-passing tests still
+pass (Log returning 0 doesn't affect them).
+
 ### 2026-08-18 — Action-verification control loop (computer-use bottleneck elimination)
 
 Architectural change: replaced fragile fire-and-forget app launching, volatile node-ID

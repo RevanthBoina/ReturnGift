@@ -92,6 +92,13 @@ GitHub code engine — MUST NOT reintroduce them.
    `import com.returngift.agent.tool.ToolResult;` (pre-existing on main, surfaced once the
    Kotlin compile was fixed and the build reached `:app:compileDebugJavaWithJavac`).
    ENFORCED by preflight `missing-import-ToolResult/BaseTool/ToolParameter` (per-file audit).
+5. **Unit tests that exercise `XLog`-logged code throw `RuntimeException` ("not mocked").**
+   `XLog` calls `android.util.Log.*`, whose default unit-test stub throws. Set
+   `testOptions { unitTests { isReturnDefaultValues = true } }` in `app/build.gradle.kts`
+   so unmocked android methods return 0/false/null (safe no-op for logging) instead of
+   throwing. (`AppLogStore.log` is already a no-op in tests — `resolveLogDir()` returns
+   null when `appContext` is unset — so `Log` is the only offender.) NOT a code bug; a
+   test-config gap. Latent on main (main never reached the test phase).
 
 The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
