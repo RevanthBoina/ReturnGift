@@ -1439,6 +1439,25 @@ on-device syntax pre-validation so uncompilable Kotlin is never pushed.
 
 Format: `[date] [status] [test-id] description`
 
+### 2026-08-18 — Emulator Matrix QA: non-fatal logcat/screenshot capture + BOM fix (PR #51)
+
+The `Android Emulator Matrix QA` workflow failed on API 35 (google_apis) even though
+the smoke test had passed every real assertion (install ✓, launch ✓ Status: ok,
+process alive PID 2504 ✓, no FATAL EXCEPTION ✓). Root cause: `scripts/emulator-smoke.sh`
+ran under `set -e`, and the **diagnostic artifact-capture** step `adb logcat -d > ...`
+returned exit code 255 on API 35 (a transient `adb logcat -d` flake on newer API
+levels). Because it ran after the crash check, a non-essential logcat dump aborted the
+whole job and turned a PASS into a FAIL. Also: line 1 had a UTF-8 BOM (`﻿#!/usr/bin/env
+bash`) that broke the shebang (`No such file or directory` warning).
+
+Fix: stripped the BOM; wrapped the logcat dump + screencap + pull in `if ! ...; then
+::warning:: ...` blocks so a transient artifact-capture failure emits a warning but
+does NOT abort the script. The real assertions (install/launch/process/crash) remain
+under `set -e` and still fail the job when they break.
+
+[2026-08-18] [PENDING] AV-EMU  Re-run `Android Emulator Matrix QA` on the fix branch;
+expect API 29/31/33/34/35 all green (previously only API 35 failed, at artifact capture).
+
 ### 2026-08-18 — Self-development feature (CI/CD OTA + embedded GitHub code engine)
 
 Added the ability for users to develop ReturnGift from ReturnGift: a PR-based CI/CD

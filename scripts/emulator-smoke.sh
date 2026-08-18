@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Emulator smoke test runner invoked by .github/workflows/emulator-matrix.yml
 # Each line of the workflow's `script:` block is interpreted as an
 # independent `sh -c` call, which breaks multi-line shell (variable
@@ -87,9 +87,18 @@ echo "No fatal exceptions in crash buffer."
 echo "::endgroup::"
 
 echo "::group::Capture logcat artifact"
-adb logcat -d > "logcat-full-api${API_LEVEL}.txt"
-adb shell screencap -p "/sdcard/screen-api${API_LEVEL}.png"
-adb pull "/sdcard/screen-api${API_LEVEL}.png" .
+# Diagnostic artifacts only — the smoke verdict is already decided by the
+# crash check above. adb logcat -d / screencap can return non-zero on newer
+# API levels (e.g. transient 255 on API 35); don't let that fail the job.
+if ! adb logcat -d > "logcat-full-api${API_LEVEL}.txt" 2>/dev/null; then
+  echo "::warning::adb logcat -d returned non-zero; logcat artifact may be empty or missing."
+fi
+if adb shell screencap -p "/sdcard/screen-api${API_LEVEL}.png" 2>/dev/null; then
+  adb pull "/sdcard/screen-api${API_LEVEL}.png" . 2>/dev/null || \
+    echo "::warning::screenshot pull failed; continuing."
+else
+  echo "::warning::screencap failed; no screenshot artifact."
+fi
 echo "::endgroup::"
 
 echo "::group::Smoke test summary"
