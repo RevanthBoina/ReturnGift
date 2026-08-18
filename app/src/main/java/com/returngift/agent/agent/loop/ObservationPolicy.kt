@@ -27,7 +27,7 @@ object ObservationPolicy {
      * Tools that always require full visual observation afterwards.
      */
     private val MANDATORY_OBSERVE_TOOLS = setOf(
-        "open_app", "system_key", "phone_long_press", "scroll_to_find"
+        "open_app", "switch_app", "system_key", "phone_long_press", "scroll_to_find"
     )
 
     /**

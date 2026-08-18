@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent
@@ -31,8 +31,9 @@ enum class AppRequirement(val label: String) {
     NOTIFICATION_PERMISSION("Notifications"),
     NOTIFICATION_ACCESS("Notification Access"),
     OVERLAY("Overlay"),
-    BATTERY_OPTIMIZATION("Battery"),
+    BATTERY_OPTIMIZATION("Background Run"),
     STORAGE("Storage"),
+    RESTRICTED_SETTINGS("Restricted Settings"),
 }
 
 data class AppCapabilitySnapshot(
@@ -229,6 +230,14 @@ object AppCapabilityCoordinator {
                         }
                     )
                 }
+            }
+            AppRequirement.RESTRICTED_SETTINGS -> {
+                launch(
+                    context,
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = "package:${context.packageName}".toUri()
+                    }
+                )
             }
             AppRequirement.NOTIFICATION_PERMISSION -> Unit
         }

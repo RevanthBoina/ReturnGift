@@ -23,6 +23,14 @@ public class UpdateChecker {
         });
     }
 
+    /**
+     * Show the update dialog for an already-resolved release (used by the dev-channel
+     * self-update path, which fetches the rolling dev-latest prerelease directly).
+     */
+    public static void showUpdateForRelease(Activity activity, AppUpdateManager.ReleaseInfo info) {
+        activity.runOnUiThread(() -> showUpdateDialog(activity, info));
+    }
+
     private static void showUpdateDialog(Activity activity, AppUpdateManager.ReleaseInfo info) {
         try {
             android.app.AlertDialog progressDialog = new android.app.AlertDialog.Builder(activity)

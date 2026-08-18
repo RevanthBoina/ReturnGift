@@ -34,6 +34,8 @@ import com.returngift.agent.agent.memory.LearnedProcedureStore
 import com.returngift.agent.agent.tracker.ExecutionTracker
 import com.returngift.agent.agent.session.AppSessionManager
 import com.returngift.agent.agent.loop.ObservationPolicy
+import com.returngift.agent.agent.loop.ActionVerifier
+import com.returngift.agent.agent.loop.InteractionWatchdog
 import java.io.File
 import java.util.LinkedList
 import java.util.UUID
@@ -64,12 +66,13 @@ class DefaultAgentService : AgentService {
 5. Finish: When goal is achieved, call finish(summary="concrete data or outcome").
 
 ## Tool selection guide
-- Open app → open_app(package_name="com.example.app")
-- Tap UI element → tap_node(node_id="n3") or tap(x=500, y=300)
-- Type text → input_text(text="hello") or input_text(text="hello", node_id="n5")
+- Open app (verified foreground) → open_app(package_name="com.example.app"). Returns a verified failure if the app does not reach the foreground — do NOT assume it opened on success alone.
+- Switch to a running app (verified) → switch_app(package_name="com.example.app"). Handles Recents overlays.
+- Check which app is foreground → get_foreground_app()
+- Tap UI element → PREFER semantic: tap_node(text="Send") or tap_node(content_desc="Cancel") or tap_node(resource_id="com.app:id/btn"). Legacy node_id="n3" is re-grounded live but may be stale after a transition.
+- Type text (focus verified) → input_text(text="hello") or input_text(text="hello", node_id="n5")
 - System navigation → system_key(key="back"|"home"|"enter")
 - Search list/page → scroll_to_find(text="Settings")
-- Find and tap text → find_and_tap(text="Send")
 - Messaging → send_message(contact="Mom", message="hi", app="WhatsApp")
 - Phone call → make_call(contact="Mom")
 - Device metrics → get_device_info(category="battery"|"wifi"|"storage"|"bluetooth"|"screen")
@@ -80,11 +83,14 @@ class DefaultAgentService : AgentService {
 
 ## Core Execution Rules
 - finish(summary) MUST contain the REAL DATA requested (e.g. "Battery is at 73%", not "I checked battery").
-- Use direct tools (get_device_info, get_notifications, get_installed_apps) for device queries instead of opening Settings.
+- Use direct tools (get_device_info, get_notifications, get_installed_apps, get_foreground_app) for device/system queries instead of opening Settings.
 - Use input_text to type directly; do not tap autocomplete suggestions.
-- Reuse existing browser tabs, authenticated sessions, and opened apps; do not open duplicate sessions.
+- Reuse existing browser tabs, authenticated sessions, and opened apps; use switch_app to resume a running app rather than open_app.
 - If image generation or download encounters temporary network lag, retry within the same existing session.
 - ReturnGift operates strictly in the background during automation; always inspect the active target foreground app.
+- After open_app/switch_app/system_key, trust the foreground-verification note in the tool result — do not proceed if it says the target is not foreground.
+- Do not re-cache node IDs ("n3") across UI transitions; re-resolve by text/content_desc/resource_id, or call get_screen_info again.
+- If you see a [System Notice]/[System Warning] about ineffective actions or a recovery, change your approach — do not repeat the same action.
 - Privacy & Safety: Do NOT interact with payment, checkout, UPI PIN, or CVV screens. If encountered, immediately call finish(summary="Payment required; please complete manually")."""
 
         /** Maximum number of retries on LLM API call failure */
@@ -100,10 +106,10 @@ class DefaultAgentService : AgentService {
         private val ACTION_TOOLS = setOf(
             "phone_click_node", "phone_tap", "phone_swipe", "phone_long_press",
             "tap", "long_press", "swipe", "scroll_to_find",
-            "input_text", "type_text", "system_key", "open_app",
+            "input_text", "type_text", "system_key", "open_app", "switch_app",
             "dpad_up", "dpad_down", "dpad_left", "dpad_right", "dpad_center",
             "volume_up", "volume_down", "press_menu", "press_power",
-            "clipboard", "send_file", "repeat_actions", "wait"
+            "clipboard", "send_file", "wait"
         )
         /** ms to wait for UI to settle before capturing screen after an action */
         private const val SCREEN_SETTLE_MS = 500L
@@ -327,7 +333,6 @@ class DefaultAgentService : AgentService {
     private val OBSERVATION_PLACEHOLDERS = mapOf(
         "get_screen_info" to "[screen info omitted]",
         "take_screenshot" to "[screenshot result omitted]",
-        "find_node_info" to "[node find result omitted]",
         "get_installed_apps" to "[app list omitted]",
         "scroll_to_find" to "[scroll find result omitted]"
     )
@@ -576,6 +581,8 @@ class DefaultAgentService : AgentService {
         var previousScreenTexts: Set<String> = emptySet()
         val tokenMonitor = TokenMonitor(config.modelName)
         val stuckDetector = StuckDetector()
+        val interactionWatchdog = InteractionWatchdog()
+        var currentTargetPackage: String? = null  // target app the task is driving (for relaunch recovery)
         val taskBudget = TaskBudget.fromSettings()
         var softLimitWarned = false
         var consecutiveActionsWithoutObserve = 0
@@ -769,9 +776,13 @@ class DefaultAgentService : AgentService {
                 directDeviceDataGuard.recordToolAttempt(toolName)
                 emailComposeGuard.recordToolAttempt(toolName)
 
-                // Track app sessions if opening an app
-                if (toolName == "open_app") {
-                    params["package_name"]?.toString()?.let { AppSessionManager.trackAppOpen(it) }
+                // Track app sessions if opening an app, and remember the target package for
+                // watchdog relaunch recovery + foreground verification.
+                if (toolName == "open_app" || toolName == "switch_app") {
+                    params["package_name"]?.toString()?.let {
+                        AppSessionManager.trackAppOpen(it)
+                        currentTargetPackage = it
+                    }
                 }
 
                 // ── Part B: allow-list gate ─────────────────────────────────────────
@@ -787,19 +798,62 @@ class DefaultAgentService : AgentService {
                 }
                 // ── End allow-list gate ─────────────────────────────────────────────
 
+                // Unified control loop: capture the state BEFORE the action so we can verify
+                // the action's effect afterwards (observe → resolve → act → verify → recover).
+                val a11ySvc = ClawAccessibilityService.getInstance()
+                val beforeState = if (a11ySvc != null && toolName in ACTION_TOOLS) {
+                    ActionVerifier.captureBefore(a11ySvc, toolName)
+                } else null
+
                 val actStartTime = System.currentTimeMillis()
                 val result = ToolRegistry.getInstance().executeTool(toolName, params)
                 val actLatency = System.currentTimeMillis() - actStartTime
                 val paramsString = if (params.isEmpty()) "" else params.toString()
 
-                ExecutionTracker.recordAction(
+                // Unified control loop: verify the state change and feed the watchdog.
+                // This is the programmatic verification the loop previously lacked — the AI
+                // no longer continues on an unverified or stale UI state.
+                var verification: ActionVerifier.VerificationResult? = null
+                var recovery: InteractionWatchdog.Recovery? = null
+                var recoveryExecuted: String? = null
+                if (beforeState != null && a11ySvc != null) {
+                    val expectedFg = if (toolName == "open_app" || toolName == "switch_app")
+                        currentTargetPackage else null
+                    verification = ActionVerifier.verifyAfter(
+                        a11ySvc, beforeState, result.isSuccess, expectedFg
+                    )
+                    val overlay = a11ySvc.isSystemOverlayLikely()
+                    val argsFp = (params["text"]?.toString() ?: params["node_id"]?.toString()
+                        ?: params["package_name"]?.toString() ?: params["key"]?.toString() ?: "").take(40)
+                    recovery = interactionWatchdog.record(
+                        toolName = toolName,
+                        argsFingerprint = argsFp,
+                        verification = verification,
+                        screenHash = (verification.afterSignature ?: "0").hashCode(),
+                        expectedForeground = currentTargetPackage,
+                        overlayPresent = overlay
+                    )
+                    if (recovery.strategy != InteractionWatchdog.RecoveryStrategy.NONE) {
+                        recoveryExecuted = interactionWatchdog.executeRecovery(
+                            recovery.strategy, a11ySvc, currentTargetPackage
+                        )
+                        XLog.i(TAG, "Watchdog recovery (${recovery.strategy}): $recoveryExecuted")
+                        consecutiveActionsWithoutObserve = 0  // force a fresh observation next round
+                    }
+                }
+
+                ExecutionTracker.recordVerifiedAction(
                     taskId = taskId,
                     stepIndex = iterations,
                     toolName = toolName,
                     params = paramsString,
                     resultSuccess = result.isSuccess,
                     resultSummary = result.data ?: result.error ?: "",
-                    latencyMs = actLatency
+                    latencyMs = actLatency,
+                    appPackage = verification?.foregroundPackage,
+                    targetResolution = if (beforeState != null) "semantic/state-snapshot" else null,
+                    verificationResult = verification?.let { "${it.outcome}: ${it.detail}" },
+                    recoveryAction = recoveryExecuted
                 )
 
                 callback.onToolResult(iterations, toolName, displayName, paramsString, result)
@@ -936,6 +990,12 @@ class DefaultAgentService : AgentService {
 
                 // Add tool result to messages
                 messages.add(ToolExecutionResultMessage.from(toolRequest, combinedResultData))
+                // Unified control loop: if the watchdog executed a recovery with a model hint,
+                // inject it so the model adapts its plan instead of repeating the ineffective action.
+                if (recovery != null && recovery.strategy != InteractionWatchdog.RecoveryStrategy.NONE
+                    && !recovery.modelHint.isNullOrBlank()) {
+                    messages.add(UserMessage.from(recovery.modelHint))
+                }
                 XLog.d(TAG, "displayName:$displayName toolName:$toolName")
             }
 

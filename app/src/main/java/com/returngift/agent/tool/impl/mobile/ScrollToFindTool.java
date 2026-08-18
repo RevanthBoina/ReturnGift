@@ -105,13 +105,8 @@ public class ScrollToFindTool extends BaseTool {
                 return ToolResult.error("Swipe failed at scroll #" + (i + 1));
             }
 
-            // Wait for page to settle
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return ToolResult.error("Interrupted during scroll");
-            }
+            // Adaptive event-driven settle detection (replaces static 500ms delay)
+            com.returngift.agent.core.telemetry.AdaptiveSettleController.INSTANCE.waitForSettle(60L, 300L);
 
             // Search for target
             found = findElement(service, text);
@@ -137,33 +132,54 @@ public class ScrollToFindTool extends BaseTool {
      */
     private ToolResult findElement(ClawAccessibilityService service, String text) {
         List<AccessibilityNodeInfo> nodes = service.findNodesByText(text);
-        if (nodes.isEmpty()) {
-            return null;
-        }
-        try {
-            // Take the first visible node
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node.isVisibleToUser()) {
-                    Rect bounds = new Rect();
-                    node.getBoundsInScreen(bounds);
-                    int centerX = bounds.centerX();
-                    int centerY = bounds.centerY();
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("Found element with text \"").append(text).append("\"");
-                    sb.append("\n  bounds=").append(bounds.toShortString());
-                    sb.append("\n  center=(").append(centerX).append(", ").append(centerY).append(")");
-                    sb.append("\n  clickable=").append(node.isClickable());
-                    if (node.getClassName() != null) {
-                        sb.append("\n  class=").append(node.getClassName());
+        if (!nodes.isEmpty()) {
+            try {
+                // Take the first visible node
+                for (AccessibilityNodeInfo node : nodes) {
+                    if (node.isVisibleToUser()) {
+                        Rect bounds = new Rect();
+                        node.getBoundsInScreen(bounds);
+                        int centerX = bounds.centerX();
+                        int centerY = bounds.centerY();
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("Found element with text \"").append(text).append("\"");
+                        sb.append("\n  bounds=").append(bounds.toShortString());
+                        sb.append("\n  center=(").append(centerX).append(", ").append(centerY).append(")");
+                        sb.append("\n  clickable=").append(node.isClickable());
+                        if (node.getClassName() != null) {
+                            sb.append("\n  class=").append(node.getClassName());
+                        }
+                        return ToolResult.success(sb.toString());
                     }
-                    return ToolResult.success(sb.toString());
                 }
+            } finally {
+                ClawAccessibilityService.recycleNodes(nodes);
             }
-            // All nodes are out of bounds
-            return null;
-        } finally {
-            ClawAccessibilityService.recycleNodes(nodes);
         }
+
+        // Fuzzy matching fallback
+        AccessibilityNodeInfo root = service.getRootInActiveWindow();
+        if (root != null) {
+            java.util.concurrent.ConcurrentHashMap<String, int[]> tempMap = new java.util.concurrent.ConcurrentHashMap<>();
+            java.util.List<com.returngift.agent.core.accessibility.SemanticNodeFlattener.SemanticNode> flatNodes =
+                    com.returngift.agent.core.accessibility.SemanticNodeFlattener.INSTANCE.flatten(root, tempMap, new java.util.concurrent.atomic.AtomicInteger(0), 100);
+
+            com.returngift.agent.core.accessibility.FuzzyNodeMatcher.MatchResult fuzzy =
+                    com.returngift.agent.core.accessibility.FuzzyNodeMatcher.INSTANCE.findBestMatch(flatNodes, text, 0.75f);
+
+            if (fuzzy != null) {
+                com.returngift.agent.core.accessibility.SemanticNodeFlattener.SemanticNode matchedNode = fuzzy.getNode();
+                StringBuilder sb = new StringBuilder();
+                sb.append("Found element matching \"").append(text).append("\" (matched: \"").append(fuzzy.getMatchedText()).append("\", score: ")
+                        .append(String.format("%.2f", fuzzy.getScore())).append(")");
+                sb.append("\n  bounds=").append(matchedNode.getBounds().toShortString());
+                sb.append("\n  center=(").append(matchedNode.getCenterX()).append(", ").append(matchedNode.getCenterY()).append(")");
+                sb.append("\n  clickable=").append(matchedNode.isClickable());
+                return ToolResult.success(sb.toString());
+            }
+        }
+
+        return null;
     }
 
     /**

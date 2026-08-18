@@ -132,8 +132,18 @@ class ComposeChatActivity : ComponentActivity() {
             }
         } catch (_: Exception) {}
 
-        // Check for updates
+        // Check for updates (stable release) + dev-channel self-update if enabled in
+        // Settings → Developer (fetches the rolling dev-latest prerelease via the PAT).
         com.returngift.agent.utils.UpdateChecker.checkForUpdate(this)
+        if (com.returngift.agent.dev.DevConfig.isDevChannelEnabled()) {
+            com.returngift.agent.utils.AppUpdateManager.checkForDevUpdate(force = false) { state ->
+                if (state is com.returngift.agent.utils.AppUpdateManager.UpdateState.UpdateAvailable) {
+                    val info = (state as com.returngift.agent.utils.AppUpdateManager.UpdateState.UpdateAvailable).releaseInfo
+                    com.returngift.agent.utils.UpdateChecker.showUpdateForRelease(this, info)
+                }
+                null
+            }
+        }
 
         // Status bar color
         val themeColors = ThemeManager.getColors()
@@ -182,6 +192,13 @@ class ComposeChatActivity : ComponentActivity() {
                         val renamed = conversationStore.renameConversation(conv, newName)
                         XLog.i(TAG, "Rename conversation: '${conv.title}' → '$newName' renamed=$renamed")
                         refreshSidebarHistory()
+                    }
+                },
+                onEditMessage = { index, newContent ->
+                    if (index in 0 until _messages.size) {
+                        val old = _messages[index]
+                        _messages[index] = old.copy(content = newContent, isEdited = true)
+                        saveChat()
                     }
                 },
                 activeTasks = activeTasks,

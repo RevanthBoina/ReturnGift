@@ -7,6 +7,7 @@ import android.view.KeyEvent;
 
 import com.returngift.agent.ClawApplication;
 import com.returngift.agent.R;
+import com.returngift.agent.tool.ToolResult;
 
 public class VolumeUpTool extends BaseKeyTool {
 

@@ -31,14 +31,14 @@ object ToolRegistry {
 
     private fun registerCommonTools() {
         register(GetScreenInfoTool())
-        register(FindNodeInfoTool())
         register(InputTextTool())
         register(SystemKeyTool())
         register(OpenAppTool())
+        register(SwitchAppTool())
         register(GetInstalledAppsTool())
+        register(GetForegroundAppTool())
         register(TakeScreenshotTool())
         register(WaitTool())
-        register(RepeatActionsTool())
         register(ClipboardTool())
         register(SendFileTool())
         register(GetDeviceInfoTool())
@@ -71,9 +71,7 @@ object ToolRegistry {
         register(LongPressTool())
         register(SwipeTool())
         register(ScrollToFindTool())
-        register(FindAndTapTool())
         register(SendMessageTool())
-        register(AutoReplyTool())
         register(SearchAppInStoreTool())
     }
 

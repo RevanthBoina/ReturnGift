@@ -6,6 +6,7 @@ package com.returngift.agent.tool.impl.tv;
 import android.view.KeyEvent;
 
 import com.returngift.agent.ClawApplication;
+import com.returngift.agent.tool.ToolResult;
 import com.returngift.agent.R;
 
 public class VolumeDownTool extends BaseKeyTool {

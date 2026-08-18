@@ -92,7 +92,7 @@ object YamlSkillCompiler {
 
     private fun opToSkillStep(s: StepSpec, skillId: String): SkillStep? = when (s.op) {
         "tap" -> SkillStep(
-            toolName = "find_and_tap",
+            toolName = "scroll_to_find",
             params = mapOf("text" to resolveTarget(s.target)),
             description = s.id.ifEmpty { "tap ${s.target}" },
         )

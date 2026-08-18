@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <string name="app_name">ReturnGift</string>
 
     <!-- Common -->
@@ -29,8 +29,8 @@
     <string name="guide_desc_notification">Lets ReturnGift show progress while a task or monitor is active. Tap to enable.</string>
     <string name="guide_title_overlay">System Overlay</string>
     <string name="guide_desc_overlay">Shows a floating status panel while tasks run. Tap to enable.</string>
-    <string name="guide_title_battery">Battery Whitelist</string>
-    <string name="guide_desc_battery">Prevents the system from killing ReturnGift. Tap to allow.</string>
+    <string name="guide_title_battery">Background Run</string>
+    <string name="guide_desc_battery">Keeps ReturnGift running in the background. Prevents the system from stopping it.</string>
     <string name="guide_title_storage">File Access</string>
     <string name="guide_desc_storage">Lets ReturnGift read and write files on your device. Tap to enable.</string>
 
@@ -40,7 +40,7 @@
     <string name="home_accessibility_enabled">Accessibility service enabled</string>
     <string name="home_notification_enabled">Task notifications enabled</string>
     <string name="home_overlay_enabled">Overlay permission enabled</string>
-    <string name="home_battery_ignored">Battery optimization ignored</string>
+    <string name="home_battery_ignored">Background run allowed</string>
     <string name="home_permission_enabled">Enabled</string>
     <string name="home_card_accessibility_title">Accessibility Service</string>
     <string name="home_card_accessibility_subtitle">For automated phone control</string>
@@ -48,7 +48,7 @@
     <string name="home_card_notification_subtitle">Only while tasks or monitoring are active</string>
     <string name="home_card_system_window_title">System Window</string>
     <string name="home_card_system_window_subtitle">Floating panel overlay</string>
-    <string name="home_card_battery_title">Battery Whitelist</string>
+    <string name="home_card_battery_title">Background Run</string>
     <string name="home_card_battery_subtitle">Prevent background termination</string>
     <string name="home_card_storage_title">File Access</string>
     <string name="home_card_storage_subtitle">Read and write device files</string>

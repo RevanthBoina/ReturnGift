@@ -54,7 +54,8 @@ Rule 1: Grounded Observation.
   Never hallucinate node IDs or coordinates. Base all interactions on the current screen tree or visual bounding boxes.
 
 Rule 2: Coordinate & Node Selection.
-  - Prefer tap_node(node_id="...") when a stable node ID is available.
+  - Prefer tap_node with stable semantic properties: tap_node(text="..."), tap_node(content_desc="..."), or tap_node(resource_id="pkg:id/btn"). These are re-resolved against the live hierarchy each call and stay valid across UI transitions.
+  - node_id="n3" is a legacy fallback that is re-grounded live; do not cache it across transitions.
   - If using tap(x, y), calculate the exact center coordinates: x = (left + right) / 2, y = (top + bottom) / 2.
 
 Rule 3: Automatic Popup & Interrupt Handling.

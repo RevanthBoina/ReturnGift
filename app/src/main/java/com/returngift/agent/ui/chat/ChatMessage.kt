@@ -11,7 +11,9 @@ data class ChatMessage(
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
     val toolSteps: List<ToolStep>? = null,
-    val modelName: String? = null
+    val modelName: String? = null,
+    val isEdited: Boolean = false,
+    val id: String = java.util.UUID.randomUUID().toString(),
 ) {
     enum class Role { USER, ASSISTANT, SYSTEM, TOOL_GROUP }
 }

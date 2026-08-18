@@ -59,6 +59,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
 
+            <!-- Developer: self-development (CI/CD OTA + GitHub code engine) -->
+            <com.returngift.agent.widget.MenuGroup
+                android:id="@+id/developerGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
             <!-- 通道分组 (hidden) -->
             <com.returngift.agent.widget.MenuGroup
                 android:id="@+id/channelGroup"
