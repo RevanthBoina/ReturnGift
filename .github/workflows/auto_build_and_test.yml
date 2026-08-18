@@ -1,9 +1,8 @@
 name: Auto Build & Test
 
-# PR-based workflow: never build directly on main except for the rolling dev prerelease.
-# On PR/push: run unit tests, Android Lint, build APK, attach artifact + PR comment.
-# On push to main (docs excluded): also publish a rolling dev prerelease so the
-# in-app OTA dev-channel self-updater can fetch ReturnGift-dev.apk.
+# PR/push workflow: run unit tests, Android Lint, build a debug APK, and attach
+# the artifact + a download-link PR comment. Stable releases come only from the
+# tag-triggered release.yml workflow.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -114,69 +113,3 @@ jobs:
             printf '%s\n' "(This comment was created by an AI agent (OpenHands) on behalf of the ReturnGift CI.)"
           } > comment.md
           gh pr comment "$PR_NUMBER" --body-file comment.md
-
-  dev-prerelease:
-    name: Rolling Dev Prerelease
-    needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-autobuild-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-autobuild-
-
-      - name: Download debug APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: returngift-debug-apk
-          path: dev-apk
-
-      - name: Rename to canonical dev asset
-        id: asset
-        run: |
-          set -e
-          SRC=$(find dev-apk -maxdepth 1 -name "*.apk" | head -1)
-          if [ -z "$SRC" ]; then echo "::error::No APK artifact found"; exit 1; fi
-          cp "$SRC" dev-apk/ReturnGift-dev.apk
-          SHA=$(sha256sum dev-apk/ReturnGift-dev.apk | awk '{print $1}')
-          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
-          SHORT_SHA=${GITHUB_SHA::7}
-          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
-          echo "Dev APK sha256: $SHA (commit $SHORT_SHA)"
-
-      - name: Publish rolling dev prerelease
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: dev-latest
-          name: ReturnGift Dev Build (rolling)
-          body: |
-            Rolling dev build from `main` @ ${{ steps.asset.outputs.short_sha }}
-
-            APK SHA-256: `${{ steps.asset.outputs.sha256 }}`
-
-            This is an automatically-published development prerelease. It is signed with the
-            debug key and is intended for the in-app OTA dev-channel self-updater. It is NOT
-            a stable release — install over a debug build only.
-          files: |
-            dev-apk/ReturnGift-dev.apk
-          prerelease: true
-          draft: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
