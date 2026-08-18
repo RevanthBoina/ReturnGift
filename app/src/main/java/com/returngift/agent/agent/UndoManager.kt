@@ -49,7 +49,6 @@ object UndoManager {
         "input_text",
         "open_app",
         "switch_app",
-        "find_and_tap",
         "scroll_to_find",
         "system_key"
         // clipboard(set) handled via param check in buildReverseAction()
@@ -62,7 +61,6 @@ object UndoManager {
     @Suppress("unused")
     private val CONFIRMATION_GATE_TOOLS: Set<String> = setOf(
         "send_message",
-        "auto_reply",
         "make_call",
         "send_file"
     )
@@ -172,7 +170,7 @@ object UndoManager {
             }
         }
 
-        "tap", "tap_node", "long_press", "find_and_tap" ->
+        "tap", "tap_node", "long_press" ->
             // Go back to undo a navigation tap
             "system_key" to mapOf("key" to "back")
 

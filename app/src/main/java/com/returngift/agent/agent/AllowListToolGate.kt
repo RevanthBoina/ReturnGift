@@ -26,7 +26,7 @@ object AllowListToolGate {
     private val PASSTHROUGH_TOOLS = setOf(
         "finish", "get_screen_info", "get_device_info", "get_notifications",
         "get_installed_apps", "take_screenshot", "wait", "clipboard",
-        "system_key", "find_node_info", "kb_write", "kb_read", "kb_search",
+        "system_key", "kb_write", "kb_read", "kb_search",
         "kb_append", "kb_add_todo", "send_file"
     )
 

@@ -194,6 +194,13 @@ class ComposeChatActivity : ComponentActivity() {
                         refreshSidebarHistory()
                     }
                 },
+                onEditMessage = { index, newContent ->
+                    if (index in 0 until _messages.size) {
+                        val old = _messages[index]
+                        _messages[index] = old.copy(content = newContent, isEdited = true)
+                        saveChat()
+                    }
+                },
                 activeTasks = activeTasks,
                 onStopTask = { contact ->
                     _isTaskRunning.value = appViewModel.isTaskRunning()

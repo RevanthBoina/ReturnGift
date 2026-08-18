@@ -73,7 +73,6 @@ class DefaultAgentService : AgentService {
 - Type text (focus verified) → input_text(text="hello") or input_text(text="hello", node_id="n5")
 - System navigation → system_key(key="back"|"home"|"enter")
 - Search list/page → scroll_to_find(text="Settings")
-- Find and tap text → find_and_tap(text="Send")
 - Messaging → send_message(contact="Mom", message="hi", app="WhatsApp")
 - Phone call → make_call(contact="Mom")
 - Device metrics → get_device_info(category="battery"|"wifi"|"storage"|"bluetooth"|"screen")
@@ -110,7 +109,7 @@ class DefaultAgentService : AgentService {
             "input_text", "type_text", "system_key", "open_app", "switch_app",
             "dpad_up", "dpad_down", "dpad_left", "dpad_right", "dpad_center",
             "volume_up", "volume_down", "press_menu", "press_power",
-            "clipboard", "send_file", "repeat_actions", "wait"
+            "clipboard", "send_file", "wait"
         )
         /** ms to wait for UI to settle before capturing screen after an action */
         private const val SCREEN_SETTLE_MS = 500L
@@ -334,7 +333,6 @@ class DefaultAgentService : AgentService {
     private val OBSERVATION_PLACEHOLDERS = mapOf(
         "get_screen_info" to "[screen info omitted]",
         "take_screenshot" to "[screenshot result omitted]",
-        "find_node_info" to "[node find result omitted]",
         "get_installed_apps" to "[app list omitted]",
         "scroll_to_find" to "[scroll find result omitted]"
     )

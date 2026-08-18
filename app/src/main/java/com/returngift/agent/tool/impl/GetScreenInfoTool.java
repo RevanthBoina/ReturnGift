@@ -64,6 +64,10 @@ public class GetScreenInfoTool extends BaseTool {
         String sanitizedTree = com.returngift.agent.agent.grounding.VisionInteractionMediator.INSTANCE
                 .mediateScreenInfo(tree, null, null)
                 .getSanitizedScreenText();
+
+        if (sanitizedTree == null || sanitizedTree.trim().isEmpty()) {
+            sanitizedTree = "[Empty screen or custom canvas surface. If the app uses OpenGL/Vulkan/SurfaceView, use take_screenshot for visual inspection.]";
+        }
                 
         return ToolResult.success(sanitizedTree);
     }

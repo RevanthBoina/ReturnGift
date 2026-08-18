@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.ui.guide
@@ -72,6 +72,35 @@ class GuideActivity : BaseActivity() {
 
         findViewById<View>(R.id.btnStart).setOnClickListener { finishGuide() }
         findViewById<View>(R.id.tvSkip).setOnClickListener { finishGuide() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updatePermissionIndicators()
+    }
+
+    private fun updatePermissionIndicators() {
+        val snapshot = AppCapabilityCoordinator.snapshot(this)
+        findViewById<TextView>(R.id.guideAccessibility)?.let { tv ->
+            val status = if (snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY) " (Enabled ✓)" else ""
+            tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_accessibility) + status
+        }
+        findViewById<TextView>(R.id.guideNotification)?.let { tv ->
+            val status = if (snapshot.notificationPermissionGranted) " (Enabled ✓)" else ""
+            tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_notification) + status
+        }
+        findViewById<TextView>(R.id.guideOverlay)?.let { tv ->
+            val status = if (snapshot.overlayGranted) " (Enabled ✓)" else ""
+            tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_overlay) + status
+        }
+        findViewById<TextView>(R.id.guideBattery)?.let { tv ->
+            val status = if (snapshot.batteryOptimizationIgnored) " (Allowed ✓)" else ""
+            tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_battery) + status
+        }
+        findViewById<TextView>(R.id.guideStorage)?.let { tv ->
+            val status = if (snapshot.storageAccessGranted) " (Granted ✓)" else ""
+            tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_storage) + status
+        }
     }
 
     private fun bindSection(view: View, iconRes: Int, titleRes: Int, descRes: Int, onClick: () -> Unit) {

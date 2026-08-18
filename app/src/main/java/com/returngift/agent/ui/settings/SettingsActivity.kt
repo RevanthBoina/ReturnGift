@@ -59,6 +59,7 @@ class SettingsActivity : BaseActivity() {
     private var permOverlay: com.returngift.agent.widget.MenuItem? = null
     private var permBattery: com.returngift.agent.widget.MenuItem? = null
     private var permStorage: com.returngift.agent.widget.MenuItem? = null
+    private var permRestricted: com.returngift.agent.widget.MenuItem? = null
     private var externalAutomationItem: com.returngift.agent.widget.MenuItem? = null
     private var globalPromptItem: com.returngift.agent.widget.MenuItem? = null
     private var customModelUrlItem: com.returngift.agent.widget.MenuItem? = null
@@ -295,8 +296,29 @@ class SettingsActivity : BaseActivity() {
                     AppCapabilityCoordinator.openSystemSettings(this@SettingsActivity, AppRequirement.STORAGE)
                 }
             },
-            showDivider = false
+            showDivider = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
         )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permRestricted = permissionsGroup.addMenuItem(
+                leadingIcon = android.R.drawable.ic_dialog_info,
+                title = "Allow Restricted Settings",
+                onClick = {
+                    com.returngift.agent.widget.AlertDialog.show(
+                        context = this@SettingsActivity,
+                        title = "Allow Restricted Settings",
+                        message = "On Android 13+, the system blocks Accessibility for sideloaded apps with 'Restricted setting'.\n\nTo allow:\n1. Tap 'Open App Info' below\n2. Tap the 3-dot menu (⋮) in the top-right\n3. Tap 'Allow restricted settings'\n4. Return here and enable Accessibility.",
+                        actionTitle = "Open App Info",
+                        onAction = {
+                            AppCapabilityCoordinator.openSystemSettings(this@SettingsActivity, AppRequirement.RESTRICTED_SETTINGS)
+                        }
+                    )
+                },
+                showDivider = false
+            ).apply {
+                setTrailingText("Guide")
+            }
+        }
 
         // Channel (hidden)
         val channelGroup = findViewById<MenuGroup>(R.id.channelGroup)

@@ -140,6 +140,7 @@ public class ClawAccessibilityService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        com.returngift.agent.core.telemetry.AdaptiveSettleController.INSTANCE.onAccessibilityEvent(event);
         if (!isTaskActive && event.getEventType() != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) return;
         KVUtils.INSTANCE.noteAccessibilityHeartbeat();
         
@@ -149,9 +150,12 @@ public class ClawAccessibilityService extends AccessibilityService {
             manager.onAccessibilityEvent(event);
         }
         
-        // Debug: log notification events from messaging apps
-        if (event != null && event.getEventType() == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
-            XLog.d(TAG, "Notification event from: " + event.getPackageName());
+        // Forward terminal text to TerminalBufferExtractor
+        if (event != null && event.getPackageName() != null && event.getText() != null) {
+            com.returngift.agent.core.TerminalBufferExtractor.INSTANCE.onAccessibilityEventText(
+                    event.getPackageName().toString(),
+                    event.getText()
+            );
         }
         // Auto-reply: check incoming messaging notifications
         try {
@@ -163,6 +167,8 @@ public class ClawAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
+        com.returngift.agent.core.game.RealtimeGameController.INSTANCE.stop(this);
+        com.returngift.agent.core.input.TouchInputLayer.INSTANCE.releaseAllPointers(this);
         KVUtils.INSTANCE.noteAccessibilityInterrupted();
         XLog.w(TAG, "Accessibility service interrupted");
         ForegroundService.Companion.syncToBackgroundState(this);
@@ -171,6 +177,8 @@ public class ClawAccessibilityService extends AccessibilityService {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        com.returngift.agent.core.game.RealtimeGameController.INSTANCE.stop(this);
+        com.returngift.agent.core.input.TouchInputLayer.INSTANCE.releaseAllPointers(this);
         instance = null;
         KVUtils.INSTANCE.noteAccessibilityDisconnected();
         XLog.i(TAG, "Accessibility service destroyed");
@@ -490,11 +498,48 @@ public class ClawAccessibilityService extends AccessibilityService {
         if (root == null) {
             return null;
         }
-        nodeIdMap.clear();
-        nodeCounter.set(0);
-        StringBuilder sb = new StringBuilder();
-        buildNodeTree(root, sb, 0);
-        return sb.toString();
+
+        // Fast Hash Cache check (saves 80-120ms DOM traversal on static screens)
+        long hash = com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.computeHierarchyHash(root);
+        String cached = com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.getCachedIfValid(hash, 1000L);
+        if (cached != null) {
+            return cached;
+        }
+
+        // 1. Check and auto-dismiss benign transient popups
+        if (com.returngift.agent.core.accessibility.ModalInterceptor.INSTANCE.tryAutoDismiss(this)) {
+            // Re-fetch root after dismiss
+            root = getRootInActiveWindow();
+            if (root == null) return null;
+        }
+
+        // 2. Semantic node flattening
+        java.util.List<com.returngift.agent.core.accessibility.SemanticNodeFlattener.SemanticNode> nodes =
+                com.returngift.agent.core.accessibility.SemanticNodeFlattener.INSTANCE.flatten(root, nodeIdMap, nodeCounter, 500);
+
+        // 3. Occlusion detection & filtering
+        java.util.List<com.returngift.agent.core.accessibility.SemanticNodeFlattener.SemanticNode> filteredNodes =
+                com.returngift.agent.core.accessibility.OcclusionDetector.INSTANCE.filterOccludedNodes(nodes, this);
+
+        // 4. Viewport / System Bar ROI pruning (reduces token overhead)
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        filteredNodes = com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.filterSystemBars(filteredNodes, screenHeight);
+
+        // 5. If no actionable accessibility nodes found, trigger local visual grounding fallback
+        if (com.returngift.agent.core.vision.VisualGroundingFallbackEngine.INSTANCE.isFallbackNeeded(filteredNodes)) {
+            java.util.List<com.returngift.agent.core.vision.VisualGroundingFallbackEngine.VisualTarget> visualTargets =
+                    com.returngift.agent.core.vision.VisualGroundingFallbackEngine.INSTANCE.extractVisualTargets(this, nodeIdMap, nodeCounter);
+            if (!visualTargets.isEmpty()) {
+                String visualResult = com.returngift.agent.core.vision.VisualGroundingFallbackEngine.INSTANCE.formatVisualTargets(visualTargets);
+                com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.updateCache(hash, visualResult);
+                return visualResult;
+            }
+        }
+
+        // 6. Format to clean semantic text and update cache
+        String result = com.returngift.agent.core.accessibility.SemanticNodeFlattener.INSTANCE.formatToString(filteredNodes, 500);
+        com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.updateCache(hash, result);
+        return result;
     }
 
     /** Get center coordinates for a node ID (e.g. "n3"). Returns null if not found. */
@@ -517,8 +562,18 @@ public class ClawAccessibilityService extends AccessibilityService {
         return sb.toString();
     }
 
+    private static final int MAX_TREE_NODES = 500;
+
     private void buildNodeTree(AccessibilityNodeInfo node, StringBuilder sb, int depth) {
         if (node == null) {
+            return;
+        }
+
+        if (nodeCounter.get() >= MAX_TREE_NODES) {
+            if (nodeCounter.get() == MAX_TREE_NODES) {
+                nodeCounter.incrementAndGet();
+                sb.append("  [...truncated at ").append(MAX_TREE_NODES).append(" nodes. Scroll to narrow visible content]\n");
+            }
             return;
         }
 
@@ -543,7 +598,8 @@ public class ClawAccessibilityService extends AccessibilityService {
         boolean isSlider = isSliderNode(node);
         CharSequence cn = node.getClassName();
         boolean isProgress = cn != null && cn.toString().contains("ProgressBar");
-        boolean isMeaningful = hasText || hasDesc || isInteractive || isSlider || isProgress;
+        boolean isWebView = cn != null && cn.toString().contains("WebView");
+        boolean isMeaningful = hasText || hasDesc || isInteractive || isSlider || isProgress || isWebView;
 
         if (isMeaningful) {
             Rect bounds = new Rect();
@@ -567,10 +623,25 @@ public class ClawAccessibilityService extends AccessibilityService {
             } else if (hasDesc) {
                 line.append("\"").append(node.getContentDescription()).append("\"");
             }
-            if (node.isClickable()) line.append(" tap");
+            if (node.isClickable()) {
+                if (!hasText && !hasDesc && bounds.width() > 800 && bounds.height() > 1200) {
+                    line.append(" overlay-wrapper");
+                } else {
+                    line.append(" tap");
+                }
+            }
             if (node.isEditable()) line.append(" edit");
-            if (node.isScrollable()) line.append(" scroll");
+            if (node.isScrollable()) {
+                if (bounds.width() > 1.5 * bounds.height()) {
+                    line.append(" hscroll");
+                } else {
+                    line.append(" scroll");
+                }
+            }
             if (node.isCheckable()) line.append(node.isChecked() ? " on" : " off");
+            if (isWebView && node.getChildCount() == 0) {
+                line.append(" webview");
+            }
             line.append(" (").append(cx).append(",").append(cy).append(")");
 
             if (line.length() > 0) {

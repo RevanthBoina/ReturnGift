@@ -105,75 +105,15 @@ public class InputTextTool extends BaseTool {
                                           : " after tapping node " + nodeId));
         }
 
-        // Verify focus is actually held before typing. If not, request it explicitly.
-        targetNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
-        targetNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-        // Request keyboard visibility (focus an editable → framework surfaces IME).
-        service.requestKeyboardForFocused();
-        if (!service.waitForEditableFocus(1500L)) {
-            XLog.w(TAG, "Focus verification failed before typing; attempting recovery");
-            // Recovery: re-tap the target coordinates and re-acquire focus.
-            if (targetCoords != null) {
-                service.performTap(targetCoords[0], targetCoords[1]);
-                service.requestKeyboardForFocused();
-            }
-            targetNode = waitForTargetEditable(service, targetCoords);
-            if (targetNode == null || !service.waitForEditableFocus(1000L)) {
-                return ToolResult.error("Could not focus a text field before typing. "
-                        + "The field may be disabled or covered. Call get_screen_info and retry.");
-            }
+        // Use DynamicIMEInjector for resilient text injection
+        com.returngift.agent.core.input.DynamicIMEInjector.InjectionResult injection =
+                com.returngift.agent.core.input.DynamicIMEInjector.INSTANCE.injectText(service, text, targetNode, clearFirst);
+
+        if (injection.getSuccess()) {
+            return ToolResult.success((clearFirst ? "Input text: " : "Appended text: ") + text + " (via " + injection.getMethod() + ")");
         }
 
-        // If clear_first, select all and delete
-        if (clearFirst) {
-            clearNodeText(targetNode);
-        }
-
-        // Strategy 1: try ACTION_SET_TEXT (standard approach)
-        // Note: ACTION_SET_TEXT overwrites existing text; for append mode we must concatenate
-        if (trySetTextWithRetries(targetNode, text, clearFirst)) {
-            // Verify the expected text was actually entered.
-            if (verifyEnteredText(service, text, clearFirst)) {
-                return ToolResult.success(clearFirst ? "Input text: " + text : "Appended text: " + text);
-            }
-            XLog.w(TAG, "ACTION_SET_TEXT reported success but text verification failed; falling back to clipboard");
-        }
-
-        // Strategy 2: paste via clipboard (better compatibility)
-        boolean clipboardSet = setClipboardText(service, text);
-        if (!clipboardSet) {
-            return ToolResult.error("Failed to set clipboard text");
-        }
-
-        targetNode = waitForTargetEditable(service, targetCoords);
-        if (targetNode == null) {
-            return ToolResult.error("Failed to recover text field before clipboard paste");
-        }
-
-        if (clearFirst) {
-            // Clear again (some apps may not have fully cleared after strategy 1 failed)
-            clearNodeText(targetNode);
-        } else {
-            // Append mode: move cursor to end
-            CharSequence existing = targetNode.getText();
-            int end = existing != null ? existing.length() : 0;
-            Bundle cursorArgs = new Bundle();
-            cursorArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, end);
-            cursorArgs.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, end);
-            targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, cursorArgs);
-        }
-
-        // Perform paste
-        if (targetNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
-            // Verify pasted text.
-            if (verifyEnteredText(service, text, clearFirst)) {
-                return ToolResult.success(clearFirst ? "Input text (via paste): " + text : "Appended text (via paste): " + text);
-            }
-            XLog.w(TAG, "Paste reported success but text verification failed");
-        }
-
-        return ToolResult.error("Failed to input text, both ACTION_SET_TEXT and clipboard paste failed "
-                + "(or text verification failed). The field may not accept programmatic input.");
+        return ToolResult.error("Failed to input text: " + injection.getMessage());
     }
 
     /**
@@ -200,6 +140,9 @@ public class InputTextTool extends BaseTool {
             Thread.currentThread().interrupt();
             return false;
         }
+=======
+        return ToolResult.error("Failed to input text: " + injection.getMessage());
+>>>>>>> c31b54a (feat(v2.2.0): Perception & Interaction architecture, real-time physics game engine, speed/accuracy optimizations)
     }
 
     /**
@@ -290,11 +233,21 @@ public class InputTextTool extends BaseTool {
     private AccessibilityNodeInfo findFocusedEditText(AccessibilityNodeInfo root) {
         if (root == null) return null;
         AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-        if (focused != null && focused.isEditable()) {
+        if (focused != null && isGenuineEditable(focused)) {
             return focused;
         }
         // Fallback: find first editable node
         return findFirstEditable(root);
+    }
+
+    private boolean isGenuineEditable(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        if (node.isEditable()) return true;
+        CharSequence cn = node.getClassName();
+        if (cn == null) return false;
+        String name = cn.toString();
+        return name.contains("EditText") || name.contains("TextInput") ||
+               name.contains("SearchAutoComplete") || name.contains("TextField");
     }
 
     private AccessibilityNodeInfo findEditableNearPoint(AccessibilityNodeInfo node, int x, int y) {

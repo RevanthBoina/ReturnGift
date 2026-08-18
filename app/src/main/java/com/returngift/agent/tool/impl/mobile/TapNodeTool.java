@@ -76,7 +76,6 @@ public class TapNodeTool extends BaseTool {
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
-
         String text = optionalString(params, "text", "");
         String contentDesc = optionalString(params, "content_desc", "");
         String resourceId = optionalString(params, "resource_id", "");
@@ -106,42 +105,44 @@ public class TapNodeTool extends BaseTool {
                 if (boundsError != null) {
                     return ToolResult.error(boundsError);
                 }
-                boolean success = service.performTap(x, y);
-                XLog.i(TAG, "Semantic tap (" + resolved.getMethod() + ") at (" + x + "," + y + ")");
-                return success
-                        ? ToolResult.success("Tapped element (" + resolved.getMethod()
-                                + ") at (" + x + ", " + y + ")")
+                com.returngift.agent.core.input.DirectActionDispatcher.DispatchResult result =
+                        com.returngift.agent.core.input.DirectActionDispatcher.INSTANCE.performFastTap(service, null, x, y);
+                com.returngift.agent.core.telemetry.AdaptiveSettleController.INSTANCE.waitForSettle(60L, 300L);
+                return result.getSuccess()
+                        ? ToolResult.success("Tapped element (" + resolved.getMethod() + " / " + result.getMethod() + ") at (" + x + ", " + y + ")")
                         : ToolResult.error("Failed to tap element at (" + x + ", " + y + ")");
             } finally {
-                Rect b = resolved.getBounds();
-                // node held by resolved is an obtained copy; recycle it.
                 try { resolved.getNode().recycle(); } catch (Exception ignored) {}
             }
         }
 
-        // Legacy: node_id fallback. Re-ground coordinates against the current hierarchy.
+        // Node ID resolution
         if (nodeId.isEmpty()) {
-            return ToolResult.error("Provide at least one of: text, content_desc, resource_id, "
-                    + "view_class, or node_id.");
+            return ToolResult.error("Provide at least one of: text, content_desc, resource_id, view_class, or node_id.");
         }
         nodeId = nodeId.replace("[", "").replace("]", "").trim();
-        SemanticTargetResolver.ResolvedTarget legacy =
-                SemanticTargetResolver.INSTANCE.resolveByLegacyNodeId(nodeId);
-        if (legacy == null) {
-            return ToolResult.error("Node " + nodeId + " is stale or no longer on screen. "
-                    + "Call get_screen_info to refresh, or use a semantic target (text/content_desc/resource_id).");
+        int[] coords = service.getNodeCoordinates(nodeId);
+        if (coords == null) {
+            service.getScreenTree();
+            coords = service.getNodeCoordinates(nodeId);
         }
-        try {
-            int x = legacy.getCenterX();
-            int y = legacy.getCenterY();
-            String boundsError = validateCoordinates(x, y);
-            if (boundsError != null) return ToolResult.error(boundsError);
-            boolean success = service.performTap(x, y);
-            return success ? ToolResult.success("Tapped node " + nodeId + " (re-grounded) at (" + x + ", " + y + ")")
-                    : ToolResult.error("Failed to tap node " + nodeId + " at (" + x + ", " + y + ")");
-        } finally {
-            try { legacy.getNode().recycle(); } catch (Exception ignored) {}
+        if (coords == null) {
+            return ToolResult.error("Node " + nodeId + " not found. Call get_screen_info first to refresh node IDs.");
         }
+        int x = coords[0];
+        int y = coords[1];
+        String boundsError = validateCoordinates(x, y);
+        if (boundsError != null) return ToolResult.error(boundsError);
+
+        com.returngift.agent.core.input.DirectActionDispatcher.DispatchResult result =
+                com.returngift.agent.core.input.DirectActionDispatcher.INSTANCE.performFastTap(service, nodeId, x, y);
+
+        // Adaptive event settle detection (cuts ~300ms idle delay)
+        com.returngift.agent.core.telemetry.AdaptiveSettleController.INSTANCE.waitForSettle(60L, 300L);
+
+        return result.getSuccess()
+                ? ToolResult.success("Tapped node " + nodeId + " at (" + x + ", " + y + ") via " + result.getMethod())
+                : ToolResult.error("Failed to tap node " + nodeId + " at (" + x + ", " + y + ")");
     }
 
     private String describeTarget(String text, String contentDesc, String resourceId, String viewClass) {
