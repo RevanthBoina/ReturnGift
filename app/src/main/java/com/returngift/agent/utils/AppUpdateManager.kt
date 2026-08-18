@@ -273,31 +273,36 @@ object AppUpdateManager {
      * Start downloading the release APK with progress tracking.
      */
     fun startDownload(
-        releaseInfo: ReleaseInfo = lastReleaseInfo ?: return,
+        releaseInfo: ReleaseInfo? = lastReleaseInfo,
         onProgress: ((UpdateState) -> Unit)? = null
     ) {
+        val resolved = releaseInfo ?: lastReleaseInfo ?: run {
+            XLog.w(TAG, "startDownload: no release info available")
+            _updateState.value = UpdateState.Failed("No release to download", false, "DOWNLOADING")
+            return
+        }
         downloadJob?.cancel()
         downloadJob = scope.launch {
-            _updateState.value = UpdateState.Downloading(0, 0, releaseInfo.apkSizeBytes)
+            _updateState.value = UpdateState.Downloading(0, 0, resolved.apkSizeBytes)
             onProgress?.invoke(_updateState.value)
 
             val downloadResult = withContext(Dispatchers.IO) {
                 try {
                     val context = ClawApplication.instance
                     val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
-                    val targetApk = File(updatesDir, "ReturnGift-v${releaseInfo.versionName}.apk")
+                    val targetApk = File(updatesDir, "ReturnGift-v${resolved.versionName}.apk")
 
                     // Clean previous partial download
                     if (targetApk.exists()) {
                         targetApk.delete()
                     }
 
-                    XLog.i(TAG, "Downloading APK from: ${releaseInfo.apkDownloadUrl} -> ${targetApk.absolutePath}")
+                    XLog.i(TAG, "Downloading APK from: ${resolved.apkDownloadUrl} -> ${targetApk.absolutePath}")
 
                     val downloadedFile = downloadFileWithRedirects(
-                        urlStr = releaseInfo.apkDownloadUrl,
+                        urlStr = resolved.apkDownloadUrl,
                         destFile = targetApk,
-                        bearerToken = if (releaseInfo.versionName == "dev")
+                        bearerToken = if (resolved.versionName == "dev")
                             com.returngift.agent.dev.DevConfig.getGithubToken() else null
                     ) { progress, current, total ->
                         scope.launch(Dispatchers.Main) {
@@ -314,7 +319,7 @@ object AppUpdateManager {
                         onProgress?.invoke(vState)
                     }
 
-                    val isValid = verifyApk(context, downloadedFile, releaseInfo)
+                    val isValid = verifyApk(context, downloadedFile, resolved)
                     if (!isValid) {
                         targetApk.delete()
                         return@withContext UpdateState.Failed(
@@ -324,7 +329,7 @@ object AppUpdateManager {
                         )
                     }
 
-                    UpdateState.ReadyToInstall(downloadedFile, releaseInfo)
+                    UpdateState.ReadyToInstall(downloadedFile, resolved)
                 } catch (ce: CancellationException) {
                     XLog.i(TAG, "Download cancelled by user")
                     UpdateState.Idle

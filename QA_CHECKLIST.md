@@ -1425,6 +1425,13 @@ on-device syntax pre-validation so uncompilable Kotlin is never pushed.
 - **PASS**: only the stable `releases/latest` check runs; `checkForDevUpdate` is a no-op
   (returns UpToDate("dev channel disabled")); no extra GitHub API calls.
 
+### SD9. CI pre-flight catches known compile pitfalls `[CI]`
+- **Act**: open a PR that reintroduces `android.R.drawable.ic_menu_compose` or a
+  `?: return` in a default parameter value.
+- **PASS**: the `CI pre-flight (known-pitfall grep guards)` step fails in seconds (before
+  Gradle runs) with a clear message pointing at the offending file:line. No 3-minute Gradle
+  run is wasted on a known mistake.
+
 ---
 
 ## QA Debug Changelog
@@ -1472,6 +1479,34 @@ regression.
 
 Status: code complete; validated by inspection + a compile-consistency audit (no Gradle in
 sandbox). Runtime QA must run SD1–SD8 on a real device / GitHub repo per `QA_CHECKLIST.md` SD.
+
+### 2026-08-18 — Fix 3 compile errors found by CI (PR #47 build run 32114580827)
+
+The first `Auto Build & Test` run failed at `:app:compileDebugKotlin` with three errors.
+Root cause: the inspection-only audit missed two of them (non-existent platform drawable;
+bare `this` resolving to CoroutineScope inside a `lifecycleScope.launch` lambda) and the
+third (`return` in a default parameter value) was a pre-existing latent bug in
+`AppUpdateManager.startDownload` that surfaced once CI actually compiled it.
+
+Fixes:
+- `SettingsActivity.kt`: `android.R.drawable.ic_menu_compose` (does not exist) →
+  `android.R.drawable.ic_menu_add`. Fixed the `Builder(this)` inside
+  `lifecycleScope.launch { }` → `Builder(this@SettingsActivity)` (bare `this` is a
+  CoroutineScope there).
+- `AppUpdateManager.startDownload`: removed the prohibited `lastReleaseInfo ?: return` from
+  the default argument; param is now nullable and the null check runs in the body via
+  `val resolved = releaseInfo ?: lastReleaseInfo ?: run { ...; return }`. All downstream
+  references in the lambda now use `resolved`.
+
+Repo-memory (so contributors — including the embedded code engine — never repeat this):
+- New `scripts/ci-preflight.sh`: grep guards for the two reliably-detectable pitfalls
+  (`android.R.drawable.ic_menu_compose`; `?: return` in default args). Runs as the FIRST
+  step of `auto_build_and_test.yml`, before Gradle, so known mistakes fail in seconds.
+- New AGENTS.md section "Known CI compile pitfalls (do NOT repeat)" documents all three
+  (incl. the non-grep-enforceable bare-`this`-in-coroutine one) — loaded every session.
+- New QA test SD9: a PR reintroducing a known pitfall must be failed by the pre-flight step.
+
+Status: fixes applied; preflight + YAML validated locally. Pushing to re-run CI.
 
 ### 2026-08-18 — Action-verification control loop (computer-use bottleneck elimination)
 
