@@ -72,8 +72,8 @@ object AllowListToolGate {
     }
 
     private fun resolveTargetPackage(toolName: String, params: Map<String, Any>): String? {
-        // open_app carries the package name explicitly
-        if (toolName == "open_app") {
+        // open_app / switch_app carry the package name explicitly
+        if (toolName == "open_app" || toolName == "switch_app") {
             return params["package_name"]?.toString()?.takeIf { it.isNotBlank() }
         }
         // For all UI-interaction tools resolve from the current foreground window

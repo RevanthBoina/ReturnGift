@@ -73,6 +73,7 @@ internal class EmailComposeGuard private constructor(
     companion object {
         private val UI_COMPOSE_TOOLS = setOf(
             "open_app",
+            "switch_app",
             "tap",
             "tap_node",
             "find_and_tap",

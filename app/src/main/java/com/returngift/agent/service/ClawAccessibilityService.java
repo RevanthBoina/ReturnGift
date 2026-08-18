@@ -21,6 +21,7 @@ import com.returngift.agent.utils.KVUtils;
 import android.view.Display;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -384,6 +385,97 @@ public class ClawAccessibilityService extends AccessibilityService {
         Bundle args = new Bundle();
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
         return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+    }
+
+    // ======================== IME / Keyboard Control ========================
+
+    /**
+     * Requests the soft keyboard to show for the currently input-focused node.
+     * Accessibility services cannot directly toggle the IME, but focusing an editable
+     * node + dispatching ACTION_FOCUS causes the framework to surface the keyboard. This
+     * helper performs the focus request and then verifies input focus is actually held.
+     *
+     * @return true if an editable node holds input focus after the call.
+     */
+    public boolean requestKeyboardForFocused() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return false;
+            AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (focused == null) {
+                root.recycle();
+                return false;
+            }
+            boolean ok = focused.isEditable();
+            if (!ok) {
+                // Re-focus to prod the framework
+                focused.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                ok = focused.isEditable();
+            }
+            focused.recycle();
+            root.recycle();
+            return ok;
+        } catch (Exception e) {
+            XLog.w(TAG, "requestKeyboardForFocused failed", e);
+            return false;
+        }
+    }
+
+    /**
+     * @return true if an editable node currently holds input focus (a precondition for typing).
+     */
+    public boolean hasEditableFocus() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return false;
+            AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            boolean editable = focused != null && focused.isEditable();
+            if (focused != null) focused.recycle();
+            root.recycle();
+            return editable;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Waits up to {@code timeoutMs} for an editable node to hold input focus. State-based:
+     * returns as soon as focus is acquired rather than sleeping a fixed duration.
+     */
+    public boolean waitForEditableFocus(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (hasEditableFocus()) return true;
+            try {
+                Thread.sleep(150);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the text content of the currently input-focused editable node, or null if
+     * none. Used by InputTextTool to verify the expected text was actually entered.
+     */
+    public String getFocusedEditableText() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return null;
+            AccessibilityNodeInfo focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (focused == null) {
+                root.recycle();
+                return null;
+            }
+            CharSequence text = focused.getText();
+            focused.recycle();
+            root.recycle();
+            return text != null ? text.toString() : "";
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -832,11 +924,184 @@ public class ClawAccessibilityService extends AccessibilityService {
         }
     }
 
+    // ======================== Foreground Detection ========================
+
+    /**
+     * Deterministically detects the currently foregrounded package.
+     *
+     * Primary signal: the active accessibility window's root package — this is the
+     * window the user actually sees, so it is the ground truth for whether a launch
+     * or app-switch actually succeeded. This is the same signal SendMessageTool already
+     * relied on, now centralized and reused by OpenAppTool / SwitchAppTool / the loop.
+     *
+     * Falls back to traversing {@link #getWindows()} (available because the service is
+     * configured with flagRetrieveInteractiveWindows) when the active root is null but a
+     * window is still active (e.g. during a transition).
+     *
+     * @return the foreground package name, or null if it cannot be determined.
+     */
+    public String getForegroundPackage() {
+        // Primary: active window root. AccessibilityService#getRootInActiveWindow returns
+        // the root of the window that currently has input focus — i.e. the foreground app.
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                CharSequence pkg = root.getPackageName();
+                if (pkg != null) {
+                    String name = pkg.toString();
+                    root.recycle();
+                    return name;
+                }
+                root.recycle();
+            }
+        } catch (Exception e) {
+            XLog.w(TAG, "getForegroundPackage: active root failed", e);
+        }
+        // Fallback: scan active windows for an accessibility-focused one.
+        try {
+            for (AccessibilityWindowInfo window : getWindows()) {
+                if (window != null && window.isActive() && window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    AccessibilityNodeInfo root = window.getRoot();
+                    if (root != null) {
+                        CharSequence pkg = root.getPackageName();
+                        String name = pkg != null ? pkg.toString() : null;
+                        root.recycle();
+                        if (name != null) {
+                            return name;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            XLog.w(TAG, "getForegroundPackage: window scan failed", e);
+        }
+        return null;
+    }
+
+    /**
+     * Waits up to {@code timeoutMs} for {@code packageName} to be the foreground package.
+     * Uses state-based polling (not an arbitrary long sleep): returns as soon as the
+     * target is foreground, or false on timeout.
+     */
+    public boolean waitForForeground(String packageName, long timeoutMs) {
+        if (packageName == null || packageName.isEmpty()) return false;
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        long interval = 200;
+        while (System.currentTimeMillis() < deadline) {
+            String current = getForegroundPackage();
+            if (packageName.equals(current)) return true;
+            try {
+                Thread.sleep(interval);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @return true if {@code packageName} is currently the foreground package.
+     */
+    public boolean isForeground(String packageName) {
+        return packageName != null && packageName.equals(getForegroundPackage());
+    }
+
+    /**
+     * Computes a stable, content-derived signature of the current foreground screen.
+     *
+     * Unlike the volatile per-call node IDs ("n2","n24"), this signature is based on the
+     * set of (text, content-description, resource-id, bounds) tuples of visible
+     * meaningful nodes — so it is stable across re-queries and can be compared before
+     * and after an action to determine whether the UI actually changed.
+     *
+     * @return a deterministic hash string, or null if the screen cannot be read.
+     */
+    public String getScreenStateSignature() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return null;
+            StringBuilder sb = new StringBuilder();
+            collectSignature(root, sb);
+            root.recycle();
+            return Integer.toString(sb.toString().hashCode());
+        } catch (Exception e) {
+            XLog.w(TAG, "getScreenStateSignature failed", e);
+            return null;
+        }
+    }
+
+    private void collectSignature(AccessibilityNodeInfo node, StringBuilder sb) {
+        if (node == null) return;
+        if (node.isVisibleToUser()) {
+            boolean hasText = node.getText() != null && node.getText().length() > 0;
+            boolean hasDesc = node.getContentDescription() != null && node.getContentDescription().length() > 0;
+            boolean interactive = node.isClickable() || node.isScrollable() || node.isEditable()
+                    || node.isCheckable() || node.isLongClickable();
+            if (hasText || hasDesc || interactive) {
+                if (hasText) sb.append("t=").append(node.getText()).append('|');
+                if (hasDesc) sb.append("d=").append(node.getContentDescription()).append('|');
+                String resId = node.getViewIdResourceName();
+                if (resId != null && !resId.isEmpty()) sb.append("id=").append(resId).append('|');
+                Rect b = new Rect();
+                node.getBoundsInScreen(b);
+                sb.append("b=").append(b.toShortString()).append('\n');
+            }
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                collectSignature(child, sb);
+                child.recycle();
+            }
+        }
+    }
+
+    /**
+     * Detects whether a system overlay (Recents, dialog, permission request) is likely
+     * covering the foreground app. Used by app-switching and the watchdog to handle
+     * Recents interference and unexpected overlays.
+     *
+     * Heuristic: if multiple application windows are active, or the foreground package is
+     * a known system UI package (launcher, systemui, permissioncontroller), an overlay is
+     * considered present.
+     *
+     * @return true if a system overlay is likely on top of the target app.
+     */
+    public boolean isSystemOverlayLikely() {
+        try {
+            List<AccessibilityWindowInfo> windows = getWindows();
+            int appWindows = 0;
+            for (AccessibilityWindowInfo w : windows) {
+                if (w != null && w.isActive() && w.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    appWindows++;
+                }
+            }
+            if (appWindows > 1) return true;
+            String fg = getForegroundPackage();
+            if (fg == null) return false;
+            return fg.startsWith("com.android.systemui")
+                    || fg.contains("permissioncontroller")
+                    || fg.equals("android")
+                    || fg.contains("launcher")
+                    || fg.endsWith(".launcher");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // ======================== App Launch ========================
 
     /**
      * Opens an app by its package name.
+     *
+     * @deprecated Fragile — returns true on no-exception with no foreground verification.
+     * Use {@link #openAppForeground(String, long)} which verifies the app actually
+     * reached the foreground. Kept for legacy callers (AutoReplyManager,
+     * ContactListUiUtils, SendMessageTool) that already perform their own
+     * post-launch verification.
      */
+    @Deprecated
     public boolean openApp(String packageName) {
         try {
             Intent intent = getPackageManager().getLaunchIntentForPackage(packageName);
@@ -850,6 +1115,99 @@ public class ClawAccessibilityService extends AccessibilityService {
         } catch (Exception e) {
             XLog.e(TAG, "Failed to open app: " + packageName, e);
             return false;
+        }
+    }
+
+    /**
+     * Deterministic, verified foreground launch.
+     *
+     * Replaces the fragile fire-and-forget {@link #openApp(String)} with a mechanism
+     * appropriate to Android's task/activity model:
+     *   1. If the target package is already foreground, return success immediately
+     *      (cached task state) — no relaunch, no stack disturbance.
+     *   2. Resolve the launcher intent. If null, the app is not installed / has no
+     *      launchable activity → verified failure state.
+     *   3. Set correct flags: NEW_TASK (required from a Service context) +
+     *      REORDER_TO_FRONT (resume an existing task rather than stacking a new one).
+     *      Do NOT use CLEAR_TOP/SINGLE_TOP blindly — those can destroy the target app's
+     *      back stack and are the caller's responsibility, not the launcher's.
+     *   4. startActivity. Catch ActivityNotFoundException / SecurityException → failure.
+     *   5. Poll {@link #waitForForeground(String, long)} for the target package. Only
+     *      return success once the foreground package is verified.
+     *
+     * @param packageName  target package
+     * @param verifyTimeoutMs how long to wait for foreground verification (e.g. 8000)
+     * @return a {@link LaunchResult} carrying success/failure and the detected foreground
+     *         package so callers can report a verified failure state to the AI.
+     */
+    public LaunchResult openAppForeground(String packageName, long verifyTimeoutMs) {
+        if (packageName == null || packageName.isEmpty()) {
+            return new LaunchResult(false, null, "Package name is empty");
+        }
+        // 1. Already foreground? (cached task state — do not disturb)
+        String before = getForegroundPackage();
+        if (packageName.equals(before)) {
+            XLog.i(TAG, "openAppForeground: " + packageName + " already foreground");
+            return new LaunchResult(true, before, null);
+        }
+
+        // 2. Resolve launch intent (verifies the app is installed + launchable)
+        Intent intent;
+        try {
+            intent = getPackageManager().getLaunchIntentForPackage(packageName);
+        } catch (Exception e) {
+            XLog.e(TAG, "openAppForeground: failed to resolve launch intent for " + packageName, e);
+            return new LaunchResult(false, before, "Cannot resolve launch intent for " + packageName + ": " + e.getMessage());
+        }
+        if (intent == null) {
+            XLog.e(TAG, "openAppForeground: no launchable activity for " + packageName + " (not installed?)");
+            return new LaunchResult(false, before, "No launchable activity for " + packageName + ". Is the app installed?");
+        }
+
+        // 3. Correct flags for deterministic task resume from a Service context.
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        try {
+            startActivity(intent);
+        } catch (android.content.ActivityNotFoundException e) {
+            XLog.e(TAG, "openAppForeground: activity not found for " + packageName, e);
+            return new LaunchResult(false, before, "Activity not found for " + packageName);
+        } catch (SecurityException e) {
+            XLog.e(TAG, "openAppForeground: security exception launching " + packageName, e);
+            return new LaunchResult(false, before, "Security exception launching " + packageName + ": " + e.getMessage());
+        } catch (Exception e) {
+            XLog.e(TAG, "openAppForeground: failed to start activity for " + packageName, e);
+            return new LaunchResult(false, before, "Failed to launch " + packageName + ": " + e.getMessage());
+        }
+
+        // 5. Verify the target actually reached the foreground (state-based, not blind sleep)
+        boolean verified = waitForForeground(packageName, verifyTimeoutMs);
+        String after = getForegroundPackage();
+        if (verified) {
+            XLog.i(TAG, "openAppForeground: verified " + packageName + " is foreground");
+            return new LaunchResult(true, after, null);
+        }
+        XLog.w(TAG, "openAppForeground: launch sent but " + packageName + " not foreground after "
+                + verifyTimeoutMs + "ms (foreground=" + after + ")");
+        // Verified failure state — the AI must not continue under the assumption the app opened.
+        return new LaunchResult(false, after,
+                "Launched " + packageName + " but it did not reach foreground within "
+                        + verifyTimeoutMs + "ms (foreground=" + after + "). "
+                        + "It may be intercepted by a system dialog, restricted, or not installed.");
+    }
+
+    /**
+     * Result of a verified app launch. Carries the detected foreground package so the
+     * AI receives a verified failure state instead of a blind success.
+     */
+    public static final class LaunchResult {
+        public final boolean success;
+        public final String foregroundPackage;
+        public final String error;
+
+        public LaunchResult(boolean success, String foregroundPackage, String error) {
+            this.success = success;
+            this.foregroundPackage = foregroundPackage;
+            this.error = error;
         }
     }
 }

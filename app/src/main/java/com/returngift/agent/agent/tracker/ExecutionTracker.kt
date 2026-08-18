@@ -23,7 +23,7 @@ object ExecutionTracker {
 
     private const val TAG = "ExecutionTracker"
     private const val DB_NAME = "execution_tracker.db"
-    private const val DB_VERSION = 1
+    private const val DB_VERSION = 2
     private const val TABLE_EVENTS = "execution_events"
     private const val TABLE_TASKS = "task_trajectories"
 
@@ -51,7 +51,10 @@ object ExecutionTracker {
         val resultSummary: String? = null,
         val latencyMs: Long = 0L,
         val appPackage: String? = null,
-        val metadataJson: String? = null
+        val metadataJson: String? = null,
+        val targetResolution: String? = null,
+        val verificationResult: String? = null,
+        val recoveryAction: String? = null
     )
 
     data class Trajectory(
@@ -96,13 +99,25 @@ object ExecutionTracker {
                     result_summary TEXT,
                     latency_ms INTEGER NOT NULL,
                     app_package TEXT,
-                    metadata_json TEXT
+                    metadata_json TEXT,
+                    target_resolution TEXT,
+                    verification_result TEXT,
+                    recovery_action TEXT
                 )
             """.trimIndent())
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_events_task ON $TABLE_EVENTS(task_id)")
         }
 
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            // v2: add target-resolution / verification / recovery columns to support the
+            // unified observe→resolve→act→verify→recover control loop. Existing data is
+            // preserved; new columns default to NULL.
+            if (oldVersion < 2) {
+                db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN target_resolution TEXT")
+                db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN verification_result TEXT")
+                db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN recovery_action TEXT")
+            }
+        }
     }
 
     private var dbHelper: DbHelper? = null
@@ -257,6 +272,9 @@ object ExecutionTracker {
                 put("latency_ms", event.latencyMs)
                 put("app_package", event.appPackage)
                 put("metadata_json", event.metadataJson)
+                put("target_resolution", event.targetResolution)
+                put("verification_result", event.verificationResult)
+                put("recovery_action", event.recoveryAction)
             }
             db.insert(TABLE_EVENTS, null, cv)
         } catch (e: Exception) {
@@ -311,7 +329,10 @@ object ExecutionTracker {
                         resultSummary = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("result_summary")),
                         latencyMs = eventsCursor.getLong(eventsCursor.getColumnIndexOrThrow("latency_ms")),
                         appPackage = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("app_package")),
-                        metadataJson = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("metadata_json"))
+                        metadataJson = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("metadata_json")),
+                        targetResolution = eventsCursor.optNullableString("target_resolution"),
+                        verificationResult = eventsCursor.optNullableString("verification_result"),
+                        recoveryAction = eventsCursor.optNullableString("recovery_action")
                     )
                 )
             }
@@ -439,4 +460,47 @@ object ExecutionTracker {
             XLog.e(TAG, "Failed to prune old trajectories: ${e.message}", e)
         }
     }
+
+    /**
+     * Record a verified action event carrying the target-resolution method, verification
+     * result, and recovery action — the structured execution trace for the unified
+     * observe→resolve→act→verify→recover control loop.
+     */
+    fun recordVerifiedAction(
+        taskId: String,
+        stepIndex: Int,
+        toolName: String,
+        params: String,
+        resultSuccess: Boolean,
+        resultSummary: String,
+        latencyMs: Long,
+        appPackage: String? = null,
+        targetResolution: String? = null,
+        verificationResult: String? = null,
+        recoveryAction: String? = null
+    ) {
+        recordEvent(
+            ExecutionEvent(
+                taskId = taskId,
+                stepIndex = stepIndex,
+                eventType = EventType.ACT,
+                actionTool = toolName,
+                actionParams = params.take(500),
+                resultSuccess = resultSuccess,
+                resultSummary = resultSummary.take(300),
+                latencyMs = latencyMs,
+                appPackage = appPackage,
+                targetResolution = targetResolution,
+                verificationResult = verificationResult?.take(200),
+                recoveryAction = recoveryAction?.take(200)
+            )
+        )
+    }
+}
+
+/** Returns the String value of a column that may not exist on a v1 schema mid-upgrade. */
+private fun android.database.Cursor.optNullableString(column: String): String? {
+    val idx = getColumnIndex(column)
+    if (idx < 0 || isNull(idx)) return null
+    return getString(idx)
 }

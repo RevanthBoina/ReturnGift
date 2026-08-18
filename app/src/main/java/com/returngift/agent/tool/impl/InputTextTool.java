@@ -18,6 +18,7 @@ import com.returngift.agent.service.ClawAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
+import com.returngift.agent.utils.XLog;
 
 import java.util.Arrays;
 import java.util.List;
@@ -26,6 +27,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public class InputTextTool extends BaseTool {
+
+    private static final String TAG = "InputTextTool";
 
     @Override
     public String getName() {
@@ -74,7 +77,8 @@ public class InputTextTool extends BaseTool {
         boolean clearFirst = optionalBoolean(params, "clear_first", true);
         int[] targetCoords = null;
 
-        // If node_id provided, tap that node first to focus it
+        // If node_id provided, tap that node first to focus it.
+        // Re-ground via the live hierarchy (the node ID may be stale after a transition).
         if (!nodeId.isEmpty()) {
             nodeId = nodeId.replace("[", "").replace("]", "").trim();
             targetCoords = service.getNodeCoordinates(nodeId);
@@ -82,20 +86,43 @@ public class InputTextTool extends BaseTool {
                 return ToolResult.error("Node " + nodeId + " not found. Call get_screen_info first to refresh node IDs.");
             }
             service.performTap(targetCoords[0], targetCoords[1]);
-            try { Thread.sleep(300); } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
+            // State-based settle: wait until an editable node holds focus, not a fixed sleep.
+            if (!service.waitForEditableFocus(2000L)) {
+                XLog.w(TAG, "Editable focus not acquired after tapping node " + nodeId + "; retrying focus");
             }
         }
 
         AccessibilityNodeInfo targetNode = waitForTargetEditable(service, targetCoords);
 
         if (targetNode == null) {
-            return ToolResult.error("No target text field found" + (nodeId.isEmpty() ? "" : " after tapping node " + nodeId));
+            // Recovery: request keyboard for whatever currently has focus and retry once.
+            service.requestKeyboardForFocused();
+            targetNode = waitForTargetEditable(service, targetCoords);
+        }
+        if (targetNode == null) {
+            return ToolResult.error("No target text field found"
+                    + (nodeId.isEmpty() ? " — no editable field has focus; tap the field first"
+                                          : " after tapping node " + nodeId));
         }
 
-        // First try tapping to gain focus
+        // Verify focus is actually held before typing. If not, request it explicitly.
         targetNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
         targetNode.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        // Request keyboard visibility (focus an editable → framework surfaces IME).
+        service.requestKeyboardForFocused();
+        if (!service.waitForEditableFocus(1500L)) {
+            XLog.w(TAG, "Focus verification failed before typing; attempting recovery");
+            // Recovery: re-tap the target coordinates and re-acquire focus.
+            if (targetCoords != null) {
+                service.performTap(targetCoords[0], targetCoords[1]);
+                service.requestKeyboardForFocused();
+            }
+            targetNode = waitForTargetEditable(service, targetCoords);
+            if (targetNode == null || !service.waitForEditableFocus(1000L)) {
+                return ToolResult.error("Could not focus a text field before typing. "
+                        + "The field may be disabled or covered. Call get_screen_info and retry.");
+            }
+        }
 
         // If clear_first, select all and delete
         if (clearFirst) {
@@ -105,7 +132,11 @@ public class InputTextTool extends BaseTool {
         // Strategy 1: try ACTION_SET_TEXT (standard approach)
         // Note: ACTION_SET_TEXT overwrites existing text; for append mode we must concatenate
         if (trySetTextWithRetries(targetNode, text, clearFirst)) {
-            return ToolResult.success(clearFirst ? "Input text: " + text : "Appended text: " + text);
+            // Verify the expected text was actually entered.
+            if (verifyEnteredText(service, text, clearFirst)) {
+                return ToolResult.success(clearFirst ? "Input text: " + text : "Appended text: " + text);
+            }
+            XLog.w(TAG, "ACTION_SET_TEXT reported success but text verification failed; falling back to clipboard");
         }
 
         // Strategy 2: paste via clipboard (better compatibility)
@@ -134,10 +165,41 @@ public class InputTextTool extends BaseTool {
 
         // Perform paste
         if (targetNode.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
-            return ToolResult.success(clearFirst ? "Input text (via paste): " + text : "Appended text (via paste): " + text);
+            // Verify pasted text.
+            if (verifyEnteredText(service, text, clearFirst)) {
+                return ToolResult.success(clearFirst ? "Input text (via paste): " + text : "Appended text (via paste): " + text);
+            }
+            XLog.w(TAG, "Paste reported success but text verification failed");
         }
 
-        return ToolResult.error("Failed to input text, both ACTION_SET_TEXT and clipboard paste failed");
+        return ToolResult.error("Failed to input text, both ACTION_SET_TEXT and clipboard paste failed "
+                + "(or text verification failed). The field may not accept programmatic input.");
+    }
+
+    /**
+     * Verifies the expected text was actually entered into the focused field.
+     * State-based: re-queries the live focused node rather than trusting the action return value.
+     */
+    private boolean verifyEnteredText(ClawAccessibilityService service, String expected, boolean clearFirst) {
+        try {
+            // Give the field a brief, bounded moment to commit the text.
+            long deadline = System.currentTimeMillis() + 1500L;
+            while (System.currentTimeMillis() < deadline) {
+                String current = service.getFocusedEditableText();
+                if (current != null) {
+                    if (clearFirst) {
+                        if (current.equals(expected)) return true;
+                    } else {
+                        if (current.contains(expected)) return true;
+                    }
+                }
+                Thread.sleep(150);
+            }
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /**

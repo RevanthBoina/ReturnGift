@@ -48,6 +48,7 @@ object UndoManager {
         "swipe",
         "input_text",
         "open_app",
+        "switch_app",
         "find_and_tap",
         "scroll_to_find",
         "system_key"
@@ -157,7 +158,7 @@ object UndoManager {
         params: Map<String, Any>
     ): Pair<String, Map<String, Any>>? = when (toolName) {
 
-        "open_app" ->
+        "open_app", "switch_app" ->
             // Close the app by pressing home (takes user back to launcher)
             "system_key" to mapOf("key" to "home")
 
