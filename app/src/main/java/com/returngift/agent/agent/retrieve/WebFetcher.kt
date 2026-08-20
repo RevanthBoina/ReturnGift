@@ -106,4 +106,63 @@ internal object WebFetcher {
     } catch (e: Exception) {
         "unknown-host"
     }
+
+    // ── DuckDuckGo HTML search (keyless) ─────────────────────────────────────
+
+    data class SearchResultItem(val title: String, val url: String, val snippet: String)
+
+    private val DDG_TITLE_A = Regex(
+        """(?is)<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>""",
+    )
+    private val DDG_SNIPPET = Regex(
+        """(?is)class="result__snippet"[^>]*>(.*?)</a>""",
+    )
+
+    /**
+     * Parse the keyless html.duckduckgo.com/html/ result page into (title, url, snippet)
+     * triples. DDG wraps outbound links as //duckduckgo.com/l/?uddg=<url-encoded target>;
+     * results whose target cannot be decoded are skipped. Returns an empty list when the
+     * page is a rate-limit/anomaly challenge or markup changed — callers must fail honestly.
+     */
+    fun parseDuckDuckGoResults(html: String, maxResults: Int = 10): List<SearchResultItem> {
+        val out = mutableListOf<SearchResultItem>()
+        for (m in DDG_TITLE_A.findAll(html)) {
+            if (out.size >= maxResults) break
+            val target = decodeDdgTarget(m.groupValues[1]) ?: continue
+            val title = cleanInline(m.groupValues[2])
+            if (title.isEmpty()) continue
+            val window = html.substring(m.range.last + 1, minOf(html.length, m.range.last + 4001))
+            val snippet = DDG_SNIPPET.find(window)?.let { cleanInline(it.groupValues[1]) } ?: ""
+            out += SearchResultItem(title, target, snippet)
+        }
+        return out
+    }
+
+    /** True when the response looks like DDG's rate-limit / anomaly challenge, not results. */
+    fun isDuckDuckGoChallenge(html: String): Boolean =
+        html.contains("anomaly-modal") || html.contains("not a robot", ignoreCase = true)
+
+    internal fun decodeDdgTarget(href: String): String? {
+        val uddg = Regex("""[?&]uddg=([^&"]+)""").find(href)?.groupValues?.get(1)
+        if (uddg != null) {
+            val decoded = urlDecode(uddg)
+            return decoded.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        }
+        return when {
+            href.startsWith("//") -> "https:$href".takeIf { !it.contains("duckduckgo.com") }
+            href.startsWith("http") -> href.takeIf { !it.contains("duckduckgo.com") }
+            else -> null
+        }
+    }
+
+    internal fun urlDecode(s: String): String = try {
+        java.net.URLDecoder.decode(s, "UTF-8")
+    } catch (e: Exception) {
+        s
+    }
+
+    private fun cleanInline(html: String): String =
+        decodeEntities(html.replace(Regex("(?is)<[^>]+>"), " "))
+            .replace(Regex("""\s+"""), " ")
+            .trim()
 }

@@ -81,6 +81,7 @@ class DefaultAgentService : AgentService {
 - List apps → get_installed_apps()
 - Ask the user when unsure → ask_user(question="Which app should I use?", choices="ChatGPT; Claude; Gemini") — waits for the tap/typed answer and returns it
 - Fetch a URL/external content → web_fetch(url="https://…", save_to_vault=true) — returns readable text; never invent content you could fetch
+- Look something up (no URL given) → web_search(query="…") then web_fetch the best result
 - Settle screen → wait(duration_ms=2000)
 
 ## Core Execution Rules
@@ -95,7 +96,7 @@ class DefaultAgentService : AgentService {
 - If you see a [System Notice]/[System Warning] about ineffective actions or a recovery, change your approach — do not repeat the same action.
 - Deliverables: you can only save Markdown notes via kb_write — you cannot create PDFs or binary files, never claim you did. When you save a note, name the exact vault path in finish(summary).
 - Ambiguity: if the request lacks a required detail or has multiple valid targets/apps, call ask_user BEFORE acting and wait for the answer. Never guess and complete on a guess. Do not ask when the request is already clear.
-- External content: when the task mentions a URL/article, web_fetch it first and answer from the fetched text; never fabricate content. If fetching fails, say so honestly.
+- External content: when the task mentions a URL/article, web_fetch it first and answer from the fetched text; to look something up, web_search then web_fetch the best result. Never fabricate content; if search/fetch fails, say so honestly.
 - Privacy & Safety: Do NOT interact with payment, checkout, UPI PIN, or CVV screens. If encountered, immediately call finish(summary="Payment required; please complete manually")."""
 
         /** Maximum number of retries on LLM API call failure */

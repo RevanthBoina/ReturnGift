@@ -163,4 +163,68 @@ class WebFetcherTest {
         assertEquals("example.com", WebFetcher.hostOf("https://example.com/a?b=c"))
         assertEquals("unknown-host", WebFetcher.hostOf("not a url at all:::"))
     }
+
+    // ── DuckDuckGo search parsing (fixture mirrors real html.duckduckgo.com markup) ──
+
+    private val DDG_FIXTURE = """
+        <html><body>
+        <div class="links_main links_deep result__body">
+          <h2 class="result__title">
+            <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FPratikkr904%2FReturnGift&amp;rut=aaf0b3dc">GitHub - Pratikkr904/ReturnGift</a>
+          </h2>
+          <div class="result__extras"><div class="result__extras__url">
+            <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FPratikkr904%2FReturnGift&amp;rut=aaf0b3dc">github.com/Pratikkr904/ReturnGift</a>
+          </div></div>
+          <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FPratikkr904%2FReturnGift&amp;rut=aaf0b3dc">ReturnGift — On-Device <b>Android Agent</b> Harness. It runs tasks.</a>
+        </div>
+        <div class="links_main links_deep result__body">
+          <h2 class="result__title">
+            <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage%3Fa%3D1%26b%3D2&amp;rut=bb">Example &amp; Page</a>
+          </h2>
+          <a class="result__snippet" href="//duckduckgo.com/l/?uddg=x&amp;rut=bb">A second snippet &#8212; with entity.</a>
+        </div>
+        </body></html>
+    """.trimIndent()
+
+    @Test
+    fun `parseDuckDuckGoResults extracts titles urls and snippets`() {
+        val results = WebFetcher.parseDuckDuckGoResults(DDG_FIXTURE)
+        assertEquals(2, results.size)
+        assertEquals("GitHub - Pratikkr904/ReturnGift", results[0].title)
+        assertEquals("https://github.com/Pratikkr904/ReturnGift", results[0].url)
+        assertTrue(results[0].snippet.contains("Android Agent"))
+        assertEquals("Example & Page", results[1].title)
+        // Query string inside uddg survives decoding
+        assertEquals("https://example.com/page?a=1&b=2", results[1].url)
+        assertTrue(results[1].snippet.contains("— with entity."))
+    }
+
+    @Test
+    fun `parseDuckDuckGoResults respects maxResults`() {
+        val results = WebFetcher.parseDuckDuckGoResults(DDG_FIXTURE, maxResults = 1)
+        assertEquals(1, results.size)
+    }
+
+    @Test
+    fun `parseDuckDuckGoResults returns empty on challenge or junk`() {
+        assertTrue(WebFetcher.parseDuckDuckGoResults("<html><body>anomaly-modal</body></html>").isEmpty())
+        assertTrue(WebFetcher.parseDuckDuckGoResults("totally unrelated html").isEmpty())
+    }
+
+    @Test
+    fun `isDuckDuckGoChallenge detects bot walls`() {
+        assertTrue(WebFetcher.isDuckDuckGoChallenge("<div class=\"anomaly-modal\">x</div>"))
+        assertTrue(WebFetcher.isDuckDuckGoChallenge("prove you are Not a Robot please"))
+        assertFalse(WebFetcher.isDuckDuckGoChallenge(DDG_FIXTURE))
+    }
+
+    @Test
+    fun `decodeDdgTarget skips duckduckgo-internal and non-http links`() {
+        assertEquals(
+            "https://example.com/x",
+            WebFetcher.decodeDdgTarget("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fx&amp;rut=z"),
+        )
+        assertNull(WebFetcher.decodeDdgTarget("//duckduckgo.com/settings"))
+        assertNull(WebFetcher.decodeDdgTarget("javascript:void(0)"))
+    }
 }

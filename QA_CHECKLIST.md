@@ -1490,6 +1490,29 @@ unsupported.
   the loop continues normally; unreachable host fails within ~10s with a clear
   "Network error" — no hang, watchdog stays quiet.
 
+### WF6. Search → fetch lookup loop `[ADB]`
+- **Act**: task mode: `Look up the current Kotlin release version` (no URL given).
+- **PASS**: the model calls `web_search(query=…)` (logcat `WebSearchTool: search …`),
+  receives a numbered title/URL/snippet list, then `web_fetch`es the most relevant
+  URL, and the final answer is grounded in the fetched content with the source named.
+  No invented version numbers. (Parser unit: `WebFetcherTest` DDG tests — fixture
+  mirrors the real html.duckduckgo.com markup captured 2026-08-20.)
+
+### WF7. Search honest failures `[ADB, UNIT]`
+- **Act**: trigger a DDG rate-limit/challenge (rapid repeated searches) and search
+  with airplane mode on.
+- **PASS**: challenge → "blocked by a bot challenge / rate-limited" tool error and
+  the model says so (never fabricates results); airplane mode → "Network error"
+  within ~15s, task finishes honestly. Unit: challenge/empty-page parsing returns
+  zero results (no crash, no garbage).
+
+### WF8. Update-check throttle actually throttles `[ADB]`
+- **Act**: cold-start the app twice within a minute (second start < 24h after first).
+- **PASS**: logcat shows `AppUpdateManager: Update check throttled; skipping` on the
+  second launch — no GitHub API call (verified via no `Checking for update...` line).
+  Settings → Check for updates (force=true) always hits the network. Regression:
+  fixes the `last_update_check` written-but-never-read bug.
+
 ---
 
 ## SD — Self-Development (CI/CD OTA + embedded code-modification engine)
@@ -1628,6 +1651,42 @@ adb pull /sdcard/Android/data/com.returngift.agent/files/vault/ /tmp/vault/
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-20 — Phase 4: web_search (keyless lookup) + stable-channel throttle fix
+
+1. **`web_search` tool** (`tool/impl/WebSearchTool.java`, common tools) — keyless
+   DuckDuckGo HTML endpoint (no API key/account). Returns numbered
+   title/URL/snippet triples (default 5, max 10); honest failures on HTTP 202/429
+   (rate limit), bot-challenge pages (`anomaly-modal` / "not a robot" detection),
+   non-200, and IOException. URLEncoder uses the String-charset overload
+   (Charset overload requires API 33+).
+2. **Parser in the pure core** — `WebFetcher.parseDuckDuckGoResults` /
+   `decodeDdgTarget` / `isDuckDuckGoChallenge` (zero android imports → JVM-testable).
+   Decodes the `uddg=` redirect param, skips duckduckgo-internal/non-http targets.
+   Design + fixture validated against a REAL captured html.duckduckgo.com response
+   (10/10 results parsed, Python mirror) before writing the Kotlin.
+3. **Prompt coupling** — Rule 13 extended ("look something up without a URL →
+   web_search then web_fetch the best result"); LOCAL_TASK_PROMPT tool guide line.
+   Display name `tool_name_web_search` in values/values-zh/values-ja.
+4. **Stable-channel update throttle FIXED** — `AppUpdateManager.checkForUpdates`
+   previously accepted `force` but never read `last_update_check` (written at both
+   success branches, never consulted): every app launch hit the GitHub API. Now
+   `force=false` (auto-launch path via UpdateChecker) skips with `UpdateState.Idle`
+   when the last check is <24h old; Settings → Check for updates keeps `force=true`.
+   Mirrors the dev-channel pattern (KV_LAST_CHECK/UPDATE_CHECK_THROTTLE_MS
+   constants; write sites use the constant too).
+
+Tests: 5 new `WebFetcherTest` cases (DDG parse incl. entity/amp decoding + embedded
+query strings, maxResults cap, challenge/junk → empty, challenge detection,
+decodeDdgTarget skips). QA: WF6–WF8.
+
+Files changed: `agent/retrieve/WebFetcher.kt`, `tool/impl/WebSearchTool.java` (new),
+`tool/ToolRegistry.kt`, `agent/AgentConfig.kt`, `agent/DefaultAgentService.kt`,
+`utils/AppUpdateManager.kt`, `res/values*/strings.xml`,
+`app/src/test/.../retrieve/WebFetcherTest.kt`, `QA_CHECKLIST.md` (WF6–WF8).
+
+[2026-08-20] [PENDING] WF6–WF8  Unit tests ready for CI; device verification on
+next build. Held locally — push (no tag) when the user confirms.
 
 ### 2026-08-20 — Phase 3: external artifact retrieval (web_fetch)
 

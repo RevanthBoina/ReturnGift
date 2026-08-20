@@ -183,6 +183,7 @@
     <string name="tool_name_finish">タスク完了</string>
     <string name="tool_name_ask_user">確認中</string>
     <string name="tool_name_web_fetch">Webページを取得中</string>
+    <string name="tool_name_web_search">ウェブ検索中</string>
     <string name="tool_name_open_app">アプリを開く</string>
     <string name="tool_name_get_installed_apps">アプリ一覧を取得</string>
     <string name="tool_name_system_key">システムキー</string>

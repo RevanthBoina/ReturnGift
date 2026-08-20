@@ -49,6 +49,8 @@ object AppUpdateManager {
     private const val READ_TIMEOUT_MS = 15000
     private const val DEV_UPDATE_THROTTLE_MS = 24L * 60 * 60 * 1000  // 24h
     private const val KV_LAST_DEV_CHECK = "last_dev_update_check"
+    private const val UPDATE_CHECK_THROTTLE_MS = 24L * 60 * 60 * 1000  // 24h
+    private const val KV_LAST_CHECK = "last_update_check"
     private const val DEV_TAG = "dev-latest"
     private const val DEV_ASSET_NAME = "ReturnGift-dev.apk"
 
@@ -93,11 +95,24 @@ object AppUpdateManager {
 
     /**
      * Check GitHub for the latest release.
+     *
+     * With [force] = false (the once-per-app-launch path from ComposeChatActivity),
+     * the check is throttled to once per 24h via [KV_LAST_CHECK]; a throttled call
+     * reports [UpdateState.Idle] and does NOT touch the network. Settings →
+     * "Check for updates" passes [force] = true to bypass the throttle.
      */
     fun checkForUpdates(
         force: Boolean = true,
         onResult: ((UpdateState) -> Unit)? = null
     ) {
+        if (!force) {
+            val last = KVUtils.getLong(KV_LAST_CHECK, 0L)
+            if (System.currentTimeMillis() - last < UPDATE_CHECK_THROTTLE_MS) {
+                XLog.i(TAG, "Update check throttled; skipping")
+                onResult?.invoke(UpdateState.Idle)
+                return
+            }
+        }
         scope.launch {
             _updateState.value = UpdateState.Checking
             onResult?.invoke(UpdateState.Checking)
@@ -142,10 +157,10 @@ object AppUpdateManager {
                     XLog.i(TAG, "Latest release on GitHub: ${releaseInfo.tagName} (${releaseInfo.versionName})")
 
                     if (isNewerVersion(releaseInfo.versionName, currentVersion)) {
-                        KVUtils.putLong("last_update_check", System.currentTimeMillis())
+                        KVUtils.putLong(KV_LAST_CHECK, System.currentTimeMillis())
                         UpdateState.UpdateAvailable(releaseInfo)
                     } else {
-                        KVUtils.putLong("last_update_check", System.currentTimeMillis())
+                        KVUtils.putLong(KV_LAST_CHECK, System.currentTimeMillis())
                         UpdateState.UpToDate(currentVersion)
                     }
                 } catch (e: Exception) {
