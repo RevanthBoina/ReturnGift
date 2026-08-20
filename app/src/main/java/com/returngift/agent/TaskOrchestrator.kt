@@ -463,19 +463,11 @@ class TaskOrchestrator(
     }
 
     /**
-     * Extract the vault-relative path from a successful knowledge-base write tool result
-     * ("Written: <path>" / "Appended to: <path>" — the formats produced by KBManager),
+     * Extract the vault-relative path from a successful knowledge-base write tool result,
      * or null when the tool did not persist an artifact.
      */
     private fun kbArtifactPath(toolName: String, result: ToolResult): String? {
         if (!result.isSuccess) return null
-        val data = result.data ?: return null
-        val prefix = when (toolName) {
-            "kb_write" -> "Written: "
-            "kb_append" -> "Appended to: "
-            else -> return null
-        }
-        if (!data.startsWith(prefix)) return null
-        return data.removePrefix(prefix).trim().takeIf { it.isNotEmpty() }
+        return com.returngift.agent.agent.artifact.ArtifactContract.extractKbPath(toolName, result.data)
     }
 }

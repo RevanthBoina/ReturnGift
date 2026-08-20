@@ -1371,6 +1371,38 @@ unverified or stale UI state.
 - **PASS**: SendMessageTool's existing `waitForActiveWindow` path still works; the
   deprecated `openApp()` is preserved for legacy callers; no regression in send_message.
 
+### AV18. Artifact contract — note task finish gate `[ADB, UNIT]`
+- **Act**: task "save a note about tomorrow's meeting agenda" → watch the agent.
+- **PASS**: the agent calls kb_write BEFORE finish; if it attempts finish with no
+  successful kb_write/kb_append, finish is rejected with `[System Guard] FINISH
+  REJECTED. This task requires saving a note…` (logcat: `ArtifactContract` /
+  "Task guard blocked premature finish") and the loop continues. After a real
+  kb_write, finish is accepted and names the vault path; "📄 Saved to vault:" appears
+  in chat (ME.6). Unit: `ArtifactContractTest.noteTask_blocksFinishUntilArtifactSaved`.
+
+### AV19. Artifact contract — binary hallucination gate `[ADB, UNIT]`
+- **Act**: task "prepare a PDF plan for my week".
+- **PASS**: a finish/summary claiming "I've prepared the PDF…" / "your presentation
+  has been created…" is REJECTED with the deliverable-honesty correction; the loop
+  continues until the model either kb_writes a Markdown plan (finish names the vault
+  path; "open the Vault to export as PDF" guidance allowed) or finishes honestly
+  ("cannot produce PDFs on-device"). No false claim ever reaches the user.
+  Unit: `ArtifactContractTest.pdfTask_*`.
+
+### AV20. Artifact contract — text-only completion gate `[ADB, UNIT]`
+- **Act**: same prompts as AV18/AV19 but with a model that answers directly (no
+  finish tool call).
+- **PASS**: a text-only response that violates the contract (note unsaved, or binary
+  claim) is blocked; the correction is injected as a user message and the loop
+  continues. Honest/satisfied text completions pass through unchanged.
+  Unit: `ArtifactContractTest.*TextOnly*`.
+
+### AV21. Build fingerprint asset ships in the APK `[CI]`
+- **Act**: build a release APK; `unzip -l app-release.apk | grep build_fingerprint`.
+- **PASS**: `assets/build_fingerprint.txt` is present in the packaged APK (the old
+  dotfile `assets/.pcfp` was silently excluded by aapt — verified missing from the
+  v2.2.0 release APK during forensic inspection).
+
 ---
 
 ## SD — Self-Development (CI/CD OTA + embedded code-modification engine)
@@ -1509,6 +1541,40 @@ adb pull /sdcard/Android/data/com.returngift.agent/files/vault/ /tmp/vault/
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-20 — Phase 0+1: build-fingerprint asset fix + ArtifactContract finish gate
+
+**Phase 0 (APK forensic defect).** The v2.2.0 release APK inspection proved
+`assets/.pcfp` never ships: aapt silently excludes dotfile assets, so the
+`injectBuildFingerprint` Gradle task's output was discarded at packaging time in
+every build. Renamed the asset to `assets/build_fingerprint.txt` (writer in
+`app/build.gradle.kts`, ignore rule updated). No runtime reader existed yet, so the
+rename is behavior-safe.
+
+**Phase 1 (strong model↔platform coupling).** New
+`agent/artifact/ArtifactContract` — per-task deliverable enforcement following the
+existing guard pattern (`fromTask` inference → `buildPromptSection()` →
+`maybeBlockFinish`). Two contracts: MARKDOWN_NOTE (task asks to save a note/plan/
+list/todo → finish rejected until a kb_write/kb_append actually succeeded) and
+EXTERNAL_ARTIFACT (task asks for PDF/PPT/website/binary → finish rejected when the
+summary claims it was created while nothing was saved; honest finishes and
+Markdown-alternative finishes pass, including "export as PDF" guidance). Wired into
+`DefaultAgentService.runAgentLoop` at four points: contract creation, system-prompt
+section, the `blockedFinish` chain (after the three existing guards), and
+kb-artifact recording on tool success; also blocks dishonest TEXT-ONLY completions
+(models that answer without calling finish). `TaskOrchestrator.kbArtifactPath` now
+delegates to `ArtifactContract.extractKbPath` (single parser). Regexes validated
+against 21 inference/claim cases (Python mirror) + real JVM unit tests
+`ArtifactContractTest` (12 tests, no mocks — pure Kotlin class).
+
+Files changed: `app/build.gradle.kts`, `.gitignore`,
+`agent/artifact/ArtifactContract.kt` (new), `agent/DefaultAgentService.kt`,
+`TaskOrchestrator.kt`, `app/src/test/.../artifact/ArtifactContractTest.kt` (new),
+`QA_CHECKLIST.md` (AV18–AV21).
+
+[2026-08-20] [PENDING] AV18–AV21  Unit tests ready for CI (`testDebugUnitTest`);
+device verification on next build. No release tag pushed (per user instruction —
+tag v2.2.1 only after CI green + device QA).
 
 ### 2026-08-20 — Chat edit-and-resend + visible agent artifacts (vault)
 

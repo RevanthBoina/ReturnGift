@@ -260,7 +260,9 @@ tasks.register("injectBuildFingerprint") {
         val builder = System.getenv("BUILDER_ID") ?: System.getProperty("user.name") ?: "local"
         val fp = "t=$ts\nc=$gitHash\nb=$builder\nv=${android.defaultConfig.versionName}"
         val hexEncoded = fp.toByteArray().joinToString("") { "%02x".format(it) }
-        file("src/main/assets/.pcfp").apply {
+        // Must NOT be a dotfile: aapt silently excludes assets starting with '.' from
+        // the packaged APK (verified missing from v2.2.0 release APK).
+        file("src/main/assets/build_fingerprint.txt").apply {
             parentFile.mkdirs()
             writeText(hexEncoded)
         }

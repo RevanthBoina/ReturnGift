@@ -466,6 +466,7 @@ class DefaultAgentService : AgentService {
         val inAppSearchGuard = InAppSearchGuard.fromTask(rawUserRequest)
         val emailComposeGuard = EmailComposeGuard.fromTask(rawUserRequest)
         val directDeviceDataGuard = DirectDeviceDataGuard.fromTask(rawUserRequest)
+        val artifactContract = com.returngift.agent.agent.artifact.ArtifactContract.fromTask(rawUserRequest)
 
         // For local LLM, inject matching playbook into system prompt
         val playbookSection = if (config.provider == LlmProvider.LOCAL) {
@@ -494,6 +495,7 @@ class DefaultAgentService : AgentService {
             append(inAppSearchGuard.buildPromptSection())
             append(emailComposeGuard.buildPromptSection())
             append(directDeviceDataGuard.buildPromptSection())
+            append(artifactContract.buildPromptSection())
             append(buildDeviceContext())
         }
 
@@ -710,6 +712,13 @@ class DefaultAgentService : AgentService {
                         messages.add(UserMessage.from(correction))
                         continue
                     }
+                    if (artifactContract.shouldBlockTextOnlyCompletion(responseText)) {
+                        val correction = artifactContract.maybeBlockFinish(responseText)
+                            ?: artifactContract.buildCompletionCorrection()
+                        XLog.i(TAG, "ArtifactContract blocked text-only completion for '$userPrompt'")
+                        messages.add(UserMessage.from(correction))
+                        continue
+                    }
                     XLog.i(TAG, "runAgentLoop: text-only response, completing")
                     ExecutionTracker.endTask(taskId, "SUCCESS", iterations, totalTokens)
                     SharedKnowledgeStore.remember(SharedKnowledgeStore.Category.TASK_FACT, rawUserRequest, responseText, sourceTask = rawUserRequest)
@@ -762,6 +771,7 @@ class DefaultAgentService : AgentService {
                     directDeviceDataGuard.maybeBlockFinish()
                         ?: inAppSearchGuard.maybeBlockFinish(screenInfo)
                         ?: emailComposeGuard.maybeBlockFinish(screenInfo)
+                        ?: artifactContract.maybeBlockFinish(params["summary"]?.toString() ?: "")
                 } else null
                 if (blockedFinish != null) {
                     val blockedResult = ToolResult.error(blockedFinish)
@@ -861,6 +871,7 @@ class DefaultAgentService : AgentService {
                 if (result.isSuccess) {
                     inAppSearchGuard.recordSuccessfulTool(toolName, params)
                     emailComposeGuard.recordSuccessfulTool(toolName)
+                    artifactContract.recordKbToolResult(toolName, result.data)
                     // ── Part C: record undoable action ──────────────────────────
                     UndoManager.record(toolName, params, displayName)
                     if (UndoManager.hasPending()) {

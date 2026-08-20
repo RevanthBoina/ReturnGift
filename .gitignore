@@ -15,7 +15,7 @@ local.properties
 !docs/*.mp4
 
 # Build fingerprint (auto-generated)
-app/src/main/assets/.pcfp
+app/src/main/assets/build_fingerprint.txt
 
 # Claude Code local session state (not for git)
 CLAUDE.local.md
