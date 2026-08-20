@@ -79,6 +79,7 @@ class DefaultAgentService : AgentService {
 - Notifications → get_notifications()
 - Clipboard → clipboard(action="get"|"set", text="...")
 - List apps → get_installed_apps()
+- Ask the user when unsure → ask_user(question="Which app should I use?", choices="ChatGPT; Claude; Gemini") — waits for the tap/typed answer and returns it
 - Settle screen → wait(duration_ms=2000)
 
 ## Core Execution Rules
@@ -92,6 +93,7 @@ class DefaultAgentService : AgentService {
 - Do not re-cache node IDs ("n3") across UI transitions; re-resolve by text/content_desc/resource_id, or call get_screen_info again.
 - If you see a [System Notice]/[System Warning] about ineffective actions or a recovery, change your approach — do not repeat the same action.
 - Deliverables: you can only save Markdown notes via kb_write — you cannot create PDFs or binary files, never claim you did. When you save a note, name the exact vault path in finish(summary).
+- Ambiguity: if the request lacks a required detail or has multiple valid targets/apps, call ask_user BEFORE acting and wait for the answer. Never guess and complete on a guess. Do not ask when the request is already clear.
 - Privacy & Safety: Do NOT interact with payment, checkout, UPI PIN, or CVV screens. If encountered, immediately call finish(summary="Payment required; please complete manually")."""
 
         /** Maximum number of retries on LLM API call failure */
@@ -1053,6 +1055,8 @@ class DefaultAgentService : AgentService {
 
     override fun cancel() {
         cancelled.set(true)
+        // Unblock a parked ask_user call so the loop thread wakes and exits cleanly.
+        com.returngift.agent.agent.clarify.ClarificationManager.cancelPending()
         if (config.provider == LlmProvider.LOCAL) {
             // LiteRT native sendMessage is not interrupt-safe; let the current round yield
             // naturally, then surface Task cancelled after the client closes cleanly.

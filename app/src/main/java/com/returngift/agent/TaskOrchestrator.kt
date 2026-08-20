@@ -93,6 +93,9 @@ class TaskOrchestrator(
 
     fun cancelCurrentTask() {
         if (!taskSessionStore.markStopping()) return
+        // Unblock a parked ask_user call immediately (belt & braces with
+        // DefaultAgentService.cancel — cancelPending is idempotent).
+        com.returngift.agent.agent.clarify.ClarificationManager.cancelPending()
         if (::agentService.isInitialized) {
             agentService.cancel()
         }

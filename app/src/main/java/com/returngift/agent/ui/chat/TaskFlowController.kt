@@ -21,6 +21,7 @@ import com.returngift.agent.channel.Channel
 import com.returngift.agent.agent.DirectDeviceDataGuard
 import com.returngift.agent.agent.PipelineRouter
 import com.returngift.agent.agent.TaskPromptEnvelope
+import com.returngift.agent.agent.clarify.ClarificationManager
 import com.returngift.agent.agent.llm.ModelConfigRepository
 import com.returngift.agent.floating.FloatingCircleManager
 import com.returngift.agent.service.ClawAccessibilityService
@@ -64,7 +65,47 @@ class TaskFlowController(
     private var lastMonitorStatusNote: String? = null
     private val pipelineRouter = PipelineRouter(activity)
 
+    /** Live ask_user question the agent is parked on, or null. */
+    val pendingClarification = androidx.compose.runtime.mutableStateOf<ClarificationManager.PendingQuestion?>(null)
+
+    private val clarificationListener: (ClarificationManager.PendingQuestion?) -> Unit = { q ->
+        pendingClarification.value = q
+        if (q != null) {
+            val choices = if (q.choices.isNotEmpty())
+                "\n" + q.choices.mapIndexed { i, c -> "${i + 1}. $c" }.joinToString("\n")
+            else ""
+            addSystem("❓ ${q.question}$choices")
+        }
+    }
+
+    init {
+        ClarificationManager.addListener(clarificationListener)
+        // Activity recreation: a question may already be parked — restore the card
+        // state without re-posting the system message (the original one persists).
+        ClarificationManager.snapshot()?.let { pendingClarification.value = it }
+    }
+
+    /** Unregister UI listeners. Call from Activity.onDestroy. */
+    fun release() {
+        ClarificationManager.removeListener(clarificationListener)
+    }
+
+    /** Submit the user's answer to a parked ask_user question (choice tap or typed reply). */
+    fun submitClarificationAnswer(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        if (ClarificationManager.answer(trimmed)) {
+            addUser(trimmed)
+            onPersistConversation()
+        }
+    }
+
     fun sendTask(text: String) {
+        // A pending ask_user question consumes the next outgoing message as its answer.
+        if (ClarificationManager.snapshot() != null) {
+            submitClarificationAnswer(text)
+            return
+        }
         if (appViewModel.isTaskRunning()) {
             addSystem("Another task is still running. Stop it first.")
             onTaskTerminal?.invoke(TaskEvent.Failed("Another task is still running. Stop it first."))

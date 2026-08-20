@@ -44,6 +44,7 @@ import androidx.compose.ui.res.painterResource
 import com.returngift.agent.R
 import com.returngift.agent.agent.skill.Skill
 import com.returngift.agent.agent.skill.SkillCategory
+import com.returngift.agent.agent.clarify.ClarificationManager
 import com.returngift.agent.agent.skill.SkillRegistry
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -156,6 +157,8 @@ fun ChatScreen(
     onStopAllTasks: () -> Unit = {},
     inputEnabled: Boolean = true,
     onModelSwitch: (modelId: String, displayName: String) -> Unit = { _, _ -> },
+    pendingClarification: ClarificationManager.PendingQuestion? = null,
+    onClarificationAnswer: (String) -> Unit = {},
     colors: ReturnGiftColors = AbyssDark,
 ) {
     val focusManager = LocalFocusManager.current
@@ -303,9 +306,19 @@ fun ChatScreen(
                             colors = colors,
                         )
 
+                        pendingClarification?.let { question ->
+                            ClarificationCard(
+                                question = question,
+                                onAnswer = onClarificationAnswer,
+                                onStop = onStopAllTasks,
+                                colors = colors,
+                            )
+                        }
+
                         ChatInputBar(
                             isAwaitingReply = isAwaitingReply,
                             isTaskRunning = isTaskRunning,
+                            clarificationPending = pendingClarification != null,
                             inputEnabled = inputEnabled,
                             isTaskMode = isTaskMode,
                             isLocalModel = isLocalUI,
@@ -954,12 +967,89 @@ private fun ToolGroup(message: ChatMessage, colors: ReturnGiftColors) {
     }
 }
 
+// ======================== CLARIFICATION CARD (ask_user) ========================
+
+/**
+ * Inline question card shown while the agent is parked on an ask_user call.
+ * Choice taps answer immediately; free-text replies go through the input bar
+ * (routed to the pending question instead of starting a new task). Stop remains
+ * reachable from the card since the FAB turns into a Send button while parked.
+ */
+@Composable
+private fun ClarificationCard(
+    question: ClarificationManager.PendingQuestion,
+    onAnswer: (String) -> Unit,
+    onStop: () -> Unit,
+    colors: ReturnGiftColors,
+) {
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.accent.copy(alpha = 0.45f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = "❓ " + question.question,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textPrimary,
+            )
+            if (question.choices.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                question.choices.forEach { choice ->
+                    Surface(
+                        onClick = { onAnswer(choice) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = colors.accent.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.accent.copy(alpha = 0.30f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp),
+                    ) {
+                        Text(
+                            text = choice,
+                            fontSize = 12.sp,
+                            color = colors.textPrimary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (question.allowFreeText) "Tap a choice or type your answer below"
+                           else "Tap a choice to answer",
+                    fontSize = 11.sp,
+                    color = colors.textTertiary,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "Stop task",
+                    fontSize = 11.sp,
+                    color = Color(0xFFF44336),
+                    modifier = Modifier
+                        .clickable { onStop() }
+                        .padding(4.dp),
+                )
+            }
+        }
+    }
+}
+
 // ======================== INPUT BAR ========================
 
 @Composable
 private fun ChatInputBar(
     isAwaitingReply: Boolean,
     isTaskRunning: Boolean,
+    clarificationPending: Boolean = false,
     inputEnabled: Boolean = true,
     isTaskMode: Boolean,
     isLocalModel: Boolean,
@@ -1169,10 +1259,12 @@ private fun ChatInputBar(
 
             FloatingActionButton(
                 onClick = {
-                    if (isTaskRunning) {
+                    // While an ask_user question is pending the FAB stays a SEND button —
+                    // the typed reply is routed as the clarification answer, not a new task.
+                    if (isTaskRunning && !clarificationPending) {
                         onStopAll()
-                    } else if (!isAwaitingReply && inputEnabled && text.isNotBlank()) {
-                        if (!isLocalModel || isTaskMode) {
+                    } else if ((!isAwaitingReply || clarificationPending) && inputEnabled && text.isNotBlank()) {
+                        if (clarificationPending || !isLocalModel || isTaskMode) {
                             onSendTask(text.trim())
                             text = ""
                             focusManager.clearFocus()
@@ -1187,9 +1279,10 @@ private fun ChatInputBar(
                 },
                 modifier = Modifier
                     .size(34.dp)
-                    .alpha(if ((text.isBlank() || !inputEnabled || isAwaitingReply) && !isTaskRunning) 0.35f else 1f),
+                    .alpha(if ((text.isBlank() || !inputEnabled || (isAwaitingReply && !clarificationPending)) && !isTaskRunning) 0.35f else 1f),
                 containerColor = when {
-                    isTaskRunning -> Color(0xFFF44336)
+                    isTaskRunning && !clarificationPending -> Color(0xFFF44336)
+                    clarificationPending -> colors.accent
                     isAwaitingReply -> colors.background
                     text.isBlank() -> colors.background
                     isTaskMode && isLocalModel -> colors.accent
@@ -1200,12 +1293,13 @@ private fun ChatInputBar(
             ) {
                 Icon(
                     when {
-                        isTaskRunning -> Icons.Default.Close
-                        isAwaitingReply -> Icons.Default.MoreHoriz
+                        isTaskRunning && !clarificationPending -> Icons.Default.Close
+                        isAwaitingReply && !clarificationPending -> Icons.Default.MoreHoriz
                         else -> Icons.Default.ArrowUpward
                     },
                     contentDescription = when {
-                        isTaskRunning -> "Stop"
+                        isTaskRunning && !clarificationPending -> "Stop"
+                        clarificationPending -> "Send answer"
                         isAwaitingReply -> "Waiting for reply"
                         else -> "Send"
                     },

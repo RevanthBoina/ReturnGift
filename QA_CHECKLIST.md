@@ -1405,6 +1405,49 @@ unverified or stale UI state.
 
 ---
 
+## CL — Clarification / ask_user Suspend-Resume (2026-08-20)
+
+The `ask_user` tool parks the agent loop on a user question instead of guessing:
+`ClarificationManager` (latch-based, timeout 120s) bridges the loop thread and the
+chat UI; a `ClarificationCard` above the input bar offers tappable choices; while a
+question is pending the send FAB routes the reply as the answer (not a new task) and
+Stop stays reachable from the card.
+
+### CL1. Ask-before-acting end to end `[ADB]`
+- **Setup**: cloud or local model active; task mode.
+- **Act**: send an ambiguous task: `Send the report` (no app/contact named).
+- **PASS**: the model calls `ask_user`; logcat shows `ClarificationManager: Clarification
+  pending`; the chat shows a ❓ system message AND the clarification card with the
+  question; the send FAB stays a Send button (accent), not Stop.
+
+### CL2. Choice tap resumes the task `[ADB]`
+- **Act**: during CL1, tap a choice on the card.
+- **PASS**: the choice appears as a user bubble; the tool result becomes
+  `User answered: <choice>`; the loop continues using that answer (no new task is
+  started; `TaskOrchestrator` does not log a lock acquisition for the reply).
+
+### CL3. Typed answer routes to the question `[ADB]`
+- **Act**: during a pending question, type a free-text reply in the input bar and send.
+- **PASS**: the reply appears as a user bubble and is delivered as the ask_user tool
+  result. The message does NOT start a new task/chat round. (Unit:
+  `ClarificationManagerTest.typed free text answer is accepted`.)
+
+### CL4. Timeout and cancel recover cleanly `[ADB, UNIT]`
+- **Act**: let a pending question sit unanswered for 120s (timeout) or tap "Stop task"
+  on the card (cancel).
+- **PASS**: timeout → tool returns an error telling the model to proceed with a safe
+  default or finish honestly; the loop continues, no hang. Cancel → the loop thread
+  wakes immediately and the task ends as cancelled; no lingering card. (Unit:
+  `timeout returns null and clears pending state`,
+  `cancelPending unblocks a parked request with null`.)
+
+### CL5. No ask-spam on clear requests `[ADB]`
+- **Act**: send a fully specified task (`What's my battery level?`).
+- **PASS**: no `ask_user` call; the task completes directly. (Prompt Rule 12 /
+  LOCAL_TASK_PROMPT guidance; regression guard against over-asking.)
+
+---
+
 ## SD — Self-Development (CI/CD OTA + embedded code-modification engine)
 
 Acceptance criteria: ReturnGift can build itself via PR-gated CI, fetch its own freshly
@@ -1541,6 +1584,56 @@ adb pull /sdcard/Android/data/com.returngift.agent/files/vault/ /tmp/vault/
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-20 — Phase 2: ask_user clarification suspend/resume (ClarificationManager)
+
+Clarification-first behavior (Claude.ai/Kimi-style ask-before-acting), built as the
+keystone for the model↔platform coupling work:
+
+1. **`agent/clarify/ClarificationManager.kt` (new, object)** — latch-based park/resume
+   bridge. `request(question, choices, allowFreeText, timeoutMs=120s)` blocks the
+   agent-loop thread until `answer(text)` (UI), `cancelPending()` (task cancel), or
+   timeout. Main-thread call guard (deadlock-proof), single-pending-at-a-time,
+   listener notifications posted on the main thread (direct-call fallback so JVM unit
+   tests work without Robolectric). `isMainThread` hook is internal-var for tests.
+2. **`tool/impl/AskUserTool.java` (new, registered in `ToolRegistry.registerCommonTools`)**
+   — `ask_user(question, choices="A;B;C", allow_free_text)`; returns
+   `User answered: …` on success, or an error telling the model to proceed with a safe
+   default / finish honestly on timeout/cancel. Display name `tool_name_ask_user` in
+   values/values-zh/values-ja.
+3. **Cancel plumbing**: `DefaultAgentService.cancel()` +
+   `TaskOrchestrator.cancelCurrentTask()` both call `ClarificationManager.cancelPending()`
+   (idempotent) so a parked loop thread wakes immediately — works for LOCAL (LiteRT,
+   flag-only cancel) and cloud (thread interrupt) providers.
+4. **Prompt coupling**: `AgentConfig` Rule 12 "Ask Before Acting on Ambiguity"
+   (+ anti-over-asking counter-rule) and `LOCAL_TASK_PROMPT` tool guide + ambiguity
+   bullet — the model is *told* to resolve ambiguity via ask_user and never invent
+   missing details.
+5. **Chat UI**: `TaskFlowController` subscribes to ClarificationManager (posts ❓ system
+   message with numbered choices, exposes `pendingClarification` compose state,
+   `submitClarificationAnswer`, `release()` on Activity destroy); `ChatScreen` renders a
+   `ClarificationCard` (question + tappable choice chips + Stop affordance) above the
+   input bar; while a question is pending the FAB stays a Send button and the reply is
+   routed as the answer instead of a new task (funnels in both `TaskFlowController.sendTask`
+   and `ChatSessionController.sendChat`). Activity-recreation recovery via
+   `ClarificationManager.snapshot()` in the controller init.
+
+Tests: `ClarificationManagerTest` (11 JVM tests, real latch threads, no mocks):
+park/answer, free text, choice-only rejection, timeout, cancel wake, no-op cancel,
+no-pending answer, single-pending refusal, main-thread refusal, listener notify,
+question payload. QA: CL1–CL5 above.
+
+Files changed: `agent/clarify/ClarificationManager.kt` (new),
+`tool/impl/AskUserTool.java` (new), `tool/ToolRegistry.kt`,
+`agent/AgentConfig.kt`, `agent/DefaultAgentService.kt`, `TaskOrchestrator.kt`,
+`ui/chat/TaskFlowController.kt`, `ui/chat/ChatSessionController.kt`,
+`ui/chat/ChatScreen.kt`, `ui/chat/ComposeChatActivity.kt`,
+`res/values*/strings.xml`, `app/src/test/.../clarify/ClarificationManagerTest.kt` (new),
+`QA_CHECKLIST.md` (CL1–CL5).
+
+[2026-08-20] [PENDING] CL1–CL5  Unit tests ready for CI (`testDebugUnitTest`);
+device verification on next build. Held locally per user instruction — no push/tag
+until all phases of the model-coupling plan are done.
 
 ### 2026-08-20 — Phase 0+1: build-fingerprint asset fix + ArtifactContract finish gate
 

@@ -85,7 +85,7 @@ class ComposeChatActivity : ComponentActivity() {
         )
     }
 
-    private val taskFlowController by lazy {
+    private val taskFlowControllerLazy = lazy {
         TaskFlowController(
             activity = this,
             executor = executor,
@@ -103,6 +103,7 @@ class ComposeChatActivity : ComponentActivity() {
             onTaskTerminal = { sendExternalAutomationTerminalCallback(it) },
         )
     }
+    private val taskFlowController: TaskFlowController get() = taskFlowControllerLazy.value
 
     private val activeTaskShellController by lazy {
         ActiveTaskShellController(appViewModel = appViewModel)
@@ -227,6 +228,8 @@ class ComposeChatActivity : ComponentActivity() {
                     ).show()
                 },
                 onModelSwitch = { modelId, displayName -> switchModel(modelId, displayName) },
+                pendingClarification = taskFlowController.pendingClarification.value,
+                onClarificationAnswer = { taskFlowController.submitClarificationAnswer(it) },
                 colors = composeColors,
             )
         }
@@ -304,6 +307,7 @@ class ComposeChatActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (taskFlowControllerLazy.isInitialized()) taskFlowControllerLazy.value.release()
         chatSessionController.onDestroy()
         executor.shutdown()
     }

@@ -355,6 +355,12 @@ class ChatSessionController(
     }
 
     fun sendChat(text: String, markEdited: Boolean = false) {
+        // A pending ask_user question consumes the next outgoing message as its answer.
+        if (!markEdited && com.returngift.agent.agent.clarify.ClarificationManager.answer(text.trim())) {
+            addUser(text)
+            onPersistConversation()
+            return
+        }
         addUser(text, markEdited)
         uiState.isAwaitingReply.value = true
         uiState.messages.add(ChatMessage(ChatMessage.Role.ASSISTANT, "..."))

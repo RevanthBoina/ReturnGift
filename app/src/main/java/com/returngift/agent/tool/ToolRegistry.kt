@@ -45,6 +45,7 @@ object ToolRegistry {
         register(GetNotificationsTool())
         register(MakeCallTool())
         register(FinishTool())
+        register(AskUserTool())
         // Knowledge Base tools — shared vault available in all modes
         register(KbWriteTool())
         register(KbReadTool())
