@@ -52,11 +52,14 @@ internal object WebFetcher {
     fun isProbablyBinary(contentType: String?): Boolean {
         val ct = contentType?.lowercase() ?: return false
         return when {
+            // binary indicators first: office MIMEs contain "xml" (vnd...openxmlformats)
+            // and octet-stream must not fall through to the text checks
+            ct.contains("msword") || ct.contains("officedocument") || ct.contains(".document") -> true
+            ct.contains("application/octet-stream") -> true
             ct.startsWith("text/") -> false
             ct.contains("json") || ct.contains("xml") || ct.contains("html") -> false
             ct.contains("javascript") || ct.contains("x-www-form-urlencoded") -> false
             ct.contains("markdown") || ct.contains("csv") -> false
-            ct.contains("application/octet-stream") -> true
             ct.startsWith("image/") || ct.startsWith("audio/") || ct.startsWith("video/") -> true
             ct.contains("pdf") || ct.contains("zip") || ct.contains("gzip") -> true
             else -> true // unknown application/* — treat as binary, don't garbage the context
