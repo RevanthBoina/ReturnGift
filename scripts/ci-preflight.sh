@@ -23,9 +23,9 @@ red() { printf '\033[31m%s\033[0m\n' "$*"; }
 grn() { printf '\033[32m%s\033[0m\n' "$*"; }
 
 run_check() {
-  local label="$1" pattern="$2" why="$3"
+  local label="$1" pattern="$2" why="$3" includes="${4:---include=*.kt --include=*.java}"
   local hits
-  hits="$(grep -rnE "$pattern" --include='*.kt' --include='*.java' app/src 2>/dev/null || true)"
+  hits="$(grep -rnE "$pattern" $includes app/src 2>/dev/null || true)"
   if [ -n "$hits" ]; then
     red "PREFLIGHT FAIL [$label]: $why"
     printf '%s\n' "$hits" | sed 's/^/    /'
@@ -42,6 +42,14 @@ run_check "no-ic_menu_compose" \
 run_check "no-return-in-default-arg" \
   '\?: return[),]' \
   "return is prohibited in a default parameter value — move the null check into the function body."
+
+# Pitfall 6 (broke v2.3.0-20260820065431 on 2026-08-20): Java code calling a Kotlin
+# function whose signature contains kotlin.Result. Result is a value class, so the
+# JVM method name is mangled (write-xxxxx) and javac fails with "cannot find symbol".
+# Java must call a *FromJava / Boolean-returning wrapper instead.
+run_check "no-kotlin-result-from-java" \
+  'kotlin\.Result<' \
+  "kotlin.Result is a value class — Java cannot call Kotlin functions returning it (JVM name mangling). Use a Boolean/*FromJava wrapper (see KBManager.writeFromJava)." "--include=*.java"
 
 # Pitfall 3 (pre-existing on main, surfaced 2026-08-18): Java tool files that use a type
 # from com.returngift.agent.tool without importing it. The tv/* tools live in a sub-package

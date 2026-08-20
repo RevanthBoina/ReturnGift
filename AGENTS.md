@@ -132,6 +132,13 @@ GitHub code engine — MUST NOT reintroduce them.
    `import com.returngift.agent.tool.ToolResult;` (pre-existing on main, surfaced once the
    Kotlin compile was fixed and the build reached `:app:compileDebugJavaWithJavac`).
    ENFORCED by preflight `missing-import-ToolResult/BaseTool/ToolParameter` (per-file audit).
+4b. **Java must never call a Kotlin function whose signature contains `kotlin.Result`.**
+   `Result` is a value class, so the JVM method name is mangled (`write-0E7RQCE`) and
+   javac fails with "cannot find symbol: method write(...)". Broke v2.3.0-20260820065431
+   (`WebFetchTool.java` → `KBManager.write`, 2026-08-20) in ALL FOUR workflows at once.
+   Fix pattern: add a `*FromJava` wrapper with a plain signature (e.g.
+   `KBManager.writeFromJava(...): Boolean`) and call that from Java.
+   ENFORCED by preflight `no-kotlin-result-from-java`.
 5. **Unit tests that exercise `XLog`-logged code throw `RuntimeException` ("not mocked").**
    `XLog` calls `android.util.Log.*`, whose default unit-test stub throws. Set
    `testOptions { unitTests { isReturnDefaultValues = true } }` in `app/build.gradle.kts`

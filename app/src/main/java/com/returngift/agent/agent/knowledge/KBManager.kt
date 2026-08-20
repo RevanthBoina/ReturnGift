@@ -62,6 +62,14 @@ object KBManager {
         }
     }
 
+    /**
+     * Java-callable variant of [write]. `kotlin.Result` is a value class, so JVM
+     * functions whose signature contains it get name-mangled (`write-xxxxx`) and
+     * cannot be invoked from Java — `WebFetchTool.java` (Java tool) uses this.
+     */
+    fun writeFromJava(path: String, frontmatter: Map<String, Any>, content: String): Boolean =
+        write(path, frontmatter, content).isSuccess
+
     /** Read the full content of a file. */
     fun read(path: String): Result<String> {
         return try {

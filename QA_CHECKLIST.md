@@ -1652,6 +1652,25 @@ adb pull /sdcard/Android/data/com.returngift.agent/files/vault/ /tmp/vault/
 
 Format: `[date] [status] [test-id] description`
 
+### 2026-08-20 — v2.3.0 hotfix: Java→Kotlin `Result` interop compile break
+
+**Failure analysis (run 32341593017 et al., all 4 workflows):** `compileDebugJavaWithJavac`
+failed with "cannot find symbol: method write(String,Map<String,Object>,String)" at
+`WebFetchTool.java:189/191`. Root cause: `KBManager.write` returns `kotlin.Result` —
+a value class, so its JVM name is mangled (`write-0E7RQCE`, confirmed via `javap`)
+and Java cannot call it. Kotlin compile passed, so the error only surfaced at the
+Java stage; unit-test jobs failed at the same compile task (not at test time).
+
+**Fix:** `KBManager.writeFromJava(path, frontmatter, content): Boolean` — a plain
+signature wrapper; `WebFetchTool` uses it. Guard: preflight `no-kotlin-result-from-java`
+fails the build in seconds if any `.java` file references `kotlin.Result<`.
+Verified locally by reproducing CI's exact stage: kotlinc-compiled real
+`KBManager`/`BaseTool`/`ToolResult`/`ToolParameter`/`WebFetcher`, then `javac` on
+`WebFetchTool.java`+`WebSearchTool.java` against them + real OkHttp — exit 0.
+Unit suites re-run: WebFetcherTest 25/25, ArtifactContractTest 15/15.
+
+[2026-08-20] [PASS] hotfix-compile  javac repro of CI stage passes; relaunched as new v2.3.0 tag.
+
 ### 2026-08-20 — Phase 4: web_search (keyless lookup) + stable-channel throttle fix
 
 1. **`web_search` tool** (`tool/impl/WebSearchTool.java`, common tools) — keyless

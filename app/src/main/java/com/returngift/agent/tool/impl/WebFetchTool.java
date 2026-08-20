@@ -186,9 +186,11 @@ public class WebFetchTool extends BaseTool {
             frontmatter.put("type", "research");
             frontmatter.put("source", url);
             frontmatter.put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()));
-            kotlin.Result<String> r = KBManager.INSTANCE.write(path, frontmatter,
+            // NB: KBManager.write returns kotlin.Result (value class → JVM name
+            // mangling, uncallable from Java) — use the Boolean wrapper instead.
+            boolean ok = KBManager.INSTANCE.writeFromJava(path, frontmatter,
                     "> Source: " + url + "\n\n" + text);
-            return r.isSuccess() ? path : null;
+            return ok ? path : null;
         } catch (Exception e) {
             XLog.e(TAG, "vault save failed", e);
             return null;
