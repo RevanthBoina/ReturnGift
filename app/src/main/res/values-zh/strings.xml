@@ -182,6 +182,7 @@
     <string name="tool_name_get_screen_info">获取屏幕信息</string>
     <string name="tool_name_finish">完成任务</string>
     <string name="tool_name_ask_user">正在询问你</string>
+    <string name="tool_name_web_fetch">正在抓取网页</string>
     <string name="tool_name_open_app">打开应用</string>
     <string name="tool_name_get_installed_apps">获取应用列表</string>
     <string name="tool_name_system_key">系统按键</string>

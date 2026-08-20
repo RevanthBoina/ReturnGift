@@ -1448,6 +1448,50 @@ Stop stays reachable from the card.
 
 ---
 
+## WF — External Artifact Retrieval / web_fetch (2026-08-20)
+
+Phase 3 of the model↔platform coupling plan: the agent can retrieve external
+content by URL instead of hallucinating it. `agent/retrieve/WebFetcher.kt` is the
+pure-Kotlin core (URL/SSRF policy + HTML→text, no android imports — JVM-testable);
+`tool/impl/WebFetchTool.java` is the Android shell (OkHttp, vault persistence).
+Honest failures: no login bypass, no CAPTCHA solving, binary URLs reported as
+unsupported.
+
+### WF1. Fetch + summarize a public URL `[ADB]`
+- **Act**: task mode: `Summarize https://en.wikipedia.org/wiki/Android_(operating_system)`
+- **PASS**: `web_fetch` runs (logcat `WebFetchTool: Fetched … -> N chars`), the final
+  answer is grounded in the fetched text (mentions facts from the page), no invented
+  content. Rule 13 / LOCAL_TASK_PROMPT guide the model to fetch before answering.
+
+### WF2. Vault persistence of fetched content `[ADB]`
+- **Act**: `Save a note about https://example.com` (or "keep this article").
+- **PASS**: chat shows "📄 Saved to vault: research/example.com-…md"; the Vault screen
+  lists the file with frontmatter (type: research, source: URL); the artifact contract
+  records the save (finish with the vault path is accepted — `extractWebFetchPath`).
+
+### WF3. SSRF / unsafe URL rejection `[ADB, UNIT]`
+- **Act**: task: `Fetch http://192.168.1.1/admin` (also try `http://localhost:8080`,
+  `file:///etc/passwd`).
+- **PASS**: tool returns a "URL rejected" error immediately (no network call); the
+  model reports the rejection honestly. Unit: `WebFetcherTest` URL-policy tests
+  (IPs, .local/.lan/.internal, localhost, credentials, non-http schemes).
+
+### WF4. Gated / binary failures are honest `[ADB]`
+- **Act**: fetch a URL that returns 401/403 (e.g. a private GitHub file) and a
+  binary URL (e.g. a direct PDF link).
+- **PASS**: 401/403 → "requires login or blocks access" error; binary content-type →
+  "I can only retrieve text/web pages" error. The model must NOT claim the file was
+  retrieved; a finish claiming a downloaded PDF is blocked by the artifact contract.
+
+### WF5. Context cap + timeout robustness `[ADB]`
+- **Act**: fetch a very long page (e.g. a Wikipedia featured article) and an
+  unroutable URL (e.g. https://unreachable.invalid/).
+- **PASS**: long page is truncated at 20 000 chars with "(truncated)" in the result,
+  the loop continues normally; unreachable host fails within ~10s with a clear
+  "Network error" — no hang, watchdog stays quiet.
+
+---
+
 ## SD — Self-Development (CI/CD OTA + embedded code-modification engine)
 
 Acceptance criteria: ReturnGift can build itself via PR-gated CI, fetch its own freshly
@@ -1584,6 +1628,47 @@ adb pull /sdcard/Android/data/com.returngift.agent/files/vault/ /tmp/vault/
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-20 — Phase 3: external artifact retrieval (web_fetch)
+
+Closes the "hallucinating external content" failure mode: when a task references a
+URL, the agent retrieves the real content instead of inventing it.
+
+1. **`agent/retrieve/WebFetcher.kt` (new, pure Kotlin)** — URL policy (http/https
+   only; rejects IP literals, localhost, .local/.lan/.internal, metadata.google.internal,
+   single-label hosts, embedded credentials — SSRF guard), content-type binary
+   detection, regex HTML→text extraction (script/style/noscript/svg stripped,
+   entities decoded incl. numeric, whitespace collapsed), 20k-char truncation,
+   `hostOf` helper. Zero android.* imports → fully JVM-unit-testable.
+2. **`tool/impl/WebFetchTool.java` (new, common tools)** — OkHttp (10s connect /
+   15s read, redirects, UA header), 2 MB body cap, honest failures: 401/403 →
+   "requires login", 429 → rate-limited, binary content-type → unsupported,
+   IOException → network error. `save_to_vault=true` persists the text as
+   `research/<host>-<ts>.md` (frontmatter type: research, source: URL) and appends
+   "Saved to vault: <path>" to the tool result.
+3. **Artifact contract integration** — `extractWebFetchPath` parses that trailer;
+   `recordKbToolResult` counts web_fetch vault saves as real artifacts;
+   `TaskOrchestrator.kbArtifactPath` surfaces them as the existing 📄 vault chat
+   message (no new UI needed).
+4. **Prompt coupling** — `AgentConfig` Rule 13 "Retrieve, Never Hallucinate External
+   Content" (fetch before answering, save_to_vault when keeping, honest failure);
+   LOCAL_TASK_PROMPT tool guide + external-content bullet.
+5. Display name `tool_name_web_fetch` in values/values-zh/values-ja.
+
+Tests: `WebFetcherTest` (21 JVM tests, no mocks — URL policy, binary detection,
+extraction, entities, truncation, hostOf) + 3 new `ArtifactContractTest` cases
+(extractWebFetchPath parsing, tool-name guard, contract tracking). Regex semantics
+verified via a Python mirror during development (no SDK in sandbox). QA: WF1–WF5.
+
+Files changed: `agent/retrieve/WebFetcher.kt` (new), `tool/impl/WebFetchTool.java` (new),
+`agent/artifact/ArtifactContract.kt`, `tool/ToolRegistry.kt`, `TaskOrchestrator.kt`,
+`agent/AgentConfig.kt`, `agent/DefaultAgentService.kt`, `res/values*/strings.xml`,
+`app/src/test/.../retrieve/WebFetcherTest.kt` (new),
+`app/src/test/.../artifact/ArtifactContractTest.kt`, `QA_CHECKLIST.md` (WF1–WF5).
+
+[2026-08-20] [PENDING] WF1–WF5  Unit tests ready for CI (`testDebugUnitTest`);
+device verification on next build. Held locally per user instruction — push (no tag)
+once all phases of the plan are done.
 
 ### 2026-08-20 — Phase 2: ask_user clarification suspend/resume (ClarificationManager)
 

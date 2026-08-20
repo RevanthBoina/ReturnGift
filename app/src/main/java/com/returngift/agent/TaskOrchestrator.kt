@@ -467,10 +467,12 @@ class TaskOrchestrator(
 
     /**
      * Extract the vault-relative path from a successful knowledge-base write tool result,
-     * or null when the tool did not persist an artifact.
+     * or null when the tool did not persist an artifact. web_fetch(save_to_vault=true)
+     * counts as a persisted artifact too (its result carries "Saved to vault: <path>").
      */
     private fun kbArtifactPath(toolName: String, result: ToolResult): String? {
         if (!result.isSuccess) return null
         return com.returngift.agent.agent.artifact.ArtifactContract.extractKbPath(toolName, result.data)
+            ?: com.returngift.agent.agent.artifact.ArtifactContract.extractWebFetchPath(toolName, result.data)
     }
 }

@@ -33,9 +33,8 @@ internal class ArtifactContract private constructor(
 
     /** Record a knowledge-base tool outcome. Called from the agent loop after execution. */
     fun recordKbToolResult(toolName: String, resultData: String?) {
-        extractKbPath(toolName, resultData)?.let { path ->
-            if (path !in savedArtifacts) savedArtifacts += path
-        }
+        val path = extractKbPath(toolName, resultData) ?: extractWebFetchPath(toolName, resultData)
+        if (path != null && path !in savedArtifacts) savedArtifacts += path
     }
 
     fun buildPromptSection(): String {
@@ -134,6 +133,8 @@ internal class ArtifactContract private constructor(
         /**
          * Extract the vault-relative path from a successful kb_write/kb_append result
          * ("Written: <path>" / "Appended to: <path>" — the formats produced by KBManager).
+         * web_fetch(save_to_vault=true) appends "Saved to vault: <path>" to its result
+         * and is treated the same — it is a real persisted artifact.
          */
         fun extractKbPath(toolName: String, resultData: String?): String? {
             val data = resultData ?: return null
@@ -144,6 +145,16 @@ internal class ArtifactContract private constructor(
             }
             if (!data.startsWith(prefix)) return null
             return data.removePrefix(prefix).trim().takeIf { it.isNotEmpty() }
+        }
+
+        /** Extract the vault path from a web_fetch result's "Saved to vault: <path>" trailer. */
+        fun extractWebFetchPath(toolName: String, resultData: String?): String? {
+            if (toolName != "web_fetch") return null
+            val data = resultData ?: return null
+            val marker = "\nSaved to vault: "
+            val idx = data.indexOf(marker)
+            if (idx < 0) return null
+            return data.substring(idx + marker.length).trim().takeIf { it.isNotEmpty() }
         }
 
         internal fun claimsBinaryArtifact(summary: String): Boolean =

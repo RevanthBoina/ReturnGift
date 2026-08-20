@@ -1,5 +1,6 @@
 package com.returngift.agent.agent.artifact
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -106,5 +107,30 @@ class ArtifactContractTest {
         assertNull(ArtifactContract.extractKbPath("kb_read", "Read: notes/a.md"))
         assertNull(ArtifactContract.extractKbPath("kb_write", null))
         assertNull(ArtifactContract.extractKbPath("kb_write", "Error: disk full"))
+    }
+
+    // ── extractWebFetchPath (Phase 3: web_fetch vault saves count as artifacts) ──
+
+    @Test
+    fun extractWebFetchPath_parsesSavedTrailer() {
+        val data = "Fetched https://example.com/a (1200 chars):\n\nsome text\n\nSaved to vault: research/example.com-20260820-010203.md"
+        assertEquals(
+            "research/example.com-20260820-010203.md",
+            ArtifactContract.extractWebFetchPath("web_fetch", data),
+        )
+    }
+
+    @Test
+    fun extractWebFetchPath_ignoresOtherToolsAndMissingTrailer() {
+        assertNull(ArtifactContract.extractWebFetchPath("kb_write", "Saved to vault: x.md"))
+        assertNull(ArtifactContract.extractWebFetchPath("web_fetch", "Fetched https://a.com (10 chars):\n\nhello"))
+        assertNull(ArtifactContract.extractWebFetchPath("web_fetch", null))
+    }
+
+    @Test
+    fun recordKbToolResult_tracksWebFetchSaves() {
+        val c = ArtifactContract.fromTask("save a note about https://example.com")
+        c.recordKbToolResult("web_fetch", "Fetched https://example.com (100 chars):\n\nhi\n\nSaved to vault: research/example.com-1.md")
+        assertNull(c.maybeBlockFinish("Saved the fetched page to research/example.com-1.md"))
     }
 }

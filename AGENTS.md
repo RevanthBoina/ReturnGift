@@ -1,5 +1,11 @@
 # AGENTS.md — ReturnGift repository memory
 
+## External artifact retrieval / web_fetch (verified 2026-08-20, Phase 3)
+- **`web_fetch` tool** (`tool/impl/WebFetchTool.java`, common tools) retrieves a URL's readable text (≤20k chars returned to the model, 2 MB body cap, OkHttp 10s/15s) so the agent answers from real content instead of hallucinating. `save_to_vault=true` persists as `research/<host>-<ts>.md` and appends `Saved to vault: <path>` to the result.
+- **Pure-Kotlin core**: `agent/retrieve/WebFetcher.kt` has ZERO android imports (URL/SSRF policy, HTML→text, truncation) → JVM-unit-testable (`WebFetcherTest`, 21 tests). Rejects IP literals, localhost, `.local/.lan/.internal`, `metadata.google.internal`, single-label hosts, embedded credentials, non-http(s) schemes.
+- **Honest failures**: 401/403 → login-required error, 429 → rate-limited, binary content-type → unsupported, IOException → network error. No bypass attempts by design.
+- **Artifact contract**: `ArtifactContract.extractWebFetchPath` parses the trailer; `recordKbToolResult` counts web_fetch vault saves; `TaskOrchestrator.kbArtifactPath` shows the existing 📄 chat message. Prompts: AgentConfig Rule 13 + LOCAL_TASK_PROMPT bullets.
+
 ## Clarification suspend/resume (verified 2026-08-20, Phase 2)
 - **`ask_user` tool** (`tool/impl/AskUserTool.java`, common tools) parks the agent loop on a user question: `agent/clarify/ClarificationManager` (object) blocks the loop thread on a CountDownLatch (120s timeout, 250ms poll slices) until `answer()` (UI), `cancelPending()` (task cancel), or timeout. The loop needs NO plumbing changes — the tool's `execute()` itself blocks.
 - **Cancel path**: `DefaultAgentService.cancel()` AND `TaskOrchestrator.cancelCurrentTask()` both call `cancelPending()` (idempotent) — the parked thread wakes, tool returns error, loop sees `cancelled` and exits. Works for LOCAL (flag-only cancel) and cloud (interrupt) providers.
