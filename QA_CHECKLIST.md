@@ -1435,9 +1435,116 @@ on-device syntax pre-validation so uncompilable Kotlin is never pushed.
 
 ---
 
+## ME. Chat Edit & Resend + Vault Artifacts (2026-08-20)
+
+E2E tests for two reported UX bugs:
+(1) editing a sent user message only rewrote the bubble — the model never re-read the
+edit; (2) the agent claimed to prepare deliverables (e.g. "a PDF plan") but nothing was
+shown — kb_* writes went to an invisible app-private vault with no UI.
+
+**Build-type:** `[RELEASE-OK]` for ME1–ME5 unless noted; all require a real device (no
+emulator guarantee for local-LLM reload timing).
+
+### ME.1 Edit & resend (cloud model) `[ADB]`
+- **Act**: send "what is 2+2" → wait for reply → long-press the user bubble → Edit &
+  Resend → change to "what is 3+3" → Resend.
+- **PASS**: the old turn and its reply disappear; the edited message appears as a new
+  user bubble with "(edited)"; a typing indicator appears; the assistant replies to the
+  NEW text (mentions 6, not 4). Logcat: `editAndResend: rewinding conversation to message #N`.
+
+### ME.2 Edit & resend rewrites model history (no ghost context) `[ADB]`
+- **Act**: chat "my name is Bob" → reply → edit that message to "my name is Alice" →
+  Resend → then ask "what is my name?".
+- **PASS**: the model answers "Alice" — the pre-edit text must not remain in
+  `cloudHistory` (cloud) or the recreated LiteRT conversation (local).
+
+### ME.3 Edit & resend (local model reload path) `[ADB, HUMAN]`
+- **Act**: local model active → edit a mid-conversation user message → Resend.
+- **PASS**: model status shows a brief reload; the edited message is sent once the model
+  is ready (≤30 s polling); reply addresses the edited content.
+
+### ME.4 Edit guard while busy `[ADB]`
+- **Act**: while a reply is streaming (awaiting) or a task is running, long-press a user
+  bubble → Resend.
+- **PASS**: toast "Wait for the current reply to finish, then edit."; the conversation is
+  unchanged.
+
+### ME.5 Edit persistence across restart `[ADB]`
+- **Act**: after ME.1, force-stop the app → relaunch → reopen the conversation.
+- **PASS**: the restored conversation contains the edited turn and the new reply; the
+  removed post-edit messages do not reappear.
+
+### ME.6 Vault artifact surfaced in chat `[ADB]`
+- **Act**: run a task that saves a note, e.g. chat task "save a short packing list for a
+  weekend trip as a note".
+- **PASS**: a system message "📄 Saved to vault: notes/…" appears in chat during/after
+  the task, and the completion summary names the vault path.
+
+### ME.7 Vault screen lists & opens files `[ADB, HUMAN]`
+- **Act**: tap the folder icon in the chat top bar → Vault screen opens → tap a file →
+  content is displayed (selectable) → tap "Open with…".
+- **PASS**: list shows all vault files newest-first with size/timestamp; detail shows full
+  content; the system chooser opens the .md in an external viewer (FileProvider grant).
+  Empty vault shows "Nothing saved yet".
+
+### ME.8 No hallucinated file claims (prompt rule) `[ADB]`
+- **Act**: ask (task mode) "create a PDF plan for my week".
+- **PASS**: the agent does NOT claim a PDF was created; it either saves a Markdown note via
+  kb_write (and says so with the path) or explains it can only produce Markdown notes.
+
+### ADB verification commands
+
+```bash
+# ME.1/ME.3: watch the edit-and-resend flow
+adb logcat -d --pid=$(adb shell pidof com.returngift.agent) | grep -i 'editAndResend'
+
+# ME.6/ME.7: confirm the artifact was actually written to the vault
+adb shell run-as com.returngift.agent find /sdcard/Android/data/com.returngift.agent/files/vault -type f
+# (or pull the file and inspect)
+adb pull /sdcard/Android/data/com.returngift.agent/files/vault/ /tmp/vault/
+```
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-20 — Chat edit-and-resend + visible agent artifacts (vault)
+
+Two user-reported UX bugs fixed together:
+
+1. **Edited messages were never re-sent to the model.** `onEditMessage` in
+   `ComposeChatActivity` only rewrote the local `_messages` entry (`copy(content=…,
+   isEdited=true)`) and persisted it — the LiteRT conversation / `cloudHistory` still
+   contained the original text, so the model kept answering the pre-edit message.
+   Fix: `ChatSessionController.editAndResend(index, newContent, conversationId)`
+   truncates the visible list AND the model history back to the edited message
+   (cloud: `cloudHistory.clear()` → lazy rebuild from truncated messages; local: close +
+   recreate the append-only LiteRT conversation via `loadModelIfReady`), then resubmits
+   the edited text through the normal `sendChat` path (marked "(edited)"). Busy guard:
+   toast instead of editing while a reply/task is in flight. The edit dialog is now
+   labelled "Edit & Resend" with an explanatory hint so the behavior is explicit.
+
+2. **Agent-saved work was invisible.** kb_write/kb_append deliverables (plans, notes)
+   went to the app-private vault with zero UI, and the model could even claim it produced
+   a PDF it cannot create. Fixes: (a) new `TaskEvent.ArtifactSaved(path)` emitted by
+   `TaskOrchestrator` on successful kb_write/kb_append, rendered in chat as
+   "📄 Saved to vault: <path>"; (b) new `VaultActivity` (folder icon in the chat top bar)
+   listing all vault files with view-in-app + "Open with…" via FileProvider
+   (`file_paths.xml` now exposes `external-files-path vault/`); (c) deliverable-honesty
+   rules added to both `DEFAULT_SYSTEM_PROMPT` (Rule 11) and `LOCAL_TASK_PROMPT` — the
+   model must save deliverables via kb_write, name the exact path in finish(summary), and
+   never claim PDF/binary files it cannot create.
+
+Files changed: `ui/chat/ChatSessionController.kt`, `ui/chat/ComposeChatActivity.kt`,
+`ui/chat/ChatScreen.kt`, `ui/vault/VaultActivity.kt` (new), `AndroidManifest.xml`,
+`res/xml/file_paths.xml`, `TaskEvent.kt`, `TaskOrchestrator.kt`,
+`ui/chat/TaskFlowController.kt`, `agent/AgentConfig.kt`, `agent/DefaultAgentService.kt`,
+`agent/knowledge/KBManager.kt`.
+
+[2026-08-20] [PENDING] ME.1–ME.8  See section ME. No Android SDK/JDK in the authoring
+sandbox — compile + device verification must run on a real device (or in CI).
 
 ### 2026-08-18 — Emulator Matrix QA: non-fatal logcat/screenshot capture + BOM fix (PR #51)
 

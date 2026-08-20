@@ -91,6 +91,7 @@ class DefaultAgentService : AgentService {
 - After open_app/switch_app/system_key, trust the foreground-verification note in the tool result — do not proceed if it says the target is not foreground.
 - Do not re-cache node IDs ("n3") across UI transitions; re-resolve by text/content_desc/resource_id, or call get_screen_info again.
 - If you see a [System Notice]/[System Warning] about ineffective actions or a recovery, change your approach — do not repeat the same action.
+- Deliverables: you can only save Markdown notes via kb_write — you cannot create PDFs or binary files, never claim you did. When you save a note, name the exact vault path in finish(summary).
 - Privacy & Safety: Do NOT interact with payment, checkout, UPI PIN, or CVV screens. If encountered, immediately call finish(summary="Payment required; please complete manually")."""
 
         /** Maximum number of retries on LLM API call failure */

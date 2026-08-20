@@ -346,6 +346,12 @@ class TaskOrchestrator(
                 val displayName = com.returngift.agent.tool.ToolRegistry.getInstance().getDisplayName(toolName)
                 taskEventCallback?.invoke(TaskEvent.ToolResult(displayName, success, data ?: ""))
 
+                // Surface vault artifacts in chat so saved work (plans/notes) is visible,
+                // not just claimed in the final summary.
+                kbArtifactPath(toolName, result)?.let { path ->
+                    taskEventCallback?.invoke(TaskEvent.ArtifactSaved(path))
+                }
+
                 if (toolId == "finish" && result.data?.isNotEmpty() == true) {
                     flushRoundBuffer()
                     ChannelManager.sendMessage(channel, result.data, messageID)
@@ -454,5 +460,22 @@ class TaskOrchestrator(
                 onTaskFinished()
             }
         })
+    }
+
+    /**
+     * Extract the vault-relative path from a successful knowledge-base write tool result
+     * ("Written: <path>" / "Appended to: <path>" — the formats produced by KBManager),
+     * or null when the tool did not persist an artifact.
+     */
+    private fun kbArtifactPath(toolName: String, result: ToolResult): String? {
+        if (!result.isSuccess) return null
+        val data = result.data ?: return null
+        val prefix = when (toolName) {
+            "kb_write" -> "Written: "
+            "kb_append" -> "Appended to: "
+            else -> return null
+        }
+        if (!data.startsWith(prefix)) return null
+        return data.removePrefix(prefix).trim().takeIf { it.isNotEmpty() }
     }
 }

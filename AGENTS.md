@@ -1,5 +1,11 @@
 # AGENTS.md — ReturnGift repository memory
 
+## Chat edit-resend & vault artifacts (verified 2026-08-20)
+- **Edit & resend**: editing a user bubble (long-press → "Edit & Resend") calls `ChatSessionController.editAndResend(index, newContent, conversationId)` — it truncates `uiState.messages` AND model history at the edited index (cloud: `cloudHistory.clear()` → lazy rebuild; local: closes + recreates the append-only LiteRT `Conversation` via `loadModelIfReady` with restored-system-prompt rehydration), then resubmits via `sendChat(text, markEdited = true)`. Guarded by `isAwaitingReply || isTaskRunning` with a toast. Before this fix, `onEditMessage` only rewrote the local list entry so the model never saw the edit.
+- **Vault artifacts are now user-visible**: `TaskOrchestrator.onToolResult` parses successful `kb_write` ("Written: ") / `kb_append` ("Appended to: ") results into a typed `TaskEvent.ArtifactSaved(path)` → `TaskFlowController` posts "📄 Saved to vault: …" in chat. `ui/vault/VaultActivity` (folder icon in `ChatTopBar`) lists vault files via `KBManager.listAllFiles()` and opens them in-app or via FileProvider (`file_paths.xml` exposes `external-files-path vault/`).
+- **Deliverable honesty**: `AgentConfig.DEFAULT_SYSTEM_PROMPT` Rule 11 + `DefaultAgentService.LOCAL_TASK_PROMPT` tell the model it can ONLY create Markdown notes via kb_write (no PDFs/binaries) and must name the exact vault path in `finish(summary)`.
+- QA: `QA_CHECKLIST.md` section ME (ME.1–ME.8).
+
 ## Environment constraints
 - No Android SDK / JDK is installed in this sandbox. Gradle builds (`./gradlew assembleDebug`) cannot run here. Code changes are validated by inspection only; runtime QA must happen on a real device with ADB (see `QA_CHECKLIST.md`).
 - The repo is a shallow clone; avoid git operations that need full history.

@@ -150,6 +150,7 @@ fun ChatScreen(
     onDeleteConversation: (ChatHistoryManager.ConversationSummary) -> Unit = {},
     onRenameConversation: (ChatHistoryManager.ConversationSummary, String) -> Unit = { _, _ -> },
     onEditMessage: (Int, String) -> Unit = { _, _ -> },
+    onOpenVault: () -> Unit = {},
     activeTasks: List<String> = emptyList(),
     onStopTask: (String) -> Unit = {},
     onStopAllTasks: () -> Unit = {},
@@ -270,6 +271,7 @@ fun ChatScreen(
                         },
                         onMenuClick = { scope.launch { drawerState.open() } },
                         onSettings = onOpenSettings,
+                        onOpenVault = onOpenVault,
                         onModelSwitch = onModelSwitch,
                         colors = colors,
                     )
@@ -399,6 +401,7 @@ private fun ChatTopBar(
     onTabChange: (String) -> Unit,
     onMenuClick: () -> Unit,
     onSettings: () -> Unit,
+    onOpenVault: () -> Unit = {},
     onModelSwitch: (modelId: String, displayName: String) -> Unit = { _, _ -> },
     colors: ReturnGiftColors,
 ) {
@@ -460,6 +463,9 @@ private fun ChatTopBar(
                         color = if (selectedTab == "cloud") colors.accent else colors.textTertiary,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                     )
+                }
+                IconButton(onClick = onOpenVault) {
+                    Icon(Icons.Default.Folder, contentDescription = "Vault")
                 }
                 IconButton(onClick = onSettings) {
                     Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -748,19 +754,27 @@ private fun UserBubble(
     if (showEditDialog) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
-            title = { Text("Edit Message", color = colors.textPrimary) },
+            title = { Text("Edit & Resend", color = colors.textPrimary) },
             text = {
-                OutlinedTextField(
-                    value = editText,
-                    onValueChange = { editText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = colors.textPrimary,
-                        unfocusedTextColor = colors.textPrimary,
-                        focusedBorderColor = colors.accent,
-                        unfocusedBorderColor = colors.inputBorder,
+                Column {
+                    OutlinedTextField(
+                        value = editText,
+                        onValueChange = { editText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary,
+                            focusedBorderColor = colors.accent,
+                            unfocusedBorderColor = colors.inputBorder,
+                        )
                     )
-                )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "The chat continues from here — messages after this one are removed, and the edited message is sent to the model again.",
+                        fontSize = 11.sp,
+                        color = colors.textTertiary,
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
@@ -771,7 +785,7 @@ private fun UserBubble(
                         showEditDialog = false
                     }
                 ) {
-                    Text("Save", color = colors.accent)
+                    Text("Resend", color = colors.accent)
                 }
             },
             dismissButton = {

@@ -36,6 +36,9 @@ sealed class TaskEvent {
         val tokenState: com.returngift.agent.agent.TokenMonitor.State
     ) : TaskEvent()
 
+    /** The agent persisted a user-facing artifact (note/plan) into the vault. */
+    data class ArtifactSaved(val path: String) : TaskEvent()
+
     /** Task completed successfully with an answer/summary. */
     data class Completed(val answer: String, val modelName: String? = null) : TaskEvent()
 

@@ -372,6 +372,11 @@ class TaskFlowController(
                     uiState.isTaskRunning.value = true
                     addSystem(event.description)
                 }
+                is TaskEvent.ArtifactSaved -> {
+                    // Make saved work visible immediately — the model's final summary
+                    // alone left vault artifacts invisible to the user.
+                    addSystem("📄 Saved to vault: ${event.path}\nTap the folder icon in the top bar to view it.")
+                }
                 is TaskEvent.LoopStart -> {
                     uiState.isAwaitingReply.value = false
                     uiState.isTaskRunning.value = true

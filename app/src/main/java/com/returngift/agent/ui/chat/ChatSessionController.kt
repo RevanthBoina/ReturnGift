@@ -3,6 +3,8 @@
 
 package com.returngift.agent.ui.chat
 
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.MutableState
@@ -48,6 +50,8 @@ class ChatSessionController(
     companion object {
         private const val TAG = "ChatSessionController"
         private const val BASE_SYSTEM_PROMPT = "You are a helpful AI assistant on an Android phone."
+        private const val READY_POLL_MS = 500L
+        private const val READY_POLL_ATTEMPTS = 60
     }
 
     private var engine: Engine? = null
@@ -305,8 +309,53 @@ class ChatSessionController(
         isModelReady = false
     }
 
-    fun sendChat(text: String) {
-        addUser(text)
+    /**
+     * Edit a previously sent user message and resubmit it. The old message and
+     * everything after it are removed from both the visible list and the model's
+     * history (cloud history is rebuilt lazily from the truncated messages; the
+     * local LiteRT conversation is recreated because its history is append-only),
+     * then [newContent] goes through the normal send path so the model actually
+     * reads the edited text.
+     */
+    fun editAndResend(index: Int, newContent: String, conversationId: String?) {
+        if (index !in 0 until uiState.messages.size) return
+        if (uiState.messages[index].role != ChatMessage.Role.USER) return
+        if (uiState.isAwaitingReply.value || isTaskRunning()) {
+            Toast.makeText(activity, "Wait for the current reply to finish, then edit.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        XLog.i(TAG, "editAndResend: rewinding conversation to message #$index")
+        while (uiState.messages.size > index) {
+            uiState.messages.removeAt(uiState.messages.lastIndex)
+        }
+        cloudHistory.clear()
+        try {
+            conversation?.close()
+        } catch (_: Exception) {
+        }
+        conversation = null
+        isModelReady = false
+        onPersistConversation()
+        loadModelIfReady(conversationId = conversationId, visibleMessages = uiState.messages.toList())
+        sendEditedWhenReady(newContent, READY_POLL_ATTEMPTS)
+    }
+
+    private fun sendEditedWhenReady(text: String, attemptsLeft: Int) {
+        if (isModelReady) {
+            sendChat(text, markEdited = true)
+            return
+        }
+        if (attemptsLeft <= 0) {
+            // Surface a visible error instead of silently dropping the edit.
+            XLog.w(TAG, "editAndResend: model still not ready after polling, sending anyway")
+            sendChat(text, markEdited = true)
+            return
+        }
+        Handler(Looper.getMainLooper()).postDelayed({ sendEditedWhenReady(text, attemptsLeft - 1) }, READY_POLL_MS)
+    }
+
+    fun sendChat(text: String, markEdited: Boolean = false) {
+        addUser(text, markEdited)
         uiState.isAwaitingReply.value = true
         uiState.messages.add(ChatMessage(ChatMessage.Role.ASSISTANT, "..."))
 
@@ -613,8 +662,8 @@ class ChatSessionController(
         }
     }
 
-    private fun addUser(text: String) {
-        uiState.messages.add(ChatMessage(ChatMessage.Role.USER, text))
+    private fun addUser(text: String, markEdited: Boolean = false) {
+        uiState.messages.add(ChatMessage(ChatMessage.Role.USER, text, isEdited = markEdited))
     }
 
     private fun addSystem(text: String) {

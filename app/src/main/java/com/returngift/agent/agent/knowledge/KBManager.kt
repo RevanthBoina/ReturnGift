@@ -25,6 +25,9 @@ object KBManager {
 
     data class SearchResult(val path: String, val snippet: String, val modified: Long)
 
+    /** A user-visible artifact stored in the vault (path is relative to the vault root). */
+    data class VaultFile(val path: String, val name: String, val sizeBytes: Long, val modified: Long)
+
     // ── Vault root ────────────────────────────────────────────────────────────
 
     private fun vaultDir(): File {
@@ -133,6 +136,20 @@ object KBManager {
             Result.failure(e)
         }
     }
+
+    /** List every file in the vault (recursively), newest-modified first. Used by the Vault viewer UI. */
+    fun listAllFiles(): List<VaultFile> {
+        val vault = vaultDir()
+        if (!vault.exists()) return emptyList()
+        return vault.walkTopDown()
+            .filter { it.isFile }
+            .map { VaultFile(it.relativeTo(vault).path, it.name, it.length(), it.lastModified()) }
+            .sortedByDescending { it.modified }
+            .toList()
+    }
+
+    /** Absolute file for a vault-relative path — for FileProvider sharing/opening from the UI. */
+    fun absoluteFile(relativePath: String): File = resolve(relativePath)
 
     /**
      * Add a todo item to today's todo file.

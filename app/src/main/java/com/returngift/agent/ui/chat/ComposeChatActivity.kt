@@ -176,6 +176,9 @@ class ComposeChatActivity : ComponentActivity() {
                 onNewChat = { newChat() },
                 onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
                 onOpenModels = { startActivity(Intent(this, LlmConfigActivity::class.java)) },
+                onOpenVault = {
+                    startActivity(Intent(this, com.returngift.agent.ui.vault.VaultActivity::class.java))
+                },
                 onFixPermissions = { startActivity(Intent(this, SettingsActivity::class.java)) },
                 onAttach = { Toast.makeText(this, "Image upload coming soon", Toast.LENGTH_SHORT).show() },
                 conversations = _conversations,
@@ -195,11 +198,15 @@ class ComposeChatActivity : ComponentActivity() {
                     }
                 },
                 onEditMessage = { index, newContent ->
-                    if (index in 0 until _messages.size) {
-                        val old = _messages[index]
-                        _messages[index] = old.copy(content = newContent, isEdited = true)
-                        saveChat()
-                    }
+                    // Edit-and-resend: rewind both the visible list and the model's
+                    // history to the edited message, then resubmit the new content so
+                    // the model actually reads the edit instead of continuing with
+                    // the stale original.
+                    chatSessionController.editAndResend(
+                        index,
+                        newContent,
+                        conversationStore.currentConversationId,
+                    )
                 },
                 activeTasks = activeTasks,
                 onStopTask = { contact ->

@@ -92,6 +92,10 @@
             android:exported="false"
             android:screenOrientation="portrait" />
         <activity
+            android:name=".ui.vault.VaultActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
             android:name=".tool.impl.ClipboardReaderActivity"
             android:exported="false"
             android:excludeFromRecents="true"
