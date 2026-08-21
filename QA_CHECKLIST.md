@@ -1648,9 +1648,71 @@ adb pull /sdcard/Android/data/com.returngift.agent/files/vault/ /tmp/vault/
 
 ---
 
+## ST — Stall & Token Defense (2026-08-21)
+
+Covers `ObserveStallGuard`, the TokenMonitor CRITICAL hard abort, and the StuckDetector
+wiring fix in `DefaultAgentService.runAgentLoop`. Reference patterns: android_world m3a
+per-step history as progress signal, droidrun bounded action history.
+
+### ST.1 Observe-only stall hint `[ADB] [LLM-CLOUD] [LOGCAT-DEBUG]`
+- **Act**: run a task that makes the model re-observe without acting (e.g. point it at a
+  static screen with an ambiguous instruction).
+- **PASS**: after 2 consecutive idle rounds on an unchanged screen, logcat shows
+  `ObserveStallGuard HINT` and the next model input contains a `[System Notice]` telling it
+  to act / ask_user / finish; the notice is injected exactly once per stall streak.
+
+### ST.2 Observe-only stall abort `[ADB] [LLM-CLOUD] [LOGCAT-DEBUG]`
+- **Act**: continue ST.1 with the model still not acting.
+- **PASS**: at the 4th consecutive idle round, logcat shows `ObserveStallGuard ABORT`,
+  `ExecutionTracker.endTask` records outcome `STALL_ABORT`, and the user sees a completion
+  message saying the task was stopped for re-reading an unchanged screen (with token usage).
+
+### ST.3 Token CRITICAL hard abort `[ADB] [LLM-CLOUD]`
+- **Act**: temporarily lower the CRITICAL threshold (or drive token usage past 200K, e.g.
+  repeated web_fetch of long pages) with TaskBudget set above the threshold.
+- **PASS**: the task aborts with outcome `BUDGET_ABORT` and a user-visible "safety ceiling"
+  message even though the user-configured budget was not reached; no further LLM calls occur.
+
+### ST.4 StuckDetector real-signal wiring `[ADB] [LOGCAT-DEBUG]`
+- **Act**: run a task whose tool calls fail repeatedly with the same error (e.g. tap a
+  non-existent target).
+- **PASS**: `StuckDetector` fires `RepeatedError` and/or `ZeroDiff` within 3 rounds (these
+  signals were previously impossible: diff count was the screen-text set size, error was
+  hardcoded null); AUTO_KILL records outcome `AUTO_KILL` in ExecutionTracker.
+
+### ST.5 Regression — normal task flow unaffected `[ADB] [LLM-LOCAL or LLM-CLOUD]`
+- **Act**: run AV-section smoke tasks (open app, tap, type, finish).
+- **PASS**: tasks complete normally; no HINT/ABORT fires while actions execute or the
+  screen changes; ObservationPolicy still skips observation for predictable bursts.
+
+### ST.6 Unit tests `[HOST]`
+- **Act**: `./gradlew :app:testDebugUnitTest --tests '*ObserveStallGuardTest'`.
+- **PASS**: all 8 tests green (action/screen-change reset, hint at 2, hint once, abort at 4,
+  zero-hash idle, token-burn reproduction, custom thresholds, reset).
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-21 — Phase A: stall/token defense (ObserveStallGuard + CRITICAL abort + StuckDetector wiring)
+
+**Change:** `DefaultAgentService.runAgentLoop` gains three loop defenses and loses its dead code:
+1. New pure-Kotlin `agent/loop/ObserveStallGuard` (HINT at 2 consecutive idle rounds on an
+   unchanged screen, injected once; ABORT at 4 → `endTask("STALL_ABORT")` + user-visible
+   stop message). The 121.8K/74.1K observe-only token burns are now capped at ~4 idle rounds.
+2. TokenMonitor CRITICAL (200K+) hard abort independent of the user-configured TaskBudget →
+   `endTask("BUDGET_ABORT")` + user-visible safety-ceiling message.
+3. StuckDetector now receives the real per-round diff count (`added+removed` text lines) and
+   the real tool error — ZeroDiff and RepeatedError can actually fire (previously fed the
+   screen-text set size and a hardcoded null). AUTO_KILL now also records
+   `endTask("AUTO_KILL")` for trajectory consistency.
+4. ObservationPolicy `screenHashChanged` uses the real diff count instead of the
+   `consecutiveActionsWithoutObserve` counter proxy.
+Dead code removed: `loopHistory`, `RoundFingerprint`, `isStuckInLoop`, `LOOP_DETECT_WINDOW`,
+`consecutiveNoToolCalls` (all defined but never read).
+Tests: `ObserveStallGuardTest` (8 tests, pure JVM). QA: ST.1–ST.6. Pending device run.
 
 ### 2026-08-20 — v2.3.0 hotfix: Java→Kotlin `Result` interop compile break
 

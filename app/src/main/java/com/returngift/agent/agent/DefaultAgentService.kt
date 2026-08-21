@@ -36,8 +36,8 @@ import com.returngift.agent.agent.session.AppSessionManager
 import com.returngift.agent.agent.loop.ObservationPolicy
 import com.returngift.agent.agent.loop.ActionVerifier
 import com.returngift.agent.agent.loop.InteractionWatchdog
+import com.returngift.agent.agent.loop.ObserveStallGuard
 import java.io.File
-import java.util.LinkedList
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -101,8 +101,6 @@ class DefaultAgentService : AgentService {
 
         /** Maximum number of retries on LLM API call failure */
         private const val MAX_API_RETRIES = 3
-        /** Dead-loop detection: sliding window size */
-        private const val LOOP_DETECT_WINDOW = 4
 
         /**
          * Opt-3: Action tools — after any of these execute we auto-attach a fresh
@@ -318,16 +316,6 @@ class DefaultAgentService : AgentService {
             }
         }
         throw lastException!!
-    }
-
-    // ==================== Dead Loop Detection ====================
-
-    private data class RoundFingerprint(val screenHash: Int, val toolCall: String)
-
-    private fun isStuckInLoop(history: LinkedList<RoundFingerprint>): Boolean {
-        if (history.size < LOOP_DETECT_WINDOW) return false
-        val first = history.first()
-        return history.all { it == first }
     }
 
     // ==================== Context Compression ====================
@@ -584,18 +572,19 @@ class DefaultAgentService : AgentService {
         var totalTokens = 0
         var actualModelName: String? = null  // Track the real model name from API response
         val maxIterations = config.maxIterations
-        val loopHistory = LinkedList<RoundFingerprint>()
         var lastScreenHash = 0
+        var lastScreenDiffCount = 0  // real per-round screen text diff (added+removed lines)
+        var lastToolError: String? = null  // error of the last executed tool, null on success
         var previousScreenTexts: Set<String> = emptySet()
         val tokenMonitor = TokenMonitor(config.modelName)
         val stuckDetector = StuckDetector()
         val interactionWatchdog = InteractionWatchdog()
+        val observeStallGuard = ObserveStallGuard()
         var currentTargetPackage: String? = null  // target app the task is driving (for relaunch recovery)
         val taskBudget = TaskBudget.fromSettings()
         var softLimitWarned = false
         var consecutiveActionsWithoutObserve = 0
         val isFollowingProcedure = (learnedProcedure != null)
-        var consecutiveNoToolCalls = 0
 
         while (iterations < maxIterations && !cancelled.get()) {
             iterations++
@@ -660,6 +649,23 @@ class DefaultAgentService : AgentService {
                     }
                 }
                 TaskBudget.Status.OK -> { /* continue normally */ }
+            }
+
+            // Absolute runaway-cost guard: abort at TokenMonitor.CRITICAL (200K+) regardless of
+            // the user-configured TaskBudget — the observed 121.8K/74.1K observe-only burns prove
+            // a configured budget alone is not sufficient protection.
+            if (tokenStatus.state == TokenMonitor.State.CRITICAL) {
+                XLog.e(TAG, "Token CRITICAL hard abort at step $iterations: ${tokenStatus.formattedTokens} (${tokenStatus.formattedCost})")
+                ExecutionTracker.endTask(taskId, "BUDGET_ABORT", iterations, totalTokens)
+                callback.onComplete(
+                    iterations,
+                    "Task stopped: token usage reached the safety ceiling (${tokenStatus.formattedTokens} tokens, " +
+                    "${tokenStatus.formattedCost}). The task was aborted to prevent runaway cost. " +
+                    "Please re-run with a narrower instruction.",
+                    totalTokens,
+                    actualModelName
+                )
+                return
             }
 
             // DEBUG: log raw LLM response for tool calling diagnosis
@@ -738,10 +744,8 @@ class DefaultAgentService : AgentService {
                 continue
             }
 
-            // Reset counter when LLM does use tools
-            consecutiveNoToolCalls = 0
-
             // Execute tool calls
+            var madeActionThisRound = false
             for (toolRequest in llmResponse.toolExecutionRequests) {
                 if (cancelled.get()) {
                     ExecutionTracker.endTask(taskId, "CANCELLED", iterations, totalTokens)
@@ -873,6 +877,8 @@ class DefaultAgentService : AgentService {
                 )
 
                 callback.onToolResult(iterations, toolName, displayName, paramsString, result)
+                if (toolName in ACTION_TOOLS) madeActionThisRound = true
+                lastToolError = if (result.isSuccess) null else (result.error ?: "unknown error")
                 if (result.isSuccess) {
                     inAppSearchGuard.recordSuccessfulTool(toolName, params)
                     emailComposeGuard.recordSuccessfulTool(toolName)
@@ -921,7 +927,7 @@ class DefaultAgentService : AgentService {
                     lastSuccess = result.isSuccess,
                     consecutiveActionsWithoutObserve = consecutiveActionsWithoutObserve,
                     isFollowingProcedure = isFollowingProcedure,
-                    screenHashChanged = (consecutiveActionsWithoutObserve > 0)
+                    screenHashChanged = (lastScreenDiffCount > 0)
                 )
 
                 val combinedResultData: String = if (toolName in ACTION_TOOLS && obsDecision != ObservationPolicy.ObservationDecision.SKIP) {
@@ -967,6 +973,7 @@ class DefaultAgentService : AgentService {
                             val added = currentTexts - previousScreenTexts
                             val removed = previousScreenTexts - currentTexts
                             previousScreenTexts = currentTexts
+                            lastScreenDiffCount = added.size + removed.size
                             val diffSection = buildString {
                                 if (added.isNotEmpty()) append("\nNew on screen: ${added.take(10).joinToString(", ")}")
                                 if (removed.isNotEmpty()) append("\nGone from screen: ${removed.take(10).joinToString(", ")}")
@@ -995,16 +1002,6 @@ class DefaultAgentService : AgentService {
                     GSON.toJson(result)
                 }
 
-                // For action tools the loop detection hash was already updated above;
-                // for non-get_screen_info action tools also record the fingerprint.
-                if (toolName in ACTION_TOOLS) {
-                    loopHistory.addLast(RoundFingerprint(lastScreenHash, "$toolName:$toolArgs"))
-                    if (loopHistory.size > LOOP_DETECT_WINDOW) loopHistory.removeFirst()
-                } else if (toolName.isNotEmpty() && toolName != "get_screen_info") {
-                    loopHistory.addLast(RoundFingerprint(lastScreenHash, "$toolName:$toolArgs"))
-                    if (loopHistory.size > LOOP_DETECT_WINDOW) loopHistory.removeFirst()
-                }
-
                 // Add tool result to messages
                 messages.add(ToolExecutionResultMessage.from(toolRequest, combinedResultData))
                 // Unified control loop: if the watchdog executed a recovery with a model hint,
@@ -1016,21 +1013,18 @@ class DefaultAgentService : AgentService {
                 XLog.d(TAG, "displayName:$displayName toolName:$toolName")
             }
 
-            // Stuck detection (5-signal, 3-level recovery)
+            // Stuck detection (5-signal, 3-level recovery) — fed with the real per-round
+            // signals so ZeroDiff (diff count == 0) and RepeatedError (real error string) can fire.
             val lastAction = llmResponse.toolExecutionRequests?.firstOrNull()?.let {
                 "${it.name()}:${it.arguments()?.take(50)}"
             } ?: ""
-            val screenDiffCount = (previousScreenTexts as? Set<*>)?.size ?: 0
-            val toolError = llmResponse.toolExecutionRequests?.firstOrNull()?.let { req ->
-                val result = ToolRegistry.getInstance().getTool(req.name() ?: "")
-                null // error tracked per-tool above; simplified here
-            }
-            val detection = stuckDetector.record(lastAction, lastScreenHash, screenDiffCount, null)
+            val detection = stuckDetector.record(lastAction, lastScreenHash, lastScreenDiffCount, lastToolError)
             if (detection != null) {
                 when (detection.level) {
                     StuckDetector.RecoveryLevel.AUTO_KILL -> {
                         XLog.w(TAG, "StuckDetector AUTO_KILL at iteration $iterations: ${detection.signal.description}")
                         val status = tokenMonitor.getStatus()
+                        ExecutionTracker.endTask(taskId, "AUTO_KILL", iterations, totalTokens)
                         callback.onComplete(
                             iterations,
                             "Task stopped: agent was stuck (${detection.signal.description}). " +
@@ -1045,6 +1039,30 @@ class DefaultAgentService : AgentService {
                         messages.add(UserMessage.from(detection.recoveryHint))
                     }
                 }
+            }
+
+            // Observe-only stall defense: no action tool and an unchanged screen means the
+            // model is burning tokens re-reading the UI. Hint once, then abort the task.
+            when (observeStallGuard.recordRound(madeActionThisRound, lastScreenHash)) {
+                ObserveStallGuard.Verdict.ABORT -> {
+                    XLog.e(TAG, "ObserveStallGuard ABORT at iteration $iterations (observe-only stall)")
+                    ExecutionTracker.endTask(taskId, "STALL_ABORT", iterations, totalTokens)
+                    val status = tokenMonitor.getStatus()
+                    callback.onComplete(
+                        iterations,
+                        "Task stopped: the agent was re-reading an unchanged screen without acting " +
+                        "for several rounds, so it was stopped to avoid wasting tokens " +
+                        "(${status.formattedTokens} used). Please re-run with a more specific instruction.",
+                        totalTokens,
+                        actualModelName
+                    )
+                    return
+                }
+                ObserveStallGuard.Verdict.HINT -> {
+                    XLog.w(TAG, "ObserveStallGuard HINT at iteration $iterations (idle round on unchanged screen)")
+                    messages.add(UserMessage.from(observeStallGuard.buildHintMessage()))
+                }
+                ObserveStallGuard.Verdict.OK -> { /* progress */ }
             }
             XLog.d(TAG, "Round:$iterations total=$totalTokens thisRound=${llmResponse.tokenUsage?.totalTokenCount()}")
         }
