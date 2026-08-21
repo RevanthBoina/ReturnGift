@@ -920,6 +920,7 @@ private fun inlineAnnotated(text: String, colors: ReturnGiftColors): AnnotatedSt
         }
     }
 
+@Composable
 private fun AssistantBubble(text: String, timestamp: Long, colors: ReturnGiftColors, modelName: String? = null) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
