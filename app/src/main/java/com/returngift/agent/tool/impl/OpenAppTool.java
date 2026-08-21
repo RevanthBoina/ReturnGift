@@ -96,15 +96,23 @@ public class OpenAppTool extends BaseTool {
                 com.returngift.agent.core.telemetry.AppLifecycleManager.INSTANCE.launchAndVerify(service, packageName);
 
         if (!result.getSuccess()) {
-            // Try fallback via service.openApp
-            boolean fallbackSuccess = service.openApp(packageName);
-            if (!fallbackSuccess) {
-                return ToolResult.error("Failed to open app: " + packageName + (result.getError() != null ? " (" + result.getError() + ")" : ""));
-            }
+            // Verified failure — the deprecated unverified openApp() path was removed so the
+            // tool can never report "confirmed in foreground" without verification.
+            XLog.w(TAG, "launchAndVerify failed for " + packageName + ": " + result.getError());
+            return ToolResult.error("Failed to open app: " + packageName
+                    + (result.getError() != null ? " (" + result.getError() + ")" : ""));
         }
 
         // Wait for possible chain-launch intercept dialog and auto-click "Allow"
         dismissChainLaunchDialog(service);
+
+        // Re-verify after the dialog handling: the intercept flow can leave a system dialog
+        // (not the target app) in the foreground.
+        if (!service.isForeground(packageName)) {
+            XLog.w(TAG, packageName + " not foreground after chain-launch dialog handling");
+            return ToolResult.error("App " + packageName
+                    + " launched but did not stay in foreground (a system dialog may be blocking it). Try again.");
+        }
 
         return ToolResult.success("Opened app: " + packageName + " (confirmed in foreground)");
     }

@@ -1692,9 +1692,66 @@ per-step history as progress signal, droidrun bounded action history.
 
 ---
 
+## FT â€” Foreground Truth (2026-08-21)
+
+Covers truthful foreground detection: `ClawAccessibilityService.getForegroundPackage`
+fallback, `AppLifecycleManager` exact-match verification, `OpenAppTool` verified-only
+success, and the `ActionVerifier` own-package guard.
+
+### FT.1 Focused window wins over top-most `[ADB]`
+- **Act**: run a task that opens an app while ReturnGift's floating pill/own UI is also
+  active (multiple active TYPE_APPLICATION windows).
+- **PASS**: `get_foreground_app` returns the target app's package, not ReturnGift's own
+  package; logcat `getForegroundPackage` never resolves to `com.returngift.agent` while the
+  user-visible foreground is the target app.
+
+### FT.2 Exact-match launch verification `[ADB] [LOGCAT-DEBUG]`
+- **Act**: `open_app` a package that is a strict prefix of another installed package (e.g.
+  install/have both `com.foo` and `com.foo.bar`, open `com.foo.bar`).
+- **PASS**: launch is confirmed only for the exact package; no false positive from the
+  sibling package; `AppLifecycleManager` logs the exact-match confirmation.
+
+### FT.3 open_app never lies about foreground `[ADB]`
+- **Act**: `open_app` a package whose launch is blocked (e.g. background-launch-restricted
+  OEM state or an intercept dialog that is not dismissed).
+- **PASS**: the tool returns an ERROR naming the failure â€” never the string
+  "confirmed in foreground" unless `isForeground(packageName)` is true after dialog
+  handling.
+
+### FT.4 Own-package guard in ActionVerifier `[ADB] [LOGCAT-DEBUG]`
+- **Act**: run a task where `currentTargetPackage` resolves to ReturnGift itself (e.g.
+  ask the agent to open ReturnGift).
+- **PASS**: verification for that step reports CHANGED_STATE with the own-package-skip
+  detail (not VERIFIED); the agent re-observes instead of trusting a self-foreground.
+
+### FT.5 Regression â€” AV section `[ADB]`
+- **Act**: re-run AV1â€“AV3 (verified launch success/failure, semantic tap).
+- **PASS**: same outcomes as before; launch success path still verified, failure path still
+  a verified failure.
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-21 Ñ Phase B: truthful foreground detection
+
+**Change:** four fixes to make "which app is foreground" a truthful, verified signal:
+1. `ClawAccessibilityService.getForegroundPackage` fallback no longer returns the first
+   active TYPE_APPLICATION window (could be the assistant's own UI); it now consults active
+   application windows in descending layer order and prefers the input-focused window.
+2. `AppLifecycleManager.launchAndVerify` uses exact package match (was `startsWith` /
+   case-insensitive, which could confirm a sibling package). `getActiveForegroundPackage`
+   drops the `ActivityManager.getRunningTasks` fallback (restricted since Android L Ñ it
+   returned the caller's own task, a false-positive source) and delegates to the centralized
+   accessibility getter.
+3. `OpenAppTool` no longer falls back to the deprecated unverified `openApp()` and then
+   reports "confirmed in foreground" Ñ it returns a verified failure, and re-verifies
+   foreground after chain-launch dialog handling.
+4. `ActionVerifier.verifyAfter` skips foreground verification when the expected package is
+   the assistant's own (CHANGED_STATE + skip detail instead of a misleading VERIFIED).
+QA: FT.1ÐFT.5. Pending device run.
 
 ### 2026-08-21 â€” Phase A: stall/token defense (ObserveStallGuard + CRITICAL abort + StuckDetector wiring)
 

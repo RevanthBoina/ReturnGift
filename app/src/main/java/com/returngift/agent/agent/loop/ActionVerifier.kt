@@ -90,6 +90,15 @@ object ActionVerifier {
 
         // 2. Foreground expectation (open_app / switch_app / system_key navigation).
         if (expectedForeground != null) {
+            // Own-package guard: the assistant driving its own UI to the foreground is not an
+            // automation outcome. Verifying it would mask the real target app's state, so skip
+            // the foreground verdict and let the caller observe instead.
+            if (expectedForeground == service.packageName) {
+                return VerificationResult(
+                    VerificationOutcome.CHANGED_STATE, afterForeground, before.signature, afterSignature,
+                    "Expected foreground is the assistant's own package (${service.packageName}) — foreground verification skipped"
+                )
+            }
             val match = expectedForeground.equals(afterForeground, ignoreCase = false)
             return VerificationResult(
                 if (match) VerificationOutcome.VERIFIED else VerificationOutcome.NO_CHANGE,

@@ -1028,20 +1028,40 @@ public class ClawAccessibilityService extends AccessibilityService {
         } catch (Exception e) {
             XLog.w(TAG, "getForegroundPackage: active root failed", e);
         }
-        // Fallback: scan active windows for an accessibility-focused one.
+        // Fallback: scan the interactive windows. Several application windows can be active
+        // at once (e.g. the assistant's own UI above the target app), so consult active
+        // TYPE_APPLICATION windows in descending layer order (top-most first) and prefer the
+        // input-focused one; otherwise the top-most active application window wins.
         try {
+            List<AccessibilityWindowInfo> candidates = new ArrayList<>();
             for (AccessibilityWindowInfo window : getWindows()) {
-                if (window != null && window.isActive() && window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) {
-                    AccessibilityNodeInfo root = window.getRoot();
-                    if (root != null) {
-                        CharSequence pkg = root.getPackageName();
-                        String name = pkg != null ? pkg.toString() : null;
-                        root.recycle();
-                        if (name != null) {
-                            return name;
-                        }
-                    }
+                if (window != null && window.isActive()
+                        && window.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    candidates.add(window);
                 }
+            }
+            candidates.sort((a, b) -> Integer.compare(b.getLayer(), a.getLayer()));
+            String topMostPackage = null;
+            for (AccessibilityWindowInfo window : candidates) {
+                AccessibilityNodeInfo root = window.getRoot();
+                String name = null;
+                if (root != null) {
+                    CharSequence pkg = root.getPackageName();
+                    name = pkg != null ? pkg.toString() : null;
+                    root.recycle();
+                }
+                if (name == null) {
+                    continue;
+                }
+                if (window.isFocused()) {
+                    return name;
+                }
+                if (topMostPackage == null) {
+                    topMostPackage = name;
+                }
+            }
+            if (topMostPackage != null) {
+                return topMostPackage;
             }
         } catch (Exception e) {
             XLog.w(TAG, "getForegroundPackage: window scan failed", e);

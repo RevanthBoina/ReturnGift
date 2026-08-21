@@ -3,13 +3,9 @@
 
 package com.returngift.agent.core.telemetry
 
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.SystemClock
-import android.view.accessibility.AccessibilityNodeInfo
 import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.utils.XLog
 
@@ -65,11 +61,12 @@ object AppLifecycleManager {
             )
         }
 
-        // Verify that the requested package achieves foreground state
+        // Verify that the requested package achieves foreground state (exact match only —
+        // a prefix match would accept e.g. com.foo when launching com.foo.bar).
         val deadline = startTime + LAUNCH_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
             val currentPkg = getActiveForegroundPackage(context)
-            if (currentPkg != null && (currentPkg.equals(packageName, ignoreCase = true) || currentPkg.startsWith(packageName))) {
+            if (currentPkg == packageName) {
                 val elapsed = SystemClock.elapsedRealtime() - startTime
                 XLog.i(TAG, "App '$packageName' confirmed in foreground in ${elapsed}ms")
                 return LaunchResult(
@@ -86,21 +83,15 @@ object AppLifecycleManager {
             }
         }
 
-        // Final check via Accessibility service root node
+        // Final check via the centralized accessibility foreground getter (exact match)
         val service = ClawAccessibilityService.getInstance()
-        if (service != null) {
-            val root = service.rootInActiveWindow
-            if (root != null) {
-                val rootPkg = root.packageName?.toString()
-                if (rootPkg != null && rootPkg.startsWith(packageName)) {
-                    val elapsed = SystemClock.elapsedRealtime() - startTime
-                    return LaunchResult(
-                        success = true,
-                        packageName = packageName,
-                        timeToForegroundMs = elapsed
-                    )
-                }
-            }
+        if (service != null && service.foregroundPackage == packageName) {
+            val elapsed = SystemClock.elapsedRealtime() - startTime
+            return LaunchResult(
+                success = true,
+                packageName = packageName,
+                timeToForegroundMs = elapsed
+            )
         }
 
         return LaunchResult(
@@ -112,33 +103,13 @@ object AppLifecycleManager {
     }
 
     /**
-     * Inspects active foreground package using AccessibilityService or ActivityManager.
+     * Inspects the active foreground package via the AccessibilityService. The accessibility
+     * signal is the only truthful source available to this app — ActivityManager.getRunningTasks
+     * has been restricted since Android L (returns the caller's own task) and was removed as a
+     * fallback rather than kept as a source of false positives.
      */
     fun getActiveForegroundPackage(context: Context): String? {
-        val service = ClawAccessibilityService.getInstance()
-        if (service != null) {
-            val root = service.rootInActiveWindow
-            if (root != null) {
-                val pkg = root.packageName?.toString()
-                if (!pkg.isNullOrBlank()) {
-                    return pkg
-                }
-            }
-        }
-
-        try {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-            if (am != null) {
-                val runningTasks = am.getRunningTasks(1)
-                if (!runningTasks.isNullOrEmpty()) {
-                    val topActivity = runningTasks[0].topActivity
-                    if (topActivity != null) {
-                        return topActivity.packageName
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-
-        return null
+        val service = ClawAccessibilityService.getInstance() ?: return null
+        return service.foregroundPackage
     }
 }
