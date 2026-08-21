@@ -1848,9 +1848,49 @@ resume path (explicit "resume"/"continue" with step-history injection).
 
 ---
 
+## TR — Tap Recovery & Prompt Rules (2026-08-21)
+
+Covers the find_and_tap recovery wiring and the updated deliverable-honesty prompts.
+
+### TR.1 find_and_tap is registered `[ADB]`
+- **Act**: on a MOBILE device, ask the agent to "tap the X button".
+- **PASS**: find_and_tap appears in the tool specs (logcat LangChain4jToolBridge build);
+  the model can call it.
+
+### TR.2 Failed tap suggests find_and_tap `[ADB]`
+- **Act**: force a stale-node tap (navigate the target app between observe and act so the
+  node disappears), watch the tap_node result.
+- **PASS**: the tool error contains "Recovery hint: ... find_and_tap ..."; the model's
+  next action switches to find_and_tap with a text/description target instead of
+  re-tapping the same coordinates.
+
+### TR.3 No hint on non-tap failures `[ADB]`
+- **Act**: any non-tap tool failure (e.g. kb_write path error).
+- **PASS**: the error is passed through unchanged — no recovery hint appended.
+
+### TR.4 Unit tests
+- `./gradlew :app:testDebugUnitTest --tests '*KBManagerMimeTest' --tests '*ChatHistoryArtifactMarkerTest' --tests '*TaskCheckpointStoreTest' --tests '*ObserveStallGuardTest'`
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-21 — Phase F: tap recovery + prompt rules + tests
+
+**Change:**
+1. `FindAndTapTool` is now actually registered in `ToolRegistry.registerMobileTools()`
+   (it existed on disk but was never registered, so the model could not call it).
+2. Tap recovery: a failed tap/tap_node/long_press gets a "Recovery hint" appended in
+   `runAgentLoop` pointing the model at find_and_tap with a semantic target instead of
+   re-tapping stale coordinates.
+3. Prompts: `AgentConfig` Rule 11 and `LOCAL_TASK_PROMPT` now state the real vault
+   surface (kb_write/kb_append for notes, save_file for binary, take_screenshot
+   save_to_vault for screenshots) and the failed-tap recovery rule.
+4. New unit tests: KBManagerMimeTest (mimeOf/isImage/isTextLike),
+   ChatHistoryArtifactMarkerTest (artifact marker roundtrip, backward compatibility).
+QA: TR.1–TR.4. Pending device run.
 
 ### 2026-08-21 — Phase E: task checkpoints + resume
 

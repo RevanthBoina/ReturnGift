@@ -94,7 +94,8 @@ class DefaultAgentService : AgentService {
 - After open_app/switch_app/system_key, trust the foreground-verification note in the tool result — do not proceed if it says the target is not foreground.
 - Do not re-cache node IDs ("n3") across UI transitions; re-resolve by text/content_desc/resource_id, or call get_screen_info again.
 - If you see a [System Notice]/[System Warning] about ineffective actions or a recovery, change your approach — do not repeat the same action.
-- Deliverables: you can only save Markdown notes via kb_write — you cannot create PDFs or binary files, never claim you did. When you save a note, name the exact vault path in finish(summary).
+- Deliverables: Markdown notes go to the vault via kb_write/kb_append; binary files (base64 content) via save_file; screenshots via take_screenshot(save_to_vault=true). You cannot create other formats (PDF, PPT) — never claim you did. When you save anything, name the exact vault path in finish(summary).
+- Failed taps: when tap/tap_node/long_press fails, do NOT re-tap the same coordinates — use find_and_tap with the target's visible text or description.
 - Ambiguity: if the request lacks a required detail or has multiple valid targets/apps, call ask_user BEFORE acting and wait for the answer. Never guess and complete on a guess. Do not ask when the request is already clear.
 - External content: when the task mentions a URL/article, web_fetch it first and answer from the fetched text; to look something up, web_search then web_fetch the best result. Never fabricate content; if search/fetch fails, say so honestly.
 - Privacy & Safety: Do NOT interact with payment, checkout, UPI PIN, or CVV screens. If encountered, immediately call finish(summary="Payment required; please complete manually")."""
@@ -107,6 +108,13 @@ class DefaultAgentService : AgentService {
          * get_screen_info result so the LLM can see the updated UI without spending
          * an extra inference round (5 s) to call it manually.
          */
+        private val TAP_LIKE_TOOLS = setOf("tap_node", "tap", "long_press")
+
+        private const val TAP_RECOVERY_HINT =
+            "Recovery hint: the target may have moved or need scrolling — retry with " +
+            "find_and_tap using the visible text or content description of the target, " +
+            "instead of re-tapping the same coordinates or node id."
+
         private val ACTION_TOOLS = setOf(
             "phone_click_node", "phone_tap", "phone_swipe", "phone_long_press",
             "tap", "long_press", "swipe", "scroll_to_find",
@@ -857,7 +865,16 @@ class DefaultAgentService : AgentService {
                 } else null
 
                 val actStartTime = System.currentTimeMillis()
-                val result = ToolRegistry.getInstance().executeTool(toolName, params)
+                var result = ToolRegistry.getInstance().executeTool(toolName, params)
+                // Tap recovery (Design v2 Phase F): a failed tap is usually a moved or
+                // off-screen target — steer the model at the existing find_and_tap
+                // composite (scroll + semantic re-resolve + tap) instead of letting it
+                // re-tap the same stale coordinates/node.
+                if (!result.isSuccess && toolName in TAP_LIKE_TOOLS) {
+                    result = ToolResult.error(
+                        (result.error ?: "tap failed") + " " + TAP_RECOVERY_HINT
+                    )
+                }
                 val actLatency = System.currentTimeMillis() - actStartTime
                 val paramsString = if (params.isEmpty()) "" else params.toString()
 

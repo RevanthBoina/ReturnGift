@@ -72,6 +72,7 @@ object ToolRegistry {
     private fun registerMobileTools() {
         register(TapTool())
         register(TapNodeTool())
+        register(FindAndTapTool())
         register(LongPressTool())
         register(SwipeTool())
         register(ScrollToFindTool())
