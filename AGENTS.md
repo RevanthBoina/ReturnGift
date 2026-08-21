@@ -177,6 +177,17 @@ GitHub code engine — MUST NOT reintroduce them.
    null when `appContext` is unset — so `Log` is the only offender.) NOT a code bug; a
    test-config gap. Latent on main (main never reached the test phase).
 
+6. **Inspection-only editing cannot see Kotlin compile errors — verify refs against the
+   ACTUAL declaration, not memory.** The G-series broke CI with (a) a duplicated
+   `@Composable` annotation ("not repeatable") that cascaded into bogus
+   "must be @Composable" errors, and (b) `ChatMessage.ToolStep` referenced as a nested
+   class when `ToolStep` is a TOP-LEVEL class in `ChatMessage.kt`. Both were invisible to
+   brace/paren balance checks. Rules: after inserting a composable, grep the surrounding
+   lines for pre-existing annotations; when referencing a class from another file, grep
+   its declaration site (`grep -n "class X" file.kt`) and match the actual nesting.
+   In this sandbox (no SDK), the cheapest real gate is: push → watch
+   `gh run view --log-failed` of `Auto Build & Test` before tagging.
+
 The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
 semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnitTest` +

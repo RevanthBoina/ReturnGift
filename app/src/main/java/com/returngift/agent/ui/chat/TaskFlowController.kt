@@ -467,7 +467,7 @@ class TaskFlowController(
     // One TOOL_GROUP message per task, updated in place as tool events arrive;
     // finalized (and persisted) at the terminal event. Replaces the flat
     // "Tool..." / "Tool failed" system lines with a Kimi-style process trace.
-    private val processSteps = mutableListOf<ChatMessage.ToolStep>()
+    private val processSteps = mutableListOf<ToolStep>()
     private var processMsgId: String? = null
     private var pendingTaskTitle: String? = null
 
@@ -535,7 +535,7 @@ class TaskFlowController(
                     if (!event.toolName.contains("Finish", ignoreCase = true)) {
                         removeTypingIndicator()
                         ensureProcessCard()
-                        processSteps.add(ChatMessage.ToolStep(event.toolName, RUNNING_SUMMARY, success = false))
+                        processSteps.add(ToolStep(event.toolName, RUNNING_SUMMARY, success = false))
                         updateProcessCard()
                     }
                 }

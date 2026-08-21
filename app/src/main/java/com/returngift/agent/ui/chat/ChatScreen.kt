@@ -829,7 +829,6 @@ private fun UserBubble(
     }
 }
 
-@Composable
 /** Render markdown-ish assistant text (headings/lists/code/quotes + inline bold/italic/code). */
 @Composable
 private fun MarkdownText(markdown: String, colors: ReturnGiftColors, modifier: Modifier = Modifier) {
