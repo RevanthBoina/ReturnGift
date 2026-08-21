@@ -18,6 +18,7 @@ import com.returngift.agent.AppViewModel
 import com.returngift.agent.ServiceBindingState
 import com.returngift.agent.TaskEvent
 import com.returngift.agent.channel.Channel
+import com.returngift.agent.ClawApplication
 import com.returngift.agent.agent.DirectDeviceDataGuard
 import com.returngift.agent.agent.PipelineRouter
 import com.returngift.agent.agent.TaskPromptEnvelope
@@ -59,6 +60,9 @@ class TaskFlowController(
 
     companion object {
         private const val TAG = "TaskFlowController"
+        private const val RUNNING_SUMMARY = "in progress…"
+        /** Prefix of the checkpoint-hint SYSTEM message — ChatScreen renders a resume card for it. */
+        const val RESUME_HINT_PREFIX = "An earlier task was interrupted"
         /** How long to wait for a verified-foreground event before minimizing anyway. */
         private const val MINIMIZE_FALLBACK_MS = 10_000L
     }
@@ -69,6 +73,9 @@ class TaskFlowController(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var checkpointHintShown = false
     private var pendingMinimizeTaskText: String? = null
+    /** True when this task backgrounded the chat via minimize-on-verified — the
+     *  terminal event then also posts a completion notification (Kimi-Work style). */
+    private var minimizedForTask = false
     private var minimizeFallbackRunnable: Runnable? = null
 
     /** Live ask_user question the agent is parked on, or null. */
@@ -130,10 +137,14 @@ class TaskFlowController(
             addSystem("↩️ Resuming interrupted task (${checkpoint.path})")
             text = checkpoint.taskText + "\n\n" +
                 com.returngift.agent.agent.checkpoint.TaskCheckpointStore.renderPromptContext(checkpoint)
+        } else if (com.returngift.agent.agent.checkpoint.TaskCheckpointStore.isResumeKeyword(text)) {
+            // Resume card/button tapped after the checkpoint was already consumed.
+            addSystem("No interrupted task to resume.")
+            return
         } else if (!checkpointHintShown) {
             com.returngift.agent.agent.checkpoint.TaskCheckpointStore.peek()?.let { cp ->
                 checkpointHintShown = true
-                addSystem("An earlier task was interrupted — type \"resume\" to continue it (${cp.path}).")
+                addSystem("$RESUME_HINT_PREFIX — tap Resume (or type \"resume\") to continue it (${cp.path}).")
             }
         }
 
@@ -313,6 +324,7 @@ class TaskFlowController(
             // moveTaskToBack requires a non-finishing activity; falls back silently if it fails.
             val moved = activity.moveTaskToBack(true)
             XLog.i(TAG, "minimizeToBackground: moveTaskToBack=$moved (task started in background)")
+            if (moved) minimizedForTask = true
             if (!moved) {
                 XLog.w(TAG, "minimizeToBackground: moveTaskToBack returned false; task still running")
             }
@@ -330,6 +342,7 @@ class TaskFlowController(
     private fun scheduleMinimizeOnVerifiedForeground(taskText: String) {
         cancelPendingMinimize()
         pendingMinimizeTaskText = taskText
+        pendingTaskTitle = taskText.trim().lineSequence().firstOrNull()?.take(60)
         val fallback = Runnable {
             val text = pendingMinimizeTaskText ?: return@Runnable
             XLog.i(TAG, "no TargetForegroundVerified within ${MINIMIZE_FALLBACK_MS}ms — minimizing as fallback")
@@ -450,27 +463,69 @@ class TaskFlowController(
         }, 1500)
     }
 
+    // ── Live process card (G2) ────────────────────────────────────────────────
+    // One TOOL_GROUP message per task, updated in place as tool events arrive;
+    // finalized (and persisted) at the terminal event. Replaces the flat
+    // "Tool..." / "Tool failed" system lines with a Kimi-style process trace.
+    private val processSteps = mutableListOf<ChatMessage.ToolStep>()
+    private var processMsgId: String? = null
+    private var pendingTaskTitle: String? = null
+
+    private fun ensureProcessCard() {
+        if (processMsgId != null) return
+        val msg = ChatMessage(ChatMessage.Role.TOOL_GROUP, content = "", toolSteps = emptyList())
+        uiState.messages.add(msg)
+        processMsgId = msg.id
+    }
+
+    private fun updateProcessCard() {
+        val id = processMsgId ?: return
+        val idx = uiState.messages.indexOfFirst { it.id == id }
+        if (idx >= 0) {
+            uiState.messages[idx] = uiState.messages[idx].copy(toolSteps = processSteps.toList())
+        }
+    }
+
+    private fun finalizeProcessCard() {
+        if (processMsgId == null) return
+        for (i in processSteps.indices) {
+            if (processSteps[i].summary == RUNNING_SUMMARY) {
+                processSteps[i] = processSteps[i].copy(summary = "interrupted", success = false)
+            }
+        }
+        updateProcessCard()
+        onPersistConversation()
+        processSteps.clear()
+        processMsgId = null
+    }
+
     private fun handleTaskEvent(event: TaskEvent) {
         try {
             when (event) {
                 is TaskEvent.Completed -> {
                     replaceTypingIndicator(event.answer, event.modelName)
+                    notifyTaskFinishedIfBackgrounded(success = true, body = event.answer)
+                    finalizeProcessCard()
                     onTaskTerminal?.invoke(event)
                     cleanupAfterTask()
                     checkAutoReplyConfirmation()
                 }
                 is TaskEvent.Failed -> {
                     replaceTypingIndicator("Error: ${event.error}")
+                    notifyTaskFinishedIfBackgrounded(success = false, body = event.error)
+                    finalizeProcessCard()
                     onTaskTerminal?.invoke(event)
                     cleanupAfterTask()
                 }
                 is TaskEvent.Cancelled -> {
                     removeTypingIndicator()
+                    finalizeProcessCard()
                     onTaskTerminal?.invoke(event)
                     cleanupAfterTask()
                 }
                 is TaskEvent.Blocked -> {
                     replaceTypingIndicator("Blocked by system dialog.")
+                    finalizeProcessCard()
                     onTaskTerminal?.invoke(event)
                     cleanupAfterTask()
                 }
@@ -479,13 +534,27 @@ class TaskFlowController(
                     uiState.isTaskRunning.value = true
                     if (!event.toolName.contains("Finish", ignoreCase = true)) {
                         removeTypingIndicator()
-                        addSystem("${event.toolName}...")
+                        ensureProcessCard()
+                        processSteps.add(ChatMessage.ToolStep(event.toolName, RUNNING_SUMMARY, success = false))
+                        updateProcessCard()
                     }
                 }
                 is TaskEvent.ToolResult -> {
                     uiState.isAwaitingReply.value = false
                     uiState.isTaskRunning.value = true
-                    if (!event.success) addSystem("${event.toolName} failed")
+                    val idx = processSteps.indexOfLast { it.toolName == event.toolName && it.summary == RUNNING_SUMMARY }
+                    if (idx >= 0) {
+                        val detail = event.detail.trim().replace('\n', ' ')
+                        val snippet = if (detail.length > 120) detail.take(117) + "…" else detail
+                        processSteps[idx] = processSteps[idx].copy(
+                            summary = if (event.success) snippet.ifEmpty { "done" }
+                                      else "failed: ${snippet.ifEmpty { "unknown error" }}",
+                            success = event.success,
+                        )
+                        updateProcessCard()
+                    } else if (processMsgId == null && !event.success) {
+                        addSystem("${event.toolName} failed")
+                    }
                 }
                 is TaskEvent.Response -> {
                     uiState.isAwaitingReply.value = false
@@ -522,6 +591,17 @@ class TaskFlowController(
         } catch (e: Exception) {
             XLog.w(TAG, "handleTaskEvent error", e)
         }
+    }
+
+    /** Post a completion alert only when the task backgrounded the chat — otherwise
+     *  the user is already watching the answer appear. */
+    private fun notifyTaskFinishedIfBackgrounded(success: Boolean, body: String) {
+        if (!minimizedForTask) return
+        minimizedForTask = false
+        val title = pendingTaskTitle ?: "Task"
+        com.returngift.agent.service.ForegroundService.notifyTaskFinished(
+            ClawApplication.instance, success, title.take(60), body
+        )
     }
 
     private fun replaceTypingIndicator(text: String, actualModelName: String? = null) {

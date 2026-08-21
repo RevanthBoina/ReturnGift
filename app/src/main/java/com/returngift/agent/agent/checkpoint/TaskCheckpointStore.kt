@@ -127,6 +127,9 @@ object TaskCheckpointStore {
         return Checkpoint(path, taskText, file.lastModified(), steps)
     }
 
+    /** True when [text] is exactly a resume keyword (regardless of checkpoint presence). */
+    fun isResumeKeyword(text: String): Boolean = isResumeIntent(text)
+
     /** If [text] is a resume intent, consume and return the parked checkpoint, else null. */
     fun consumeIfResumeIntent(text: String): Checkpoint? {
         if (!isResumeIntent(text)) return null

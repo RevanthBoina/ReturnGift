@@ -11,6 +11,25 @@
 - **Task checkpoints (M3A)**: `TaskCheckpointStore` — CANCELLED tasks persist the loop's per-step history to notes/<slug>-draft.md + KV pointer `checkpoint_latest`; resume via leading "resume/continue/weiter/fortsetzen" in sendTask (prepends RESUME CONTEXT; narrow regex must not hijack "write my resume"); COMPLETED clears a matching checkpoint.
 - **Tap recovery**: failed tap/tap_node/long_press gets a find_and_tap recovery hint appended to the error in runAgentLoop (TAP_LIKE_TOOLS/TAP_RECOVERY_HINT); FindAndTapTool is registered in registerMobileTools (it previously existed but was NEVER registered).
 
+## Kimi-style chat surface (G-series, feat/kimi-style-chat, 2026-08-21)
+- **Streaming**: `ChatSessionController.sendChat` cloud path uses `chatStreaming` with a 60 ms
+  UI throttle; partials + final both go through `replaceTypingIndicator`, whose fallback REPLACES
+  the last ASSISTANT bubble only when it is the LAST message (else appends). Local model keeps the
+  typing indicator — LiteRT-LM streaming (`LocalLlmClient.chatStreaming` delegates to blocking) is
+  the remaining seam.
+- **Markdown**: `ui/chat/MarkdownLite.kt` — pure parser (blocks + inline spans, zero deps,
+  JVM-testable); `MarkdownText` composable in ChatScreen renders assistant bubbles.
+- **Process card**: TaskFlowController builds ONE TOOL_GROUP ChatMessage per task from
+  ToolAction/ToolResult (RUNNING_SUMMARY = "in progress…" sentinel, finalized at terminal events);
+  persistence roundtrip via `## Tools` block parsed by `ChatHistoryManager.parseToolSteps`.
+  Orchestrator emits pseudo-actions as `TaskEvent.Progress`, NOT ToolAction.
+- **Background work**: `ForegroundService.notifyTaskFinished` (RESULT_CHANNEL_ID, IMPORTANCE_DEFAULT,
+  id 1002) fires only when `TaskFlowController.minimizedForTask` is set (minimize-on-verified path);
+  Stop action = `ForegroundService.ACTION_STOP_TASK` → `ClawApplication.appViewModelInstance.taskOrchestrator.cancelCurrentTask()`.
+- **Resume card**: SYSTEM hint prefix `TaskFlowController.RESUME_HINT_PREFIX` → ResumeTaskCard in
+  MessageList (`onResumeCheckpoint = { onSendTask("resume") }`); `TaskCheckpointStore.isResumeKeyword`
+  guards stale taps with "No interrupted task to resume."
+
 ## Web search + update throttle (verified 2026-08-20, Phase 4)
 - **`web_search` tool** (`tool/impl/WebSearchTool.java`, common tools) — keyless DuckDuckGo HTML endpoint (`https://html.duckduckgo.com/html/?q=`); parser lives in pure-Kotlin `WebFetcher.parseDuckDuckGoResults` (decodes the `uddg=` redirect param; skips ddg-internal/non-http targets; `isDuckDuckGoChallenge` detects anomaly/202 walls → honest error, never fabricated results). Parser + test fixture validated against a REAL captured DDG response (Python mirror, 10/10 results). Model chains web_search → web_fetch (AgentConfig Rule 13).
 - **Java pitfall**: `URLEncoder.encode(String, Charset)` requires API 33+ — use the deprecated `encode(String, "UTF-8")` overload for lower minSdk.

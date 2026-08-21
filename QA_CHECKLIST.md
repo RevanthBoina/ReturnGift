@@ -1873,9 +1873,69 @@ Covers the find_and_tap recovery wiring and the updated deliverable-honesty prom
 
 ---
 
+## KI — Kimi-style Chat & Background Work Surface (2026-08-21)
+
+Covers the G-series redesign: streaming answers, markdown bubbles, live process
+card, background-work notifications, checkpoint resume card.
+
+### KI.1 Streaming cloud answers `[ADB]`
+- **Act**: with a cloud model selected, send a chat question.
+- **PASS**: the answer bubble grows token-by-token (no static "..." until the end);
+  final bubble carries the model tag. Local model still shows the typing indicator.
+
+### KI.2 Markdown rendering `[ADB]`
+- **Act**: ask for "a short plan with a heading, 3 bullets, and a code snippet".
+- **PASS**: heading is bold/larger, bullets show "•" markers, code is monospace on a
+  surface card; text stays selectable.
+
+### KI.3 Live process card `[ADB]`
+- **Act**: run a multi-step device task (e.g. "open Settings and tap Display").
+- **PASS**: a "Process · N steps" card appears ABOVE the final answer, expanded while
+  running, each step showing "name → result"; on completion it collapses (tap to
+  re-expand). Reopening the conversation restores the card with ✓/○ steps.
+
+### KI.4 Notification Stop action `[ADB]`
+- **Act**: start a device task (chat minimizes), pull down notifications, tap Stop.
+- **PASS**: the task cancels (checkpoint written), foreground notification updates.
+
+### KI.5 Completion alert while backgrounded `[ADB]`
+- **Act**: start a device task, stay outside the app until it finishes.
+- **PASS**: a "✓ <task>" notification appears with the answer excerpt; tapping it
+  opens the chat with the answer. NO alert when the chat stayed foreground.
+
+### KI.6 Checkpoint resume card `[ADB]`
+- **Act**: cancel a task mid-run, return to chat, tap Resume on the hint card.
+- **PASS**: the interrupted task restarts with step-history context. Tapping Resume
+  a second time (or after consuming) shows "No interrupted task to resume."
+
+### KI.7 Unit tests
+- `./gradlew :app:testDebugUnitTest --tests '*MarkdownLiteTest' --tests '*ChatHistoryArtifactMarkerTest'`
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-21 — G-series: Kimi-style chat + background work surface
+
+**Change:**
+1. **G1 streaming + markdown**: cloud chat answers stream token-by-token into the
+   bubble (chatStreaming + 60 ms UI throttle; local model keeps typing indicator —
+   LiteRT-LM MessageCallback integration is a separate effort). Assistant bubbles
+   render markdown via new zero-dep `MarkdownLite` parser (headings/lists/code/
+   quotes + inline bold/italic/code).
+2. **G2 live process card**: TaskFlowController aggregates ToolAction/ToolResult
+   into ONE TOOL_GROUP message per task (replaces flat "Tool..."/"Tool failed"
+   system lines); ToolGroup is now a "Process · N steps" card, expanded while
+   running, collapsible after; ChatHistoryManager roundtrips steps to markdown.
+3. **G3 Kimi-Work surface**: task notification gains a Stop action
+   (ForegroundService.ACTION_STOP_TASK → taskOrchestrator.cancelCurrentTask);
+   tasks that backgrounded the chat post a completion alert on a new
+   IMPORTANCE_DEFAULT results channel (tap → conversation); checkpoint hint is now
+   a Resume card (Resume button == typing "resume"); stale resume taps are guarded.
+4. **G4 tests/docs**: MarkdownLiteTest (9 tests), KI section, AGENTS.md.
+QA: KI.1–KI.7. Pending device run.
 
 ### 2026-08-21 — Phase F: tap recovery + prompt rules + tests
 

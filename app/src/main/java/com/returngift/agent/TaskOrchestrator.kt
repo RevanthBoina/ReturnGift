@@ -217,7 +217,7 @@ class TaskOrchestrator(
                                 val fallbackGoal = skill.fallbackGoal
                                     .let { g -> route.params.entries.fold(g) { acc, (k, v) -> acc.replace("{$k}", v) } }
                                 XLog.i(TAG, "Skill ${skill.id} failed, falling back to agent loop: $fallbackGoal")
-                                taskEventCallback?.invoke(TaskEvent.ToolAction("Retrying with AI agent"))
+                                taskEventCallback?.invoke(TaskEvent.Progress(0, "Retrying with AI agent"))
                                 startNewTask(channel, fallbackGoal, messageID, isFallback = true)
                             }
                         }, "skill-executor").start()

@@ -60,6 +60,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -365,8 +367,10 @@ fun ChatScreen(
                         MessageList(
                             messages = messages,
                             colors = colors,
+                            isTaskRunning = isTaskRunning,
                             onBackgroundTap = dismissKeyboard,
                             onEditMessage = onEditMessage,
+                            onResumeCheckpoint = { onSendTask("resume") },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -666,8 +670,10 @@ private fun PermissionBanner(onClick: () -> Unit, colors: ReturnGiftColors) {
 private fun MessageList(
     messages: List<ChatMessage>,
     colors: ReturnGiftColors,
+    isTaskRunning: Boolean = false,
     onBackgroundTap: () -> Unit = {},
     onEditMessage: (Int, String) -> Unit = { _, _ -> },
+    onResumeCheckpoint: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -704,13 +710,14 @@ private fun MessageList(
                     modelName = message.modelName
                 )
                 ChatMessage.Role.SYSTEM -> {
-                    if (message.artifactPath != null) {
-                        ArtifactCard(message, colors)
-                    } else {
-                        SystemMessage(message.content, colors)
+                    when {
+                        message.artifactPath != null -> ArtifactCard(message, colors)
+                        message.content.startsWith(TaskFlowController.RESUME_HINT_PREFIX) ->
+                            ResumeTaskCard(message.content, colors, onResume = onResumeCheckpoint)
+                        else -> SystemMessage(message.content, colors)
                     }
                 }
-                ChatMessage.Role.TOOL_GROUP -> ToolGroup(message, colors)
+                ChatMessage.Role.TOOL_GROUP -> ToolGroup(message, colors, defaultExpanded = isTaskRunning)
             }
         }
     }
@@ -823,6 +830,97 @@ private fun UserBubble(
 }
 
 @Composable
+/** Render markdown-ish assistant text (headings/lists/code/quotes + inline bold/italic/code). */
+@Composable
+private fun MarkdownText(markdown: String, colors: ReturnGiftColors, modifier: Modifier = Modifier) {
+    val blocks = remember(markdown) { MarkdownLite.parseBlocks(markdown) }
+    Column(modifier = modifier) {
+        blocks.forEach { block ->
+            when (block) {
+                is MarkdownLite.Block.Heading -> Text(
+                    inlineAnnotated(block.text, colors),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = when (block.level) { 1 -> 18.sp; 2 -> 17.sp; else -> 15.sp },
+                    color = colors.aiText,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
+                )
+                is MarkdownLite.Block.CodeBlock -> Surface(
+                    color = colors.surface,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            block.code,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            color = colors.aiText,
+                            modifier = Modifier.padding(10.dp),
+                        )
+                    }
+                }
+                is MarkdownLite.Block.ListItem -> Row(modifier = Modifier.padding(vertical = 1.dp)) {
+                    Text(
+                        if (block.ordered) "${block.index}." else "\u2022",
+                        color = colors.accent,
+                        fontSize = 15.sp,
+                        modifier = Modifier.width(18.dp),
+                    )
+                    Text(
+                        inlineAnnotated(block.text, colors),
+                        color = colors.aiText,
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp,
+                    )
+                }
+                is MarkdownLite.Block.Quote -> Row(
+                    modifier = Modifier.padding(vertical = 2.dp)
+                        .height(IntrinsicSize.Min),
+                ) {
+                    Box(
+                        Modifier.fillMaxHeight().width(3.dp)
+                            .background(colors.accent, RoundedCornerShape(2.dp)),
+                    )
+                    Text(
+                        inlineAnnotated(block.text, colors),
+                        color = colors.textSecondary,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+                is MarkdownLite.Block.Paragraph -> Text(
+                    inlineAnnotated(block.text, colors),
+                    color = colors.aiText,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
+                    modifier = Modifier.padding(vertical = 2.dp),
+                )
+                MarkdownLite.Block.Divider -> HorizontalDivider(
+                    color = colors.divider,
+                    thickness = 0.5.dp,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+private fun inlineAnnotated(text: String, colors: ReturnGiftColors): AnnotatedString =
+    buildAnnotatedString {
+        MarkdownLite.parseInline(text).forEach { span ->
+            withStyle(
+                SpanStyle(
+                    fontWeight = if (span.bold) FontWeight.Bold else null,
+                    fontStyle = if (span.italic) FontStyle.Italic else null,
+                    fontFamily = if (span.code) FontFamily.Monospace else null,
+                    background = if (span.code) colors.surface else Color.Unspecified,
+                )
+            ) { append(span.text) }
+        }
+    }
+
 private fun AssistantBubble(text: String, timestamp: Long, colors: ReturnGiftColors, modelName: String? = null) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -865,11 +963,9 @@ private fun AssistantBubble(text: String, timestamp: Long, colors: ReturnGiftCol
                     border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.aiBubbleBorder),
                 ) {
                     SelectionContainer {
-                        Text(
-                            text = text,
-                            color = colors.aiText,
-                            fontSize = 15.sp,
-                            lineHeight = 21.sp,
+                        MarkdownText(
+                            markdown = text,
+                            colors = colors,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         )
                     }
@@ -1026,6 +1122,46 @@ private fun ArtifactCard(message: ChatMessage, colors: ReturnGiftColors) {
     }
 }
 
+/**
+ * Checkpoint resume affordance: shown for the parked-checkpoint SYSTEM hint
+ * (TaskFlowController.RESUME_HINT_PREFIX). Tap resumes the interrupted task with
+ * its persisted step history (Phase E checkpoint path).
+ */
+@Composable
+private fun ResumeTaskCard(content: String, colors: ReturnGiftColors, onResume: () -> Unit) {
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.accent.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Icon(
+                Icons.Default.Refresh,
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                content,
+                fontSize = 12.sp,
+                color = colors.textSecondary,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = onResume) {
+                Text("Resume", color = colors.accent, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
 private fun openVaultArtifact(context: android.content.Context, path: String, mime: String) {
     try {
         val target = KBManager.absoluteFile(path)
@@ -1048,27 +1184,64 @@ private fun openVaultArtifact(context: android.content.Context, path: String, mi
 }
 
 @Composable
-private fun ToolGroup(message: ChatMessage, colors: ReturnGiftColors) {
-    Column(
-        modifier = Modifier.padding(start = 54.dp, end = 64.dp, top = 2.dp, bottom = 2.dp),
+private fun ToolGroup(message: ChatMessage, colors: ReturnGiftColors, defaultExpanded: Boolean = false) {
+    val steps = message.toolSteps.orEmpty()
+    var userOverride by remember(message.id) { mutableStateOf<Boolean?>(null) }
+    val expanded = userOverride ?: defaultExpanded
+
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 40.dp, end = 24.dp, top = 3.dp, bottom = 3.dp)
+            .clickable { userOverride = !expanded },
     ) {
-        message.toolSteps?.forEach { step ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 1.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(if (step.success) colors.accent else colors.textTertiary),
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = colors.textTertiary,
+                    modifier = Modifier.size(14.dp),
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "${step.toolName} → ${step.summary}",
+                    "Process · ${steps.size} step${if (steps.size == 1) "" else "s"}",
                     fontSize = 12.sp,
-                    color = colors.textTertiary,
+                    color = colors.textSecondary,
                 )
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = colors.textTertiary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(6.dp))
+                steps.forEach { step ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 1.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(CircleShape)
+                                .background(if (step.success) colors.accent else colors.textTertiary),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "${step.toolName} → ${step.summary}",
+                            fontSize = 12.sp,
+                            color = colors.textTertiary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
     }

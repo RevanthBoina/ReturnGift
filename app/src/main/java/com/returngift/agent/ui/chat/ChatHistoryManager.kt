@@ -232,11 +232,13 @@ object ChatHistoryManager {
     ) {
         if (role != null && content.isNotEmpty()) {
             val resolvedTimestamp = timestamp ?: (fallbackConversationTimestamp + messages.size * 1000L)
+            val text = content.toString().trim()
             messages.add(
                 ChatMessage(
                     role = role,
-                    content = content.toString().trim(),
+                    content = if (role == ChatMessage.Role.TOOL_GROUP) "" else text,
                     timestamp = resolvedTimestamp,
+                    toolSteps = if (role == ChatMessage.Role.TOOL_GROUP) parseToolSteps(text) else null,
                     modelName = modelName,
                     artifactPath = artifactPath,
                     artifactMime = artifactMime
@@ -245,6 +247,17 @@ object ChatHistoryManager {
             content.clear()
         }
     }
+
+    /** Rebuild ToolSteps from the persisted "- ✓ name → summary" markdown lines. */
+    private fun parseToolSteps(text: String): List<ToolStep> =
+        text.lines().mapNotNull { line ->
+            val m = Regex("^- ([✓○✗]) (.+?) → (.*)$").find(line.trim()) ?: return@mapNotNull null
+            ToolStep(
+                toolName = m.groupValues[2],
+                summary = m.groupValues[3],
+                success = m.groupValues[1] == "✓"
+            )
+        }
 
     private fun serializeTimestamp(timestamp: Long): String {
         return "$MESSAGE_TIMESTAMP_PREFIX$timestamp$MESSAGE_TIMESTAMP_SUFFIX"

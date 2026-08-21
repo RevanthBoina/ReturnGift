@@ -5,6 +5,7 @@ package com.returngift.agent.ui.chat
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.MutableState
@@ -49,6 +50,7 @@ class ChatSessionController(
 
     companion object {
         private const val TAG = "ChatSessionController"
+        private const val STREAM_UI_THROTTLE_MS = 60L
         private const val BASE_SYSTEM_PROMPT = "You are a helpful AI assistant on an Android phone."
         private const val READY_POLL_MS = 500L
         private const val READY_POLL_ATTEMPTS = 60
@@ -370,8 +372,27 @@ class ChatSessionController(
                 if (cloudClient != null) {
                     ensureCloudHistoryInitialized()
                     cloudHistory.add(UserMessage.from(text))
-                    val llmResponse = cloudClient!!.chat(cloudHistory, emptyList())
-                    val responseText = llmResponse.text ?: "(no response)"
+                    // Stream deltas into the placeholder bubble (Kimi-style live answer).
+                    // Local model keeps the typing indicator until LiteRT-LM exposes a
+                    // MessageCallback/Flow streaming API (LocalLlmClient.chatStreaming
+                    // currently delegates to the blocking call).
+                    val partial = StringBuilder()
+                    var lastUiPostMs = 0L
+                    val streamListener = object : com.returngift.agent.agent.llm.StreamingListener {
+                        override fun onPartialText(token: String) {
+                            partial.append(token)
+                            val now = SystemClock.uptimeMillis()
+                            if (now - lastUiPostMs >= STREAM_UI_THROTTLE_MS) {
+                                lastUiPostMs = now
+                                val snapshot = partial.toString()
+                                postToMain { replaceTypingIndicator(snapshot) }
+                            }
+                        }
+                        override fun onComplete(response: com.returngift.agent.agent.llm.LlmResponse) = Unit
+                        override fun onError(error: Throwable) = Unit
+                    }
+                    val llmResponse = cloudClient!!.chatStreaming(cloudHistory, emptyList(), streamListener)
+                    val responseText = llmResponse.text ?: partial.toString().ifEmpty { "(no response)" }
                     cloudHistory.add(AiMessage.from(responseText))
                     val usage = llmResponse.tokenUsage
                     val inputTokens = usage?.inputTokenCount() ?: (text.length / 4 + 1)
@@ -664,7 +685,14 @@ class ChatSessionController(
         if (idx >= 0) {
             uiState.messages[idx] = ChatMessage(ChatMessage.Role.ASSISTANT, text, modelName = modelTag)
         } else {
-            uiState.messages.add(ChatMessage(ChatMessage.Role.ASSISTANT, text, modelName = modelTag))
+            // Streaming already replaced the "..." placeholder with partial text —
+            // update that bubble in place instead of appending a duplicate.
+            val lastAssistant = uiState.messages.indexOfLast { it.role == ChatMessage.Role.ASSISTANT }
+            if (lastAssistant == uiState.messages.lastIndex && lastAssistant >= 0) {
+                uiState.messages[lastAssistant] = ChatMessage(ChatMessage.Role.ASSISTANT, text, modelName = modelTag)
+            } else {
+                uiState.messages.add(ChatMessage(ChatMessage.Role.ASSISTANT, text, modelName = modelTag))
+            }
         }
     }
 
