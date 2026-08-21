@@ -39,6 +39,10 @@ sealed class TaskEvent {
     /** The agent persisted a user-facing artifact (note/plan) into the vault. */
     data class ArtifactSaved(val path: String) : TaskEvent()
 
+    /** An open_app/switch_app action was verified to have brought [packageName] to the
+     *  foreground. The UI defers minimizing itself until this fires. */
+    data class TargetForegroundVerified(val packageName: String) : TaskEvent()
+
     /** Task completed successfully with an answer/summary. */
     data class Completed(val answer: String, val modelName: String? = null) : TaskEvent()
 

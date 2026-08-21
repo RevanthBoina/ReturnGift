@@ -1731,11 +1731,70 @@ success, and the `ActionVerifier` own-package guard.
 
 ---
 
+## BH — Background Handoff & Typed Terminal Outcome (2026-08-21)
+
+Covers the minimize-as-event handoff, notification-access preflight, parked-clarification
+persistence, and the typed TerminalOutcome that replaces string-matched cancel detection.
+
+### BH.1 Minimize only after verified foreground `[ADB]`
+- **Act**: send a device-automation task that opens another app (e.g. "Open WhatsApp").
+- **PASS**: ReturnGift stays in front until the loop verifies the target foreground
+  (logcat: `TargetForegroundVerified: <pkg>`); only then does `moveTaskToBack` run.
+
+### BH.2 Fallback minimize with no app launch `[ADB]`
+- **Act**: send a tap-only automation task (no open_app/switch_app).
+- **PASS**: after ~10s without a TargetForegroundVerified event, the chat minimizes anyway
+  (fallback preserves the old handoff behavior).
+
+### BH.3 No minimize when user left the chat `[ADB]`
+- **Act**: start an automation task and manually switch away from ReturnGift before the
+  verified event arrives.
+- **PASS**: the deferred minimize is skipped (activity not RESUMED, logcat notes the skip).
+
+### BH.4 Typed cancel detection `[ADB]`
+- **Act**: start a task, then press Stop. Also run a task whose final summary text equals
+  one of the localized cancel strings (e.g. via prompt "reply with exactly: Task cancelled").
+- **PASS**: Stop → `TaskEvent.Cancelled` via TerminalOutcome.CANCELLED (no string match);
+  a completed text-equals-cancel-string answer is treated as COMPLETED, not cancelled.
+
+### BH.5 Notification-access preflight `[ADB]`
+- **Act**: with notification-listener access off, send a task mentioning notifications
+  ("summarize my notifications").
+- **PASS**: a toast + system message warn that notification access is off (task not blocked).
+
+### BH.6 Parked clarification survives process death `[ADB]`
+- **Act**: start a task that triggers ask_user, let the ClarificationCard show, then
+  force-stop the app and relaunch.
+- **PASS**: on relaunch the chat shows the parked question once (informational, with the
+  "interrupted" note); answering there does not consume it as a task message.
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
 
-### 2026-08-21 � Phase B: truthful foreground detection
+### 2026-08-21 — Phase C: minimize-as-event + typed terminal outcome
+
+**Change:**
+1. New typed `AgentCallback.onTargetForegroundVerified(packageName)` emitted from the
+   ActionVerifier site (only when expected foreground is VERIFIED and not the assistant's
+   own package) — forwarded through the executeTask callbackProxy.
+2. New typed `AgentCallback.onTerminalOutcome(TerminalOutcome)` fired once at the terminal
+   seam (before the deferred onComplete/onError/onSystemDialogBlocked); CANCELLED derives
+   from the real `cancelled` AtomicBoolean. `TaskOrchestrator.onComplete` now switches on
+   this flag instead of string-matching three localized cancel strings.
+3. New `TaskEvent.TargetForegroundVerified` — `TaskFlowController` defers
+   `moveTaskToBack` until it arrives (10s timed fallback preserves the old handoff for
+   tap-only automation); minimize skipped when the activity is no longer RESUMED.
+4. Notification-access preflight in `sendTask` warns (toast + system message) when a
+   notification-reading task starts without notification-listener access.
+5. `ClarificationManager` persists the parked ask_user question to MMKV
+   (`clarification_pending_question`, Gson) and clears it on resolution; on relaunch
+   `TaskFlowController` surfaces an interrupted question once via `consumePersisted()`.
+QA: BH.1–BH.6. Pending device run.
+
+### 2026-08-21 — Phase B: truthful foreground detection
 
 **Change:** four fixes to make "which app is foreground" a truthful, verified signal:
 1. `ClawAccessibilityService.getForegroundPackage` fallback no longer returns the first
@@ -1743,15 +1802,15 @@ Format: `[date] [status] [test-id] description`
    application windows in descending layer order and prefers the input-focused window.
 2. `AppLifecycleManager.launchAndVerify` uses exact package match (was `startsWith` /
    case-insensitive, which could confirm a sibling package). `getActiveForegroundPackage`
-   drops the `ActivityManager.getRunningTasks` fallback (restricted since Android L � it
+   drops the `ActivityManager.getRunningTasks` fallback (restricted since Android L — it
    returned the caller's own task, a false-positive source) and delegates to the centralized
    accessibility getter.
 3. `OpenAppTool` no longer falls back to the deprecated unverified `openApp()` and then
-   reports "confirmed in foreground" � it returns a verified failure, and re-verifies
+   reports "confirmed in foreground" — it returns a verified failure, and re-verifies
    foreground after chain-launch dialog handling.
 4. `ActionVerifier.verifyAfter` skips foreground verification when the expected package is
    the assistant's own (CHANGED_STATE + skip detail instead of a misleading VERIFIED).
-QA: FT.1�FT.5. Pending device run.
+QA: FT.1–FT.5. Pending device run.
 
 ### 2026-08-21 — Phase A: stall/token defense (ObserveStallGuard + CRITICAL abort + StuckDetector wiring)
 

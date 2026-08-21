@@ -287,6 +287,9 @@ class TaskOrchestrator(
 
         val agentPrompt = agentPromptOverride?.takeIf { it.isNotBlank() } ?: task
         agentService.executeTask(agentPrompt, object : AgentCallback {
+            /** Set by onTerminalOutcome (fires before the deferred terminal callback). */
+            private var terminalOutcome = com.returngift.agent.agent.TerminalOutcome.COMPLETED
+
             override fun onLoopStart(round: Int) {
                 flushRoundBuffer()
                 XLog.d(TAG, "onLoopStart: round=$round")
@@ -365,14 +368,20 @@ class TaskOrchestrator(
                 }
             }
 
+            override fun onTargetForegroundVerified(packageName: String) {
+                XLog.i(TAG, "Target app verified in foreground: $packageName")
+                taskEventCallback?.invoke(TaskEvent.TargetForegroundVerified(packageName))
+            }
+
+            override fun onTerminalOutcome(outcome: com.returngift.agent.agent.TerminalOutcome) {
+                terminalOutcome = outcome
+            }
+
             override fun onComplete(round: Int, finalAnswer: String, totalTokens: Int, modelName: String?) {
                 XLog.i(TAG, "onComplete: rounds=$round, totalTokens=$totalTokens, model=$modelName, answer=$finalAnswer")
-                val cancelAnswers = setOf(
-                    ClawApplication.instance.getString(R.string.agent_task_cancel),
-                    ClawApplication.instance.getString(R.string.agent_task_cancelled),
-                    ClawApplication.instance.getString(R.string.channel_msg_task_cancelled)
-                )
-                if (finalAnswer.trim() in cancelAnswers) {
+                // Cancellation is detected from the typed terminal outcome recorded by
+                // DefaultAgentService's cancel flag — never by string-matching the answer.
+                if (terminalOutcome == com.returngift.agent.agent.TerminalOutcome.CANCELLED) {
                     taskEventCallback?.invoke(TaskEvent.Cancelled)
                     ForegroundService.resetToIdle(ClawApplication.instance)
                     flushRoundBuffer()

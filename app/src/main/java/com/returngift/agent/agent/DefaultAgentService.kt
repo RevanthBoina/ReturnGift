@@ -169,6 +169,7 @@ class DefaultAgentService : AgentService {
         running.set(true)
         cancelled.set(false)
         var terminalCallback: (() -> Unit)? = null
+        var terminalOutcome = TerminalOutcome.COMPLETED
 
         val callbackProxy = object : AgentCallback {
             override fun onLoopStart(round: Int) = callback.onLoopStart(round)
@@ -185,15 +186,20 @@ class DefaultAgentService : AgentService {
 
             override fun onTokenUpdate(status: TokenMonitor.Status) = callback.onTokenUpdate(status)
 
+            override fun onTargetForegroundVerified(packageName: String) = callback.onTargetForegroundVerified(packageName)
+
             override fun onComplete(round: Int, finalAnswer: String, totalTokens: Int, modelName: String?) {
+                terminalOutcome = TerminalOutcome.COMPLETED
                 terminalCallback = { callback.onComplete(round, finalAnswer, totalTokens, modelName) }
             }
 
             override fun onError(round: Int, error: Exception, totalTokens: Int) {
+                terminalOutcome = TerminalOutcome.ERROR
                 terminalCallback = { callback.onError(round, error, totalTokens) }
             }
 
             override fun onSystemDialogBlocked(round: Int, totalTokens: Int) {
+                terminalOutcome = TerminalOutcome.SYSTEM_DIALOG_BLOCKED
                 terminalCallback = { callback.onSystemDialogBlocked(round, totalTokens) }
             }
         }
@@ -205,11 +211,13 @@ class DefaultAgentService : AgentService {
                 if (terminalCallback == null) {
                     if (cancelled.get()) {
                         XLog.i(TAG, "Agent task cancelled (interrupted)")
+                        terminalOutcome = TerminalOutcome.CANCELLED
                         terminalCallback = {
                             callback.onComplete(0, ClawApplication.instance.getString(R.string.agent_task_cancel), 0)
                         }
                     } else {
                         XLog.e(TAG, "Agent execution error", e)
+                        terminalOutcome = TerminalOutcome.ERROR
                         terminalCallback = { callback.onError(0, e, 0) }
                     }
                 }
@@ -228,7 +236,14 @@ class DefaultAgentService : AgentService {
                 running.set(false)
                 val terminal = terminalCallback
                 terminalCallback = null
-                terminal?.invoke()
+                if (terminal != null) {
+                    // Typed terminal state first — listeners switch on this flag, not on
+                    // localized answer strings, to detect user cancellation.
+                    callback.onTerminalOutcome(
+                        if (cancelled.get()) TerminalOutcome.CANCELLED else terminalOutcome
+                    )
+                    terminal.invoke()
+                }
             }
         }
     }
@@ -842,6 +857,14 @@ class DefaultAgentService : AgentService {
                     verification = ActionVerifier.verifyAfter(
                         a11ySvc, beforeState, result.isSuccess, expectedFg
                     )
+                    // Typed "target app is truly on screen" signal — the UI defers
+                    // minimizing the chat until this fires (never for our own package).
+                    if (expectedFg != null
+                        && verification?.outcome == ActionVerifier.VerificationOutcome.VERIFIED
+                        && expectedFg != ClawApplication.instance.packageName
+                    ) {
+                        callback.onTargetForegroundVerified(expectedFg)
+                    }
                     val overlay = a11ySvc.isSystemOverlayLikely()
                     val argsFp = (params["text"]?.toString() ?: params["node_id"]?.toString()
                         ?: params["package_name"]?.toString() ?: params["key"]?.toString() ?: "").take(40)

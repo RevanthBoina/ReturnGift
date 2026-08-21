@@ -59,11 +59,16 @@ class TaskFlowController(
 
     companion object {
         private const val TAG = "TaskFlowController"
+        /** How long to wait for a verified-foreground event before minimizing anyway. */
+        private const val MINIMIZE_FALLBACK_MS = 10_000L
     }
 
     private var sendTaskRetryCount = 0
     private var lastMonitorStatusNote: String? = null
     private val pipelineRouter = PipelineRouter(activity)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingMinimizeTaskText: String? = null
+    private var minimizeFallbackRunnable: Runnable? = null
 
     /** Live ask_user question the agent is parked on, or null. */
     val pendingClarification = androidx.compose.runtime.mutableStateOf<ClarificationManager.PendingQuestion?>(null)
@@ -82,7 +87,16 @@ class TaskFlowController(
         ClarificationManager.addListener(clarificationListener)
         // Activity recreation: a question may already be parked — restore the card
         // state without re-posting the system message (the original one persists).
-        ClarificationManager.snapshot()?.let { pendingClarification.value = it }
+        val live = ClarificationManager.snapshot()
+        if (live != null) {
+            pendingClarification.value = live
+        } else {
+            // Process death parked a question that no loop thread can consume anymore —
+            // surface it once so the user knows what the agent was asking.
+            ClarificationManager.consumePersisted()?.let { q ->
+                addSystem("❓ ${q.question}\n(The task was interrupted before you answered — send the task again to continue.)")
+            }
+        }
     }
 
     /** Unregister UI listeners. Call from Activity.onDestroy. */
@@ -202,6 +216,16 @@ class TaskFlowController(
         }
         sendTaskRetryCount = 0
 
+        // Preflight: tasks that read notifications need notification-listener access —
+        // warn up front instead of letting the agent discover an empty notification list.
+        if (text.lowercase().contains("notification")
+            && AppCapabilityCoordinator.notificationAccessState(activity) != ServiceBindingState.READY
+        ) {
+            XLog.w(TAG, "sendTask: notification task started without notification access")
+            Toast.makeText(activity, "Notification access is off", Toast.LENGTH_LONG).show()
+            addSystem("⚠️ This task reads notifications, but notification access is off — the agent can't see them. Enable it in Settings → Permissions.")
+        }
+
         ensureNotificationPermission()
         uiState.isAwaitingReply.value = false
         uiState.isTaskRunning.value = false
@@ -229,12 +253,14 @@ class TaskFlowController(
                     appViewModel.startTask(text, taskId, agentPromptOverride = agentPromptOverride) { event ->
                         activity.runOnUiThread { handleTaskEvent(event) }
                     }
-                    // Move ReturnGift to the background once a device-automation task starts
-                    // so the agent loop observes the target app's screen (via Accessibility's
-                    // active window) instead of its own chat UI. The floating pill keeps the
-                    // user informed and offers a way back / stop.
+                    // Move ReturnGift to the background once a device-automation task's
+                    // target app is VERIFIED in the foreground
+                    // (TaskEvent.TargetForegroundVerified) so the agent loop observes the
+                    // target app's screen instead of its own chat UI. A timed fallback
+                    // preserves the old behavior for automation tasks that never launch
+                    // another app. The floating pill keeps the user informed.
                     if (isDeviceAutomationTask(text)) {
-                        minimizeToBackground(text)
+                        scheduleMinimizeOnVerifiedForeground(text)
                     }
                 } catch (e: Exception) {
                     XLog.e(TAG, "sendTask failed: ${e.message}", e)
@@ -275,6 +301,46 @@ class TaskFlowController(
             }
         } catch (e: Exception) {
             XLog.e(TAG, "minimizeToBackground failed", e)
+        }
+    }
+
+    /**
+     * Defer the background-handoff minimize until the agent loop verifies the target app
+     * is in the foreground (TaskEvent.TargetForegroundVerified). If no verification arrives
+     * within [MINIMIZE_FALLBACK_MS] (e.g. tap-only automation on the current screen),
+     * minimize anyway to preserve the original handoff behavior.
+     */
+    private fun scheduleMinimizeOnVerifiedForeground(taskText: String) {
+        cancelPendingMinimize()
+        pendingMinimizeTaskText = taskText
+        val fallback = Runnable {
+            val text = pendingMinimizeTaskText ?: return@Runnable
+            XLog.i(TAG, "no TargetForegroundVerified within ${MINIMIZE_FALLBACK_MS}ms — minimizing as fallback")
+            pendingMinimizeTaskText = null
+            minimizeFallbackRunnable = null
+            minimizeToBackground(text)
+        }
+        minimizeFallbackRunnable = fallback
+        mainHandler.postDelayed(fallback, MINIMIZE_FALLBACK_MS)
+    }
+
+    private fun cancelPendingMinimize() {
+        minimizeFallbackRunnable?.let { mainHandler.removeCallbacks(it) }
+        minimizeFallbackRunnable = null
+        pendingMinimizeTaskText = null
+    }
+
+    private fun onTargetForegroundVerified() {
+        val text = pendingMinimizeTaskText ?: return
+        minimizeFallbackRunnable?.let { mainHandler.removeCallbacks(it) }
+        minimizeFallbackRunnable = null
+        pendingMinimizeTaskText = null
+        // Only minimize when our UI is actually in front — the user may already have
+        // navigated away on their own.
+        if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            minimizeToBackground(text)
+        } else {
+            XLog.i(TAG, "TargetForegroundVerified: activity not resumed, skipping minimize")
         }
     }
 
@@ -422,6 +488,10 @@ class TaskFlowController(
                     uiState.isAwaitingReply.value = false
                     uiState.isTaskRunning.value = true
                 }
+                is TaskEvent.TargetForegroundVerified -> {
+                    XLog.i(TAG, "TargetForegroundVerified: ${event.packageName} — performing deferred minimize")
+                    onTargetForegroundVerified()
+                }
                 is TaskEvent.TokenUpdate, is TaskEvent.Thinking -> Unit
             }
         } catch (e: Exception) {
@@ -449,6 +519,7 @@ class TaskFlowController(
 
     private fun cleanupAfterTask() {
         XLog.i(TAG, "cleanupAfterTask: isProcessing=FALSE")
+        cancelPendingMinimize()
         uiState.isAwaitingReply.value = false
         uiState.isTaskRunning.value = false
         removeTypingIndicator()

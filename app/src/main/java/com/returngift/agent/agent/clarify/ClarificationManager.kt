@@ -5,6 +5,8 @@ package com.returngift.agent.agent.clarify
 
 import android.os.Handler
 import android.os.Looper
+import com.google.gson.Gson
+import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
@@ -29,6 +31,7 @@ object ClarificationManager {
     private const val TAG = "ClarificationManager"
     const val DEFAULT_TIMEOUT_MS = 120_000L
     private const val POLL_SLICE_MS = 250L
+    private const val KEY_PERSISTED_QUESTION = "clarification_pending_question"
 
     data class PendingQuestion(
         val id: String,
@@ -55,6 +58,40 @@ object ClarificationManager {
 
     /** Main-thread check, overridable in JVM unit tests where Looper is stubbed. */
     internal var isMainThread: () -> Boolean = { Looper.myLooper() == Looper.getMainLooper() }
+
+    private val gson = Gson()
+
+    /**
+     * Persists the parked question so a process death does not silently lose what the
+     * agent was asking. Overridable in JVM unit tests (MMKV is uninitialized there).
+     * Called with null when the question resolves (answered/cancelled/timeout).
+     */
+    internal var persistHook: (PendingQuestion?) -> Unit = { q ->
+        try {
+            KVUtils.putString(KEY_PERSISTED_QUESTION, q?.let { gson.toJson(it) })
+        } catch (e: Exception) {
+            XLog.w(TAG, "clarification persistence failed", e)
+        }
+    }
+
+    /**
+     * Read and clear a persisted parked question (from a previous process). The restored
+     * question is informational only — no loop thread is parked on it anymore.
+     */
+    fun consumePersisted(): PendingQuestion? {
+        return try {
+            val json = KVUtils.getString(KEY_PERSISTED_QUESTION, "")
+            if (json.isEmpty()) {
+                null
+            } else {
+                KVUtils.putString(KEY_PERSISTED_QUESTION, null)
+                gson.fromJson(json, PendingQuestion::class.java)
+            }
+        } catch (e: Exception) {
+            XLog.w(TAG, "consumePersisted failed", e)
+            null
+        }
+    }
 
     /** Current pending question, or null. Safe to call from any thread. */
     fun snapshot(): PendingQuestion? = pending
@@ -101,6 +138,7 @@ object ClarificationManager {
             cancelled = false
         }
         XLog.i(TAG, "Clarification pending: \"$question\" choices=${choices.size} freeText=$allowFreeText")
+        persistHook(pending)
         notifyListeners(pending)
 
         val activeLatch = latch
@@ -163,6 +201,7 @@ object ClarificationManager {
             answer = null
             cancelled = false
         }
+        persistHook(null)
         notifyListeners(null)
     }
 
