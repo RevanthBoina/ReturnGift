@@ -70,6 +70,58 @@ object KBManager {
     fun writeFromJava(path: String, frontmatter: Map<String, Any>, content: String): Boolean =
         write(path, frontmatter, content).isSuccess
 
+    /**
+     * Write (create or overwrite) a binary file — screenshots, images, any non-text
+     * artifact. Returns "Written: <path>" on success so ArtifactContract's existing
+     * path extraction picks it up unchanged.
+     */
+    fun saveBytes(path: String, bytes: ByteArray): Result<String> {
+        return try {
+            val file = resolve(path)
+            file.parentFile?.mkdirs()
+            file.writeBytes(bytes)
+            XLog.i(TAG, "kb_save_bytes: $path (${bytes.size} bytes)")
+            Result.success("Written: $path")
+        } catch (e: Exception) {
+            XLog.e(TAG, "kb_save_bytes failed: $path", e)
+            Result.failure(e)
+        }
+    }
+
+    /** Java-callable variant of [saveBytes] — see [writeFromJava] for why this exists. */
+    fun saveBytesFromJava(path: String, bytes: ByteArray): Boolean =
+        saveBytes(path, bytes).isSuccess
+
+    /**
+     * MIME type for a vault path, derived from its extension. Used for FileProvider
+     * open/share intents and to decide whether a preview (image) is possible.
+     * Pure — safe to call from JVM unit tests.
+     */
+    fun mimeOf(path: String): String = when (File(path).extension.lowercase(Locale.US)) {
+        "png" -> "image/png"
+        "jpg", "jpeg" -> "image/jpeg"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "bmp" -> "image/bmp"
+        "pdf" -> "application/pdf"
+        "md", "markdown" -> "text/markdown"
+        "txt", "log" -> "text/plain"
+        "json" -> "application/json"
+        "csv" -> "text/csv"
+        "html", "htm" -> "text/html"
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        "mp4" -> "video/mp4"
+        else -> "application/octet-stream"
+    }
+
+    /** True when the vault path points at an image that can be previewed inline. */
+    fun isImage(path: String): Boolean = mimeOf(path).startsWith("image/")
+
+    /** True when the vault path holds text that [read] can render. */
+    fun isTextLike(path: String): Boolean =
+        mimeOf(path).let { it.startsWith("text/") || it == "application/json" }
+
     /** Read the full content of a file. */
     fun read(path: String): Result<String> {
         return try {

@@ -8,6 +8,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.speech.RecognizerIntent
 import android.text.format.DateUtils
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -65,6 +66,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
+import com.bumptech.glide.Glide
+import com.returngift.agent.agent.knowledge.KBManager
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -698,7 +703,13 @@ private fun MessageList(
                     colors = colors,
                     modelName = message.modelName
                 )
-                ChatMessage.Role.SYSTEM -> SystemMessage(message.content, colors)
+                ChatMessage.Role.SYSTEM -> {
+                    if (message.artifactPath != null) {
+                        ArtifactCard(message, colors)
+                    } else {
+                        SystemMessage(message.content, colors)
+                    }
+                }
                 ChatMessage.Role.TOOL_GROUP -> ToolGroup(message, colors)
             }
         }
@@ -938,6 +949,102 @@ private fun SystemMessage(text: String, colors: ReturnGiftColors) {
             .fillMaxWidth()
             .padding(horizontal = 40.dp, vertical = 6.dp),
     )
+}
+
+// ======================== ARTIFACT CARD ========================
+
+/**
+ * Clickable card for a SYSTEM message that announces a vault artifact
+ * (ChatMessage.artifactPath != null): image thumbnail (Glide) or file icon,
+ * name + path, tap opens via FileProvider with the correct MIME type.
+ */
+@Composable
+private fun ArtifactCard(message: ChatMessage, colors: ReturnGiftColors) {
+    val context = LocalContext.current
+    val path = message.artifactPath ?: return
+    val mime = message.artifactMime ?: KBManager.mimeOf(path)
+    val fileName = path.substringAfterLast('/')
+
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 4.dp)
+            .clickable { openVaultArtifact(context, path, mime) },
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            if (mime.startsWith("image/")) {
+                AndroidView(
+                    factory = { ctx ->
+                        ImageView(ctx).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                        }
+                    },
+                    update = { view ->
+                        Glide.with(view).load(KBManager.absoluteFile(path)).centerCrop().into(view)
+                    },
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                )
+            } else {
+                Icon(
+                    Icons.Default.InsertDriveFile,
+                    contentDescription = null,
+                    tint = colors.accent,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    fileName,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    message.content,
+                    fontSize = 11.sp,
+                    color = colors.textTertiary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Tap to open",
+                    fontSize = 11.sp,
+                    color = colors.accent,
+                )
+            }
+        }
+    }
+}
+
+private fun openVaultArtifact(context: android.content.Context, path: String, mime: String) {
+    try {
+        val target = KBManager.absoluteFile(path)
+        if (!target.exists()) {
+            Toast.makeText(context, "File no longer exists", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Open with"))
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "No app can open this file", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        XLog.e("ChatScreen", "openVaultArtifact failed: $path", e)
+        Toast.makeText(context, "Couldn't open: ${e.message}", Toast.LENGTH_LONG).show()
+    }
 }
 
 @Composable

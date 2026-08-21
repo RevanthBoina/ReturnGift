@@ -43,15 +43,17 @@ internal class ArtifactContract private constructor(
             DeliverableType.MARKDOWN_NOTE -> "\n\n" + """
                 ## Task Guard: Artifact Contract
                 This task requires SAVING a note/list/plan into the vault.
-                finish(summary) will be REJECTED until a kb_write (or kb_append) call has actually succeeded in this task.
+                finish(summary) will be REJECTED until a kb_write / kb_append / save_file call has actually succeeded in this task.
                 After saving, name the exact vault path in finish(summary).
             """.trimIndent()
             DeliverableType.EXTERNAL_ARTIFACT -> "\n\n" + """
                 ## Task Guard: Artifact Contract
                 This task asks for a binary/external deliverable (PDF, presentation, website, or document).
-                You CANNOT create such files on-device — only Markdown notes via kb_write.
-                finish(summary) will be REJECTED if it claims a PDF/PPT/website/document was created, saved, or downloaded.
-                Honest completions: save the content as a Markdown note (kb_write) and name its vault path, or state plainly that the binary artifact cannot be produced on-device.
+                Complex renderings (real PDFs, PPTX decks, websites) still cannot be produced on-device — but binary
+                files CAN now be persisted via save_file (base64 content), e.g. screenshots/ images under the vault.
+                finish(summary) will be REJECTED if it claims a PDF/PPT/website/document was created while nothing was saved.
+                Honest completions: save the content as a Markdown note (kb_write) or binary file (save_file) and name
+                its exact vault path, or state plainly that the binary artifact cannot be produced on-device.
             """.trimIndent()
         }
     }
@@ -141,10 +143,24 @@ internal class ArtifactContract private constructor(
             val prefix = when (toolName) {
                 "kb_write" -> "Written: "
                 "kb_append" -> "Appended to: "
+                "save_file" -> "Written: "
+                "take_screenshot" -> return extractScreenshotPath(data)
                 else -> return null
             }
             if (!data.startsWith(prefix)) return null
             return data.removePrefix(prefix).trim().takeIf { it.isNotEmpty() }
+        }
+
+        /**
+         * take_screenshot(save_to_vault=true) succeeds with "<cache path>\nSaved to vault: <path>"
+         * — the trailer is the persisted artifact the user can actually see.
+         */
+        private fun extractScreenshotPath(data: String): String? {
+            val marker = "\nSaved to vault: "
+            val idx = data.indexOf(marker)
+            if (idx < 0) return null
+            return data.substring(idx + marker.length).lineSequence().firstOrNull()
+                ?.trim()?.takeIf { it.isNotEmpty() }
         }
 
         /** Extract the vault path from a web_fetch result's "Saved to vault: <path>" trailer. */

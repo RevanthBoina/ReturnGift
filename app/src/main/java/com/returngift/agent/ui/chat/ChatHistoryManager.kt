@@ -35,6 +35,8 @@ object ChatHistoryManager {
 
     private const val MESSAGE_TIMESTAMP_PREFIX = "<!-- returngift:timestamp="
     private const val MESSAGE_TIMESTAMP_SUFFIX = " -->"
+    // Marker persisting an artifact announcement (SYSTEM message): path|mime, vault-relative.
+    private const val MESSAGE_ARTIFACT_PREFIX = "<!-- returngift:artifact="
     private val frontmatterDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
 
     data class ConversationSummary(
@@ -96,6 +98,9 @@ object ChatHistoryManager {
                 ChatMessage.Role.SYSTEM -> {
                     sb.appendLine("## System")
                     sb.appendLine(serializeTimestamp(msg.timestamp))
+                    msg.artifactPath?.let { path ->
+                        sb.appendLine("$MESSAGE_ARTIFACT_PREFIX$path|${msg.artifactMime ?: ""}$MESSAGE_TIMESTAMP_SUFFIX")
+                    }
                     sb.appendLine(msg.content)
                     sb.appendLine()
                 }
@@ -140,6 +145,8 @@ object ChatHistoryManager {
         var currentRole: ChatMessage.Role? = null
         var currentModelName: String? = null
         var currentTimestamp: Long? = null
+        var currentArtifactPath: String? = null
+        var currentArtifactMime: String? = null
         val contentBuilder = StringBuilder()
 
         for (line in lines) {
@@ -158,33 +165,47 @@ object ChatHistoryManager {
 
             when {
                 line.startsWith("## User") -> {
-                    flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, fallbackConversationTimestamp)
+                    flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, currentArtifactPath, currentArtifactMime, fallbackConversationTimestamp)
                     currentRole = ChatMessage.Role.USER
                     currentModelName = null
                     currentTimestamp = null
+                    currentArtifactPath = null
+                    currentArtifactMime = null
                 }
                 line.startsWith("## 🦞 Assistant") -> {
-                    flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, fallbackConversationTimestamp)
+                    flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, currentArtifactPath, currentArtifactMime, fallbackConversationTimestamp)
                     currentRole = ChatMessage.Role.ASSISTANT
                     // Extract model name from "## 🦞 Assistant [ModelName]"
                     val bracketMatch = Regex("\\[(.+)]").find(line)
                     currentModelName = bracketMatch?.groupValues?.get(1)
                     currentTimestamp = null
+                    currentArtifactPath = null
+                    currentArtifactMime = null
                 }
                 line.startsWith("## System") -> {
-                    flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, fallbackConversationTimestamp)
+                    flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, currentArtifactPath, currentArtifactMime, fallbackConversationTimestamp)
                     currentRole = ChatMessage.Role.SYSTEM
                     currentModelName = null
                     currentTimestamp = null
+                    currentArtifactPath = null
+                    currentArtifactMime = null
                 }
                 line.startsWith("## Tools") -> {
-                    flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, fallbackConversationTimestamp)
+                    flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, currentArtifactPath, currentArtifactMime, fallbackConversationTimestamp)
                     currentRole = ChatMessage.Role.TOOL_GROUP
                     currentModelName = null
                     currentTimestamp = null
+                    currentArtifactPath = null
+                    currentArtifactMime = null
                 }
                 currentRole != null && line.startsWith(MESSAGE_TIMESTAMP_PREFIX) -> {
                     currentTimestamp = parseMessageTimestamp(line)
+                }
+                currentRole != null && line.startsWith(MESSAGE_ARTIFACT_PREFIX) -> {
+                    val payload = line.removePrefix(MESSAGE_ARTIFACT_PREFIX)
+                        .removeSuffix(MESSAGE_TIMESTAMP_SUFFIX)
+                    currentArtifactPath = payload.substringBefore('|').trim().takeIf { it.isNotEmpty() }
+                    currentArtifactMime = payload.substringAfter('|', "").trim().takeIf { it.isNotEmpty() }
                 }
                 else -> {
                     if (currentRole != null && line.isNotBlank()) {
@@ -194,7 +215,7 @@ object ChatHistoryManager {
                 }
             }
         }
-        flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, fallbackConversationTimestamp)
+        flushMessage(messages, currentRole, contentBuilder, currentModelName, currentTimestamp, currentArtifactPath, currentArtifactMime, fallbackConversationTimestamp)
 
         return messages
     }
@@ -205,6 +226,8 @@ object ChatHistoryManager {
         content: StringBuilder,
         modelName: String? = null,
         timestamp: Long? = null,
+        artifactPath: String? = null,
+        artifactMime: String? = null,
         fallbackConversationTimestamp: Long
     ) {
         if (role != null && content.isNotEmpty()) {
@@ -214,7 +237,9 @@ object ChatHistoryManager {
                     role = role,
                     content = content.toString().trim(),
                     timestamp = resolvedTimestamp,
-                    modelName = modelName
+                    modelName = modelName,
+                    artifactPath = artifactPath,
+                    artifactMime = artifactMime
                 )
             )
             content.clear()

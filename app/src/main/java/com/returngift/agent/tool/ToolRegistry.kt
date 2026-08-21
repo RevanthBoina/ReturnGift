@@ -54,6 +54,7 @@ object ToolRegistry {
         register(KbSearchTool())
         register(KbAppendTool())
         register(KbAddTodoTool())
+        register(KbSaveFileTool())
     }
 
     private fun registerTvTools() {

@@ -480,9 +480,17 @@ class TaskFlowController(
                     addSystem(event.description)
                 }
                 is TaskEvent.ArtifactSaved -> {
-                    // Make saved work visible immediately — the model's final summary
-                    // alone left vault artifacts invisible to the user.
-                    addSystem("📄 Saved to vault: ${event.path}\nTap the folder icon in the top bar to view it.")
+                    // Typed artifact card (clickable, correct MIME) instead of a flat string —
+                    // the model's final summary alone left vault artifacts invisible to the user.
+                    uiState.messages.add(
+                        ChatMessage(
+                            ChatMessage.Role.SYSTEM,
+                            "📄 Saved to vault: ${event.path}",
+                            artifactPath = event.path,
+                            artifactMime = com.returngift.agent.agent.knowledge.KBManager.mimeOf(event.path),
+                        )
+                    )
+                    onPersistConversation()
                 }
                 is TaskEvent.LoopStart -> {
                     uiState.isAwaitingReply.value = false

@@ -13,6 +13,10 @@ data class ChatMessage(
     val toolSteps: List<ToolStep>? = null,
     val modelName: String? = null,
     val isEdited: Boolean = false,
+    /** Vault-relative path when this message announces a saved artifact (SYSTEM role). */
+    val artifactPath: String? = null,
+    /** MIME type of [artifactPath] (KBManager.mimeOf) — drives preview + open intent. */
+    val artifactMime: String? = null,
     val id: String = java.util.UUID.randomUUID().toString(),
 ) {
     enum class Role { USER, ASSISTANT, SYSTEM, TOOL_GROUP }

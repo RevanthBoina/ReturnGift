@@ -1770,9 +1770,71 @@ persistence, and the typed TerminalOutcome that replaces string-matched cancel d
 
 ---
 
+## VA — Vault Artifacts & Binary Pipeline (2026-08-21)
+
+Covers the vault binary pipeline: save_file tool, screenshot vault/gallery handoff,
+VaultActivity mime routing + previews, and chat artifact cards.
+
+### VA.1 save_file persists binary `[ADB]`
+- **Act**: task the model with saving binary content (e.g. "save this base64 image via
+  save_file to images/test.png").
+- **PASS**: `screenshots/`/`images/<name>` appears in Vault; logcat shows
+  `kb_save_bytes: <path>`; invalid base64 returns an error tool result.
+
+### VA.2 Screenshot to vault `[ADB]`
+- **Act**: "take a screenshot and save it to the vault".
+- **PASS**: `take_screenshot` result contains "Saved to vault: screenshots/<ts>.png";
+  the file is visible in Vault with an image preview; a 📄 artifact card appears in chat.
+
+### VA.3 Screenshot to gallery `[ADB]`
+- **Act**: "take a screenshot and put it in my gallery".
+- **PASS**: result contains "Saved to gallery: Pictures/ReturnGift/<ts>.png"; the image
+  appears in the system Photos/Gallery app (Android 10+).
+
+### VA.4 Vault mime routing `[ADB]`
+- **Act**: in Vault, open a .png, a .md, and an unknown-extension binary.
+- **PASS**: image shows a Glide preview; text shows selectable content; binary shows a
+  "no inline preview" note. "Open with…" launches with the correct MIME (not text/plain);
+  Share sends the file with its real MIME type.
+
+### VA.5 Chat artifact card `[ADB]`
+- **Act**: run any task that saves a vault artifact; tap the resulting 📄 card in chat.
+- **PASS**: card shows filename + path + "Tap to open"; images show a thumbnail; tapping
+  opens via FileProvider with the correct MIME. Card survives conversation reload
+  (marker line in the chat markdown re-parsed on open).
+
+### VA.6 ArtifactContract counts binary saves `[ADB]`
+- **Act**: "take a screenshot, save it to the vault and finish" — verify the task can
+  complete after the vault save (no spurious FINISH REJECTED).
+- **PASS**: save_file / take_screenshot(save_to_vault) results count as saved artifacts;
+  a claim of "saved" with no actual save is still rejected.
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-21 — Phase D: vault binary pipeline
+
+**Change:**
+1. `KBManager.saveBytes` / `saveBytesFromJava` (Java-safe wrapper) / `mimeOf` / `isImage`
+   / `isTextLike` — the vault can now hold binary artifacts; MIME derives from extension.
+2. New `save_file` tool (KbSaveFileTool): base64 content → vault binary write, registered
+   once in ToolRegistry.registerCommonTools (registration is global — both loops see it).
+3. `take_screenshot` gains `save_to_vault` (persists screenshots/<ts>.png into the vault,
+   "Saved to vault:" trailer parsed by ArtifactContract) and `to_gallery` (MediaStore
+   insert into Pictures/ReturnGift, API 29+).
+4. VaultActivity: mime-routed "Open with…" (was hardcoded text/plain), new Share action,
+   Glide image preview, no-preview fallback for binaries, text preview only for text-like
+   files (no more garbage rendering of binaries).
+5. ChatMessage gains artifactPath/artifactMime; ChatHistoryManager persists them as a
+   `<!-- returngift:artifact=path|mime -->` marker line (backward compatible); ChatScreen
+   renders a SYSTEM message with an artifact as a clickable ArtifactCard (Glide thumbnail
+   for images, FileProvider open with correct MIME).
+6. TaskFlowController emits the typed artifact message on TaskEvent.ArtifactSaved;
+   ArtifactContract now counts save_file and take_screenshot vault saves.
+QA: VA.1–VA.6. Pending device run.
 
 ### 2026-08-21 — Phase C: minimize-as-event + typed terminal outcome
 
