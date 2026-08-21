@@ -353,8 +353,10 @@ class TaskOrchestrator(
                 taskEventCallback?.invoke(TaskEvent.ToolResult(displayName, success, data ?: ""))
 
                 // Surface vault artifacts in chat so saved work (plans/notes) is visible,
-                // not just claimed in the final summary.
-                kbArtifactPath(toolName, result)?.let { path ->
+                // not just claimed in the final summary. Use toolId — the loop passes the
+                // REAL tool name there; toolName is the localized display name, which would
+                // break the toolName match for save_file/take_screenshot in non-EN locales.
+                kbArtifactPath(toolId, result)?.let { path ->
                     taskEventCallback?.invoke(TaskEvent.ArtifactSaved(path))
                 }
 

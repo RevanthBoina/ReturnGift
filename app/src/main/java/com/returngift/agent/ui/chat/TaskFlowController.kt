@@ -67,6 +67,7 @@ class TaskFlowController(
     private var lastMonitorStatusNote: String? = null
     private val pipelineRouter = PipelineRouter(activity)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var checkpointHintShown = false
     private var pendingMinimizeTaskText: String? = null
     private var minimizeFallbackRunnable: Runnable? = null
 
@@ -120,6 +121,22 @@ class TaskFlowController(
             submitClarificationAnswer(text)
             return
         }
+
+        // Checkpoint resume: an explicit "resume"/"continue" restarts the interrupted
+        // task with its M3A-style step history prepended; otherwise hint once.
+        var text = text
+        val checkpoint = com.returngift.agent.agent.checkpoint.TaskCheckpointStore.consumeIfResumeIntent(text)
+        if (checkpoint != null) {
+            addSystem("↩️ Resuming interrupted task (${checkpoint.path})")
+            text = checkpoint.taskText + "\n\n" +
+                com.returngift.agent.agent.checkpoint.TaskCheckpointStore.renderPromptContext(checkpoint)
+        } else if (!checkpointHintShown) {
+            com.returngift.agent.agent.checkpoint.TaskCheckpointStore.peek()?.let { cp ->
+                checkpointHintShown = true
+                addSystem("An earlier task was interrupted — type \"resume\" to continue it (${cp.path}).")
+            }
+        }
+
         if (appViewModel.isTaskRunning()) {
             addSystem("Another task is still running. Stop it first.")
             onTaskTerminal?.invoke(TaskEvent.Failed("Another task is still running. Stop it first."))

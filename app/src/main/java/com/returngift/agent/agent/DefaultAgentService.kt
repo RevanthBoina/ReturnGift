@@ -170,6 +170,9 @@ class DefaultAgentService : AgentService {
         cancelled.set(false)
         var terminalCallback: (() -> Unit)? = null
         var terminalOutcome = TerminalOutcome.COMPLETED
+        // M3A-style per-step history — the resumable memory persisted as a checkpoint
+        // when the task is cancelled (see TaskCheckpointStore).
+        val stepHistory = mutableListOf<String>()
 
         val callbackProxy = object : AgentCallback {
             override fun onLoopStart(round: Int) = callback.onLoopStart(round)
@@ -206,7 +209,7 @@ class DefaultAgentService : AgentService {
 
         taskFuture = executor?.submit {
             try {
-                runAgentLoop(userPrompt, callbackProxy)
+                runAgentLoop(userPrompt, callbackProxy, stepHistory)
             } catch (e: Exception) {
                 if (terminalCallback == null) {
                     if (cancelled.get()) {
@@ -239,9 +242,18 @@ class DefaultAgentService : AgentService {
                 if (terminal != null) {
                     // Typed terminal state first — listeners switch on this flag, not on
                     // localized answer strings, to detect user cancellation.
-                    callback.onTerminalOutcome(
-                        if (cancelled.get()) TerminalOutcome.CANCELLED else terminalOutcome
-                    )
+                    val outcome = if (cancelled.get()) TerminalOutcome.CANCELLED else terminalOutcome
+                    // Finalizer (Design v2): the single terminal seam — checkpoint the
+                    // interrupted task's step history, or retire a stale checkpoint when
+                    // the matching task completed cleanly.
+                    when (outcome) {
+                        TerminalOutcome.CANCELLED ->
+                            com.returngift.agent.agent.checkpoint.TaskCheckpointStore.write(userPrompt, stepHistory)
+                        TerminalOutcome.COMPLETED ->
+                            com.returngift.agent.agent.checkpoint.TaskCheckpointStore.clearIfTaskMatches(userPrompt)
+                        else -> Unit
+                    }
+                    callback.onTerminalOutcome(outcome)
                     terminal.invoke()
                 }
             }
@@ -454,7 +466,11 @@ class DefaultAgentService : AgentService {
 
     // ==================== Main Execution Loop ====================
 
-    private fun runAgentLoop(userPrompt: String, callback: AgentCallback) {
+    private fun runAgentLoop(
+        userPrompt: String,
+        callback: AgentCallback,
+        stepHistory: MutableList<String>? = null,
+    ) {
         // Pre-flight check
         preCheck()?.let {
             callback.onError(0, RuntimeException(it), 0)
@@ -901,6 +917,11 @@ class DefaultAgentService : AgentService {
 
                 callback.onToolResult(iterations, toolName, displayName, paramsString, result)
                 if (toolName in ACTION_TOOLS) madeActionThisRound = true
+                // M3A-style step history for the checkpoint finalizer: tool + outcome + error.
+                stepHistory?.add(
+                    "$iterations. $toolName — " +
+                        if (result.isSuccess) "ok" else "FAILED: ${result.error ?: "unknown error"}"
+                )
                 lastToolError = if (result.isSuccess) null else (result.error ?: "unknown error")
                 if (result.isSuccess) {
                     inAppSearchGuard.recordSuccessfulTool(toolName, params)

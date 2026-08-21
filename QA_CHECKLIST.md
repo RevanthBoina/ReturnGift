@@ -1811,9 +1811,64 @@ VaultActivity mime routing + previews, and chat artifact cards.
 
 ---
 
+## CK — Task Checkpoints & Resume (2026-08-21)
+
+Covers the M3A-style checkpoint finalizer (cancel -> vault checkpoint) and the
+resume path (explicit "resume"/"continue" with step-history injection).
+
+### CK.1 Checkpoint written on cancel `[ADB]`
+- **Act**: start a multi-step automation task, let 2-3 steps run, press Stop.
+- **PASS**: vault contains notes/<slug>-draft.md with frontmatter type=checkpoint, the
+  task text, and a step history list; logcat shows "checkpoint written".
+
+### CK.2 No checkpoint on clean completion `[ADB]`
+- **Act**: run a task to completion.
+- **PASS**: no notes/*-draft.md is created; a pre-existing checkpoint for that exact task
+  is retired (clearIfTaskMatches).
+
+### CK.3 Resume hint `[ADB]`
+- **Act**: after CK.1, type any new unrelated message.
+- **PASS**: a system message appears once: 'An earlier task was interrupted — type
+  "resume" to continue it (notes/<slug>-draft.md)'.
+
+### CK.4 Resume execution `[ADB]`
+- **Act**: type "resume".
+- **PASS**: the ORIGINAL task restarts with the RESUME CONTEXT (step history) prepended
+  — visible in logcat prompt; the checkpoint pointer is consumed (second "resume" does
+  not re-trigger unless a new checkpoint exists).
+
+### CK.5 No hijack of unrelated text `[ADB]`
+- **Act**: with a parked checkpoint, send "please write my resume" as a task.
+- **PASS**: it runs as a normal task (no checkpoint injection) — isResumeIntent only
+  matches a leading resume/continue/weiter/fortsetzen word.
+
+### CK.6 Unit tests
+- `./gradlew :app:testDebugUnitTest --tests '*TaskCheckpointStoreTest'` (9 tests:
+  slugify, resume-intent matcher, markdown/prompt rendering).
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-21 — Phase E: task checkpoints + resume
+
+**Change:**
+1. New `TaskCheckpointStore` (agent/checkpoint): on TerminalOutcome.CANCELLED the
+   executeTask terminal seam persists the loop's M3A-style per-step history
+   (tool + ok/fail + error) as a vault note notes/<slug>-draft.md, with a KV pointer
+   (checkpoint_latest). Clean completions write nothing and retire a stale checkpoint
+   for the same task.
+2. `DefaultAgentService` collects stepHistory per tool result and runs the finalizer
+   once at the callbackProxy terminal seam (before onTerminalOutcome).
+3. Resume path in `TaskFlowController.sendTask`: "resume"/"continue"/"weiter"/
+   "fortsetzen" consumes the parked checkpoint and restarts the original task with the
+   step history prepended as RESUME CONTEXT (M3A history injection); otherwise a
+   one-time system hint points at the checkpoint.
+4. TaskOrchestrator artifact detection now matches on the real tool name (toolId param)
+   instead of the localized display name.
+Unit tests: TaskCheckpointStoreTest (9). QA: CK.1–CK.6. Pending device run.
 
 ### 2026-08-21 — Phase D: vault binary pipeline
 
