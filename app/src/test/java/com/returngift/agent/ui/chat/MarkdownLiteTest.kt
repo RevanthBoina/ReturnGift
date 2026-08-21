@@ -59,7 +59,8 @@ class MarkdownLiteTest {
         assertEquals(MarkdownLite.Span("bold", bold = true), spans[1])
         assertEquals(MarkdownLite.Span(" b "), spans[2])
         assertEquals(MarkdownLite.Span("italic", italic = true), spans[3])
-        assertEquals(MarkdownLite.Span("code", code = true), spans[4])
+        assertEquals(MarkdownLite.Span(" c "), spans[4])
+        assertEquals(MarkdownLite.Span("code", code = true), spans[5])
     }
 
     @Test
