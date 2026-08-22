@@ -171,12 +171,12 @@ class WebFetcherTest {
         <html><body>
         <div class="links_main links_deep result__body">
           <h2 class="result__title">
-            <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FPratikkr904%2FReturnGift&amp;rut=aaf0b3dc">GitHub - Pratikkr904/ReturnGift</a>
+            <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fandroid-agent&amp;rut=aaf0b3dc">Example - Android Agent</a>
           </h2>
           <div class="result__extras"><div class="result__extras__url">
-            <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FPratikkr904%2FReturnGift&amp;rut=aaf0b3dc">github.com/Pratikkr904/ReturnGift</a>
+            <a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fandroid-agent&amp;rut=aaf0b3dc">example.org/android-agent</a>
           </div></div>
-          <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FPratikkr904%2FReturnGift&amp;rut=aaf0b3dc">ReturnGift — On-Device <b>Android Agent</b> Harness. It runs tasks.</a>
+          <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fandroid-agent&amp;rut=aaf0b3dc">An on-device <b>Android Agent</b> harness. It runs tasks.</a>
         </div>
         <div class="links_main links_deep result__body">
           <h2 class="result__title">
@@ -191,8 +191,8 @@ class WebFetcherTest {
     fun `parseDuckDuckGoResults extracts titles urls and snippets`() {
         val results = WebFetcher.parseDuckDuckGoResults(DDG_FIXTURE)
         assertEquals(2, results.size)
-        assertEquals("GitHub - Pratikkr904/ReturnGift", results[0].title)
-        assertEquals("https://github.com/Pratikkr904/ReturnGift", results[0].url)
+        assertEquals("Example - Android Agent", results[0].title)
+        assertEquals("https://example.org/android-agent", results[0].url)
         assertTrue(results[0].snippet.contains("Android Agent"))
         assertEquals("Example & Page", results[1].title)
         // Query string inside uddg survives decoding

@@ -138,11 +138,29 @@ object TaskCheckpointStore {
         return checkpoint
     }
 
-    /** Clear the parked checkpoint when its task completed cleanly (avoid stale resumes). */
+    /**
+     * Pure matcher behind [clearIfTaskMatches]: true when the stored "slug|taskText"
+     * checkpoint belongs to the given (possibly RESUME CONTEXT-suffixed) task text.
+     */
+    fun checkpointMatches(storedRaw: String, taskText: String): Boolean {
+        if (storedRaw.isEmpty()) return false
+        val storedSlug = storedRaw.substringBefore('|', "")
+        val storedTaskText = storedRaw.substringAfter('|', "")
+        return storedSlug == slugify(taskText) ||
+            (storedTaskText.isNotEmpty() && taskText.contains(storedTaskText))
+    }
+
+    /**
+     * Clear the parked checkpoint when its task completed cleanly (avoid stale resumes).
+     * Matches on the SLUG, not the raw text — a resumed task carries the RESUME CONTEXT
+     * suffix and would otherwise never match its own checkpoint, leaving a stale
+     * RESUME CHAT hint behind.
+     */
     fun clearIfTaskMatches(taskText: String) {
         val raw = KVUtils.getString(KV_LATEST, "")
-        if (raw.isNotEmpty() && raw.substringAfter('|', "") == taskText) {
+        if (checkpointMatches(raw, taskText)) {
             KVUtils.remove(KV_LATEST)
+            XLog.i(TAG, "checkpoint cleared for completed task: ${raw.substringBefore('|', "")}")
         }
     }
 

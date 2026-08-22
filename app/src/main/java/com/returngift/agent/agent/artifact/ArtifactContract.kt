@@ -144,6 +144,7 @@ internal class ArtifactContract private constructor(
                 "kb_write" -> "Written: "
                 "kb_append" -> "Appended to: "
                 "save_file" -> "Written: "
+                "import_download" -> "Saved to vault: "
                 "take_screenshot" -> return extractScreenshotPath(data)
                 else -> return null
             }

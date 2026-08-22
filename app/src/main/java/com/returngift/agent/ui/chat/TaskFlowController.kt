@@ -56,6 +56,8 @@ class TaskFlowController(
     private val onPersistConversation: () -> Unit,
     private val onTaskSettled: (() -> Unit)? = null,
     private val onTaskTerminal: ((TaskEvent) -> Unit)? = null,
+    /** Starts a fresh conversation seeded with the completed task's result summary. */
+    private val onContinueNewChat: ((String) -> Unit)? = null,
 ) {
 
     companion object {
@@ -63,6 +65,12 @@ class TaskFlowController(
         private const val RUNNING_SUMMARY = "in progress…"
         /** Prefix of the checkpoint-hint SYSTEM message — ChatScreen renders a resume card for it. */
         const val RESUME_HINT_PREFIX = "An earlier task was interrupted"
+        /**
+         * Prefix of the post-completion SYSTEM message — ChatScreen renders a
+         * "Continue in New Chat" card for it. Only posted after a genuine
+         * TaskEvent.Completed; interrupted tasks get the RESUME_HINT instead.
+         */
+        const val CONTINUE_HINT_PREFIX = "Task completed. Continue in a new chat:"
         /** How long to wait for a verified-foreground event before minimizing anyway. */
         private const val MINIMIZE_FALLBACK_MS = 10_000L
     }
@@ -505,6 +513,12 @@ class TaskFlowController(
                 is TaskEvent.Completed -> {
                     replaceTypingIndicator(event.answer, event.modelName)
                     notifyTaskFinishedIfBackgrounded(success = true, body = event.answer)
+                    // Successful completion is NOT resumable — offer branching instead.
+                    // The checkpoint for this task was already retired by the loop's
+                    // terminal finalizer (clearIfTaskMatches), so no RESUME card appears.
+                    if (onContinueNewChat != null) {
+                        addSystem("$CONTINUE_HINT_PREFIX ${event.answer.take(200)}")
+                    }
                     finalizeProcessCard()
                     onTaskTerminal?.invoke(event)
                     cleanupAfterTask()

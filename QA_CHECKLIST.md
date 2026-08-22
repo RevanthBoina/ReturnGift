@@ -1913,9 +1913,139 @@ card, background-work notifications, checkpoint resume card.
 
 ---
 
+## FX — Fix Pack: External AI / OmniRoute / Vault / Task State (2026-08-22)
+
+Covers the multi-issue fix pack: EXTERNAL_QUERY_AI no-refusal + Gemini image
+download workflow, OmniRoute Auto-only, vault delete, visual-grounding preference,
+source-repo reference scrub, task-state FAB sync, RESUME-vs-Continue semantics.
+
+### FX.1 EXTERNAL_QUERY_AI no longer refuses `[ADB]`
+- **Act**: ask "generate an image of a sunflower with Gemini" (Gemini installed) and
+  "ask ChatGPT what 2+2 is".
+- **PASS**: the agent does NOT reply "I can't do that"; for an unspecified service it
+  calls ask_user with service choices first; the task proceeds via open_app into the
+  AI app.
+
+### FX.2 Gemini image via download control, not screenshot `[ADB]`
+- **Act**: FX.1 image task; watch the loop after the image renders.
+- **PASS**: the agent taps the app's own Download/Save control (logcat shows
+  tap/click on the download control), then calls import_download; NO
+  take_screenshot of the result screen. finish(summary) names the vault path
+  images/<file>. Vault shows the image; ArtifactCard appears in chat.
+- **Failure honesty**: if the app offers no download control, the
+  take_screenshot(save_to_vault=true) fallback is allowed and the summary says so.
+
+### FX.3 import_download tool `[ADB]`
+- **Act**: put a known file in system Downloads (adb push a png), ask the agent to
+  "import the downloaded <name> image into the vault".
+- **PASS**: import_download returns "Saved to vault: images/<name>"; TaskOrchestrator
+  posts the 📄 artifact message; a wrong name_hint returns an honest "no file matches"
+  error.
+
+### FX.4 OmniRoute Auto-only `[UI]`
+- **Act**: Settings → Models → OmniRoute provider.
+- **PASS**: the model list contains exactly one entry "Auto (Best Available)"; a
+  previously persisted per-provider model is coerced back to "auto" (check
+  ModelConfigRepository.snapshot() in logcat / debug export).
+
+### FX.5 Vault delete `[ADB/UI]`
+- **Act**: Vault → open a file → Delete → confirm.
+- **PASS**: confirm dialog shows the vault path; after confirm the file is gone from
+  the list and from disk (adb shell ls the vault dir); a toast confirms; deleting a
+  parked checkpoint draft is harmless (RESUME card then reports "No interrupted task
+  to resume."). Agent path: "delete the notes/plan.md file from the vault" → kb_delete
+  reports "Deleted: notes/plan.md"; deleting a non-existent file is an honest error.
+
+### FX.6 Visual grounding preference `[ADB]`
+- **Act**: any UI task (e.g. "open Settings and tap Network").
+- **PASS**: the model's first-choice action is tap(x, y) with bounding-box center
+  coordinates (logcat tool params); tap_node semantic selectors appear only as
+  fallback after unclear/failed coordinate taps.
+
+### FX.7 No source-repo references `[UI/logcat]`
+- **Act**: Settings → About (no GitHub source link); debug export (grep the prompt
+  sections + logs for "Pratikkr904" / "RevanthBoina"); ask the agent "what repository
+  are you from?".
+- **PASS**: zero hits in model-facing prompts/logs/UI (the functional
+  AppUpdateManager endpoint constant is the only remaining reference and is not
+  model-facing); the agent gives no repository URL.
+
+### FX.8 FAB exits generating state on stop/fail/complete `[ADB]`
+- **Act**: (a) start a task and tap Stop; (b) trigger a cloud chat failure (kill
+  network mid-stream); (c) let a task complete.
+- **PASS**: in all three the FAB immediately returns to Send (no stuck Stop/spinner);
+  (b) shows "Error: <reason>" instead of a silent "(no response)".
+
+### FX.9 RESUME vs Continue semantics + persistence `[ADB]`
+- **Act**: (a) complete a task → a "Task completed. Continue in a new chat:" card
+  appears (NOT RESUME CHAT); tap New Chat → fresh conversation seeded with the result
+  summary; (b) cancel a task mid-run → next message posts the RESUME CHAT card;
+  (c) fail a task (network error) → RESUME CHAT card on next message; (d) resume, let
+  it COMPLETE → the checkpoint is retired (slug-matched) — no stale RESUME card;
+  (e) kill/restart the app after (b) → the RESUME card still renders from the
+  persisted SYSTEM message and resumes the task.
+- **PASS**: RESUME CHAT appears only for genuinely interrupted tasks; Continue card
+  only after genuine completion; state survives app restart.
+
+### FX.10 Regression / unit tests
+- `./gradlew :app:testDebugUnitTest` (existing suites must stay green — no SDK in the
+  authoring sandbox; run on a machine with the Android SDK) + `scripts/ci-preflight.sh`.
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-22 — FX fix pack (external AI / OmniRoute / vault / task state)
+
+**Change:**
+1. **EXTERNAL_QUERY_AI no-refusal**: DEFAULT_SYSTEM_PROMPT role section now states
+   external AI queries & image generation are SUPPORTED (drive installed AI apps;
+   never refuse); Rule 11 + LOCAL_TASK_PROMPT updated; LOCAL tool guide gained
+   external-AI + import_download bullets; new playbook `playbooks/generate-image.md`
+   (Gemini: bard package → prompt → app's OWN Download control → import_download);
+   ask-external-ai.yaml `generate` workflow gained an image_acquisition note.
+2. **import_download tool** (tool/impl/ImportDownloadTool.java, registered once in
+   registerCommonTools — global registration covers both loops): imports the newest
+   matching file from system Downloads into the vault (images/ or downloads/);
+   MediaStore on API 29+, legacy dir scan (permission-gated) on API 28; returns
+   "Saved to vault: <path>" which ArtifactContract.extractKbPath now parses for
+   "import_download" (artifact counting + chat artifact message).
+3. **OmniRoute Auto-only**: CloudProvider.OMNIROUTE exposes exactly one model
+   ("auto" = "Auto (Best Available)"); ModelConfigRepository.buildCloudConfig
+   coerces any persisted per-provider OmniRoute model back to "auto"
+   (coerceOmniRouteModel) — routing stays internal to OmniRoute.
+4. **Vault delete**: KBManager.delete (traversal-safe via resolve()), kb_delete
+   agent tool (common tools), and Vault UI Delete action with confirm dialog +
+   toast; deleting a parked checkpoint draft is harmless (peek drops the pointer).
+5. **Visual grounding preference**: Rule 2 + LOCAL_TASK_PROMPT now prefer tap(x,y)
+   at bounding-box centers (visual identification currently outperforms text-node
+   identification); tap_node semantic selectors are the documented fallback.
+6. **Source-repo scrub**: removed all "Pratikkr904/ReturnGift" references (test
+   fixture → neutral example.org content); removed the Settings → About GitHub
+   source link; DevConfig repo defaults are blank (dev flows guard with honest
+   "not configured" errors; Settings shows "Not configured"); repo prompt hint is
+   generic. The functional AppUpdateManager stable-channel endpoint constant is
+   intentionally retained (not model-facing).
+7. **Task-state sync**: ChatSessionController.sendChat cloud path captures the
+   StreamingListener.onError (was swallowed → silent "(no response)") and rethrows
+   when no text/partial arrived, so the FAB exits the generating state with a
+   visible error; TaskOrchestrator.startNewTask wraps executeTask in try/catch so
+   a synchronous throw still produces a terminal TaskEvent.Failed (was: UI stuck).
+8. **RESUME vs Continue**: terminal finalizer now checkpoints CANCELLED **and
+   ERROR** (genuine interruptions) and clears on COMPLETED **and**
+   SYSTEM_DIALOG_BLOCKED (terminal, not interrupt); clearIfTaskMatches matches by
+   SLUG (resumed tasks carry the RESUME CONTEXT suffix and previously never
+   matched, leaving stale RESUME cards); a completed task posts a
+   CONTINUE_HINT_PREFIX SYSTEM card → ChatScreen ContinueNewChatCard →
+   continueInNewChat branches a fresh conversation seeded with the result summary.
+   RESUME CHAT now appears only for genuinely interrupted tasks; both cards persist
+   via the chat markdown SYSTEM lines and restore across restarts.
+9. **Notification independence verified**: completion is decided ONLY by typed
+   AgentCallback terminal callbacks → TerminalOutcome → TaskEvent → UI state;
+   ForegroundService.notifyTaskFinished is outbound UX, never a completion signal.
+QA: FX.1–FX.10. Pending device run (no Android SDK in this sandbox).
 
 ### 2026-08-21 — G-series: Kimi-style chat + background work surface
 

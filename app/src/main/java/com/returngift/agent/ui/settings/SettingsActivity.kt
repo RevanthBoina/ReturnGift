@@ -562,17 +562,6 @@ class SettingsActivity : BaseActivity() {
         }
 
         aboutGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_share,
-            title = "GitHub",
-            onClick = {
-                startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/RevanthBoina/ReturnGift".toUri()))
-            },
-            showDivider = true
-        ).apply {
-            setTrailingText("ReturnGift")
-        }
-
-        aboutGroup.addMenuItem(
             leadingIcon = android.R.drawable.ic_menu_compass,
             title = "Built by",
             onClick = {
@@ -593,7 +582,7 @@ class SettingsActivity : BaseActivity() {
             onClick = { promptGitHubRepo() },
             showDivider = true
         ).apply {
-            setTrailingText(com.returngift.agent.dev.DevConfig.getRepoSlug())
+            setTrailingText(com.returngift.agent.dev.DevConfig.getRepoSlug().ifBlank { "Not configured" })
         }
 
         developerGroup.addMenuItem(
@@ -645,7 +634,7 @@ class SettingsActivity : BaseActivity() {
         }
         android.app.AlertDialog.Builder(this)
             .setTitle("GitHub Repository")
-            .setMessage("Enter the repository in owner/repo form (e.g. RevanthBoina/ReturnGift).")
+            .setMessage("Enter the repository in owner/repo form (e.g. owner/repository).")
             .setView(input)
             .setPositiveButton("Save") { _, _ ->
                 val raw = input.text.toString().trim().trim('/')

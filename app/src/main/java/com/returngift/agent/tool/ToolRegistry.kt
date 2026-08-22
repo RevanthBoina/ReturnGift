@@ -48,6 +48,7 @@ object ToolRegistry {
         register(AskUserTool())
         register(WebFetchTool())
         register(WebSearchTool())
+        register(ImportDownloadTool())
         // Knowledge Base tools — shared vault available in all modes
         register(KbWriteTool())
         register(KbReadTool())
@@ -55,6 +56,7 @@ object ToolRegistry {
         register(KbAppendTool())
         register(KbAddTodoTool())
         register(KbSaveFileTool())
+        register(KbDeleteTool())
     }
 
     private fun registerTvTools() {

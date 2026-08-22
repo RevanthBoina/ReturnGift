@@ -378,6 +378,10 @@ class ChatSessionController(
                     // currently delegates to the blocking call).
                     val partial = StringBuilder()
                     var lastUiPostMs = 0L
+                    // The client reports streaming failures via onError but still returns a
+                    // null-text response — capture it so the failure is user-visible and the
+                    // FAB exits the generating state instead of silently showing "(no response)".
+                    var streamError: Throwable? = null
                     val streamListener = object : com.returngift.agent.agent.llm.StreamingListener {
                         override fun onPartialText(token: String) {
                             partial.append(token)
@@ -389,9 +393,15 @@ class ChatSessionController(
                             }
                         }
                         override fun onComplete(response: com.returngift.agent.agent.llm.LlmResponse) = Unit
-                        override fun onError(error: Throwable) = Unit
+                        override fun onError(error: Throwable) {
+                            streamError = error
+                        }
                     }
                     val llmResponse = cloudClient!!.chatStreaming(cloudHistory, emptyList(), streamListener)
+                    val err = streamError
+                    if (err != null && llmResponse.text == null && partial.isEmpty()) {
+                        throw Exception(err.message ?: "stream failed", err)
+                    }
                     val responseText = llmResponse.text ?: partial.toString().ifEmpty { "(no response)" }
                     cloudHistory.add(AiMessage.from(responseText))
                     val usage = llmResponse.tokenUsage

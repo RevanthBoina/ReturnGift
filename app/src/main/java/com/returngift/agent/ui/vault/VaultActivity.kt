@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,8 +50,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -89,9 +92,25 @@ class VaultActivity : ComponentActivity() {
                 colors = colors,
                 onOpenFile = { openExternally(it) },
                 onShareFile = { shareExternally(it) },
+                onDeleteFile = { deleteFile(it) },
                 onBack = { finish() },
             )
         }
+    }
+
+    /** True on success; toasts either way — delete failures must be user-visible. */
+    private fun deleteFile(file: KBManager.VaultFile): Boolean {
+        return KBManager.delete(file.path).fold(
+            onSuccess = {
+                Toast.makeText(this, "Deleted ${file.name}", Toast.LENGTH_SHORT).show()
+                true
+            },
+            onFailure = {
+                XLog.e(TAG, "delete failed: ${file.path}", it)
+                Toast.makeText(this, "Couldn't delete: ${it.message}", Toast.LENGTH_LONG).show()
+                false
+            }
+        )
     }
 
     private fun openExternally(file: KBManager.VaultFile) {
@@ -142,10 +161,12 @@ private fun VaultScreen(
     colors: ReturnGiftColors,
     onOpenFile: (KBManager.VaultFile) -> Unit,
     onShareFile: (KBManager.VaultFile) -> Unit,
+    onDeleteFile: (KBManager.VaultFile) -> Boolean,
     onBack: () -> Unit,
 ) {
     var refreshTick by remember { mutableStateOf(0) }
     var selected by remember { mutableStateOf<KBManager.VaultFile?>(null) }
+    var pendingDelete by remember { mutableStateOf<KBManager.VaultFile?>(null) }
 
     val files by produceState<List<KBManager.VaultFile>>(initialValue = emptyList(), refreshTick) {
         value = withContext(Dispatchers.IO) { KBManager.listAllFiles() }
@@ -206,9 +227,40 @@ private fun VaultScreen(
                 colors = colors,
                 onOpenFile = onOpenFile,
                 onShareFile = onShareFile,
+                onDeleteFile = { pendingDelete = current },
                 modifier = Modifier.padding(padding),
             )
         }
+    }
+
+    pendingDelete?.let { file ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete file?", color = colors.textPrimary) },
+            text = {
+                Text(
+                    "${file.path} will be permanently deleted from the vault.",
+                    color = colors.textSecondary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDelete = null
+                    if (onDeleteFile(file)) {
+                        selected = null
+                        refreshTick++
+                    }
+                }) {
+                    Text("Delete", color = Color(0xFFF44336), fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text("Cancel", color = colors.textSecondary)
+                }
+            },
+            containerColor = colors.surface,
+        )
     }
 }
 
@@ -272,6 +324,7 @@ private fun VaultFileDetail(
     colors: ReturnGiftColors,
     onOpenFile: (KBManager.VaultFile) -> Unit,
     onShareFile: (KBManager.VaultFile) -> Unit,
+    onDeleteFile: (KBManager.VaultFile) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -291,6 +344,16 @@ private fun VaultFileDetail(
             }
             TextButton(onClick = { onOpenFile(file) }) {
                 Text("Open with…", color = colors.accent)
+            }
+            TextButton(onClick = { onDeleteFile(file) }) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = Color(0xFFF44336),
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("Delete", color = Color(0xFFF44336))
             }
         }
         when {

@@ -159,6 +159,7 @@ fun ChatScreen(
     onRenameConversation: (ChatHistoryManager.ConversationSummary, String) -> Unit = { _, _ -> },
     onEditMessage: (Int, String) -> Unit = { _, _ -> },
     onOpenVault: () -> Unit = {},
+    onContinueNewChat: (String) -> Unit = {},
     activeTasks: List<String> = emptyList(),
     onStopTask: (String) -> Unit = {},
     onStopAllTasks: () -> Unit = {},
@@ -371,6 +372,7 @@ fun ChatScreen(
                             onBackgroundTap = dismissKeyboard,
                             onEditMessage = onEditMessage,
                             onResumeCheckpoint = { onSendTask("resume") },
+                            onContinueNewChat = onContinueNewChat,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -674,6 +676,7 @@ private fun MessageList(
     onBackgroundTap: () -> Unit = {},
     onEditMessage: (Int, String) -> Unit = { _, _ -> },
     onResumeCheckpoint: () -> Unit = {},
+    onContinueNewChat: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -714,6 +717,16 @@ private fun MessageList(
                         message.artifactPath != null -> ArtifactCard(message, colors)
                         message.content.startsWith(TaskFlowController.RESUME_HINT_PREFIX) ->
                             ResumeTaskCard(message.content, colors, onResume = onResumeCheckpoint)
+                        message.content.startsWith(TaskFlowController.CONTINUE_HINT_PREFIX) ->
+                            ContinueNewChatCard(
+                                message.content,
+                                colors,
+                                onContinue = {
+                                    onContinueNewChat(
+                                        message.content.removePrefix(TaskFlowController.CONTINUE_HINT_PREFIX).trim()
+                                    )
+                                },
+                            )
                         else -> SystemMessage(message.content, colors)
                     }
                 }
@@ -1157,6 +1170,46 @@ private fun ResumeTaskCard(content: String, colors: ReturnGiftColors, onResume: 
             Spacer(Modifier.width(8.dp))
             TextButton(onClick = onResume) {
                 Text("Resume", color = colors.accent, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/**
+ * Post-completion affordance: shown after a task genuinely COMPLETED
+ * (TaskFlowController.CONTINUE_HINT_PREFIX). Successful tasks are not resumable —
+ * tapping branches the result summary into a fresh conversation.
+ */
+@Composable
+private fun ContinueNewChatCard(content: String, colors: ReturnGiftColors, onContinue: () -> Unit) {
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.accent.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                content,
+                fontSize = 12.sp,
+                color = colors.textSecondary,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = onContinue) {
+                Text("New Chat", color = colors.accent, fontWeight = FontWeight.SemiBold)
             }
         }
     }

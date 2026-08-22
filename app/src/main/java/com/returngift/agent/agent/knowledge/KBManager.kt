@@ -212,6 +212,28 @@ object KBManager {
     fun absoluteFile(relativePath: String): File = resolve(relativePath)
 
     /**
+     * Delete a file from the vault. Traversal-safe via [resolve] — only files under the
+     * vault root are touched. Deleting a parked task checkpoint draft is fine:
+     * TaskCheckpointStore.peek() drops the pointer when the file is gone.
+     */
+    fun delete(path: String): Result<String> {
+        return try {
+            val file = resolve(path)
+            if (!file.exists() || !file.isFile) {
+                return Result.failure(Exception("File not found: $path"))
+            }
+            if (!file.delete()) {
+                return Result.failure(Exception("Couldn't delete: $path"))
+            }
+            XLog.i(TAG, "kb_delete: $path")
+            Result.success("Deleted: $path")
+        } catch (e: Exception) {
+            XLog.e(TAG, "kb_delete failed: $path", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Add a todo item to today's todo file.
      * File: todos/YYYY-MM-DD.md — created automatically if absent.
      */

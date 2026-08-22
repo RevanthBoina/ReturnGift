@@ -69,7 +69,7 @@ class DefaultAgentService : AgentService {
 - Open app (verified foreground) → open_app(package_name="com.example.app"). Returns a verified failure if the app does not reach the foreground — do NOT assume it opened on success alone.
 - Switch to a running app (verified) → switch_app(package_name="com.example.app"). Handles Recents overlays.
 - Check which app is foreground → get_foreground_app()
-- Tap UI element → PREFER semantic: tap_node(text="Send") or tap_node(content_desc="Cancel") or tap_node(resource_id="com.app:id/btn"). Legacy node_id="n3" is re-grounded live but may be stale after a transition.
+- Tap UI element → PREFER visual grounding: tap(x, y) at the exact center of the target's bounding box (visual identification is currently more reliable than text-node identification). Fall back to tap_node(text="Send") / tap_node(content_desc="Cancel") / tap_node(resource_id="com.app:id/btn") when coordinates are unclear or a coordinate tap failed. Legacy node_id="n3" is re-grounded live but may be stale after a transition.
 - Type text (focus verified) → input_text(text="hello") or input_text(text="hello", node_id="n5")
 - System navigation → system_key(key="back"|"home"|"enter")
 - Search list/page → scroll_to_find(text="Settings")
@@ -80,6 +80,8 @@ class DefaultAgentService : AgentService {
 - Clipboard → clipboard(action="get"|"set", text="...")
 - List apps → get_installed_apps()
 - Ask the user when unsure → ask_user(question="Which app should I use?", choices="ChatGPT; Claude; Gemini") — waits for the tap/typed answer and returns it
+- Query an external AI / generate an image (SUPPORTED — never refuse) → drive the installed AI app (ChatGPT, Gemini, Claude, Perplexity, …): open_app its package, input the prompt, read the answer. For generated images use the app's own Download/Save control, then import_download(name_hint="…") to bring the file into the vault. Do NOT screenshot the result unless the app offers no download control.
+- Import a downloaded file into the vault → import_download(name_hint="flower") — copies the newest matching file from system Downloads into images/ and returns the vault path
 - Fetch a URL/external content → web_fetch(url="https://…", save_to_vault=true) — returns readable text; never invent content you could fetch
 - Look something up (no URL given) → web_search(query="…") then web_fetch the best result
 - Settle screen → wait(duration_ms=2000)
@@ -94,7 +96,7 @@ class DefaultAgentService : AgentService {
 - After open_app/switch_app/system_key, trust the foreground-verification note in the tool result — do not proceed if it says the target is not foreground.
 - Do not re-cache node IDs ("n3") across UI transitions; re-resolve by text/content_desc/resource_id, or call get_screen_info again.
 - If you see a [System Notice]/[System Warning] about ineffective actions or a recovery, change your approach — do not repeat the same action.
-- Deliverables: Markdown notes go to the vault via kb_write/kb_append; binary files (base64 content) via save_file; screenshots via take_screenshot(save_to_vault=true). You cannot create other formats (PDF, PPT) — never claim you did. When you save anything, name the exact vault path in finish(summary).
+- Deliverables: Markdown notes go to the vault via kb_write/kb_append; binary files (base64 content) via save_file; screenshots via take_screenshot(save_to_vault=true); files downloaded by other apps (e.g. an AI-generated image) via import_download. You cannot create other formats (PDF, PPT) yourself — never claim you did; images actually obtained through an AI app's download control + import_download ARE real deliverables. When you save anything, name the exact vault path in finish(summary).
 - Failed taps: when tap/tap_node/long_press fails, do NOT re-tap the same coordinates — use find_and_tap with the target's visible text or description.
 - Ambiguity: if the request lacks a required detail or has multiple valid targets/apps, call ask_user BEFORE acting and wait for the answer. Never guess and complete on a guess. Do not ask when the request is already clear.
 - External content: when the task mentions a URL/article, web_fetch it first and answer from the fetched text; to look something up, web_search then web_fetch the best result. Never fabricate content; if search/fetch fails, say so honestly.
@@ -255,11 +257,13 @@ class DefaultAgentService : AgentService {
                     // interrupted task's step history, or retire a stale checkpoint when
                     // the matching task completed cleanly.
                     when (outcome) {
-                        TerminalOutcome.CANCELLED ->
+                        // A task that genuinely stopped before completion (user cancel or
+                        // loop error) stays resumable; COMPLETED clears the checkpoint; a
+                        // system-dialog BLOCK is a terminal state, not an interruption.
+                        TerminalOutcome.CANCELLED, TerminalOutcome.ERROR ->
                             com.returngift.agent.agent.checkpoint.TaskCheckpointStore.write(userPrompt, stepHistory)
-                        TerminalOutcome.COMPLETED ->
+                        TerminalOutcome.COMPLETED, TerminalOutcome.SYSTEM_DIALOG_BLOCKED ->
                             com.returngift.agent.agent.checkpoint.TaskCheckpointStore.clearIfTaskMatches(userPrompt)
-                        else -> Unit
                     }
                     callback.onTerminalOutcome(outcome)
                     terminal.invoke()

@@ -1015,13 +1015,21 @@ capability_workflows:
       - competitive_analysis
 
   generate:
-    preferred_apps: [chatgpt, copilot, gamma]
+    preferred_apps: [chatgpt, copilot, gamma, gemini]
     prompt_template: "Generate {query}"
     output_types:
       - text
-      - image (copilot, dall-e)
+      - image (copilot, dall-e, gemini)
       - presentation (gamma)
       - code (chatgpt, claude)
+    image_acquisition:
+      # Generated images MUST be obtained via the app's own Download/Save control
+      # (e.g. Gemini's download icon under the result) — NEVER take_screenshot of the
+      # result screen. After the download lands in system Downloads, import it into
+      # the vault via import_download(name_hint="...") and name the vault path in the
+      # final summary.
+      method: app_download_control_then_import_download
+      screenshot_fallback: only_when_no_download_control_exists
 
   research:
     preferred_apps: [consensus, perplexity, chatgpt]

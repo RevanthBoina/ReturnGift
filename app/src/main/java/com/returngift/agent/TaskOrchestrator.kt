@@ -286,6 +286,10 @@ class TaskOrchestrator(
         var floatingShown = false
 
         val agentPrompt = agentPromptOverride?.takeIf { it.isNotBlank() } ?: task
+        // If executeTask throws before the callback is wired (config error, rejected
+        // executor, …), the UI must still receive a terminal event — otherwise the chat
+        // FAB stays stuck in the generating state.
+        try {
         agentService.executeTask(agentPrompt, object : AgentCallback {
             /** Set by onTerminalOutcome (fires before the deferred terminal callback). */
             private var terminalOutcome = com.returngift.agent.agent.TerminalOutcome.COMPLETED
@@ -474,6 +478,19 @@ class TaskOrchestrator(
                 onTaskFinished()
             }
         })
+        } catch (e: Exception) {
+            XLog.e(TAG, "startNewTask: executeTask threw before terminal callbacks could fire", e)
+            taskEventCallback?.invoke(TaskEvent.Failed(e.message ?: "Task could not be started"))
+            ChannelManager.sendMessage(
+                channel,
+                ClawApplication.instance.getString(R.string.channel_msg_task_error, e.message),
+                messageID
+            )
+            releaseTask()
+            ForegroundService.resetToIdle(ClawApplication.instance)
+            FloatingCircleManager.setErrorState()
+            onTaskFinished()
+        }
     }
 
     /**

@@ -59,11 +59,15 @@ object DevConfig {
         KVUtils.putString(KEY_DEV_REPO_NAME, name.trim())
     }
 
-    fun getRepoOwner(): String = KVUtils.getString(KEY_DEV_REPO_OWNER, "RevanthBoina")
-    fun getRepoName(): String = KVUtils.getString(KEY_DEV_REPO_NAME, "ReturnGift")
+    fun getRepoOwner(): String = KVUtils.getString(KEY_DEV_REPO_OWNER, "")
+    fun getRepoName(): String = KVUtils.getString(KEY_DEV_REPO_NAME, "")
 
-    /** "owner/repo" form used by the GitHub REST API path. */
-    fun getRepoSlug(): String = "${getRepoOwner()}/${getRepoName()}"
+    /** "owner/repo" form used by the GitHub REST API path; blank until configured. */
+    fun getRepoSlug(): String {
+        val owner = getRepoOwner()
+        val name = getRepoName()
+        return if (owner.isBlank() || name.isBlank()) "" else "$owner/$name"
+    }
 
     // ---- GitHub PAT (secret) ----
 

@@ -59,6 +59,28 @@ class TaskCheckpointStoreTest {
     }
 
     @Test
+    fun `checkpointMatches matches resumed task with resume-context suffix`() {
+        val stored = "send-hi-to-mom|Send hi to Mom"
+        assertTrue(TaskCheckpointStore.checkpointMatches(stored, "Send hi to Mom"))
+        // Resumed task text = original + RESUME CONTEXT suffix: the contains fallback
+        // must match (the slug is truncated at 48 chars and can diverge with a suffix).
+        assertTrue(
+            TaskCheckpointStore.checkpointMatches(
+                stored,
+                "Send hi to Mom\n\n[RESUME CONTEXT … previous steps …]"
+            )
+        )
+    }
+
+    @Test
+    fun `checkpointMatches rejects unrelated tasks`() {
+        val stored = "send-hi-to-mom|Send hi to Mom"
+        assertFalse(TaskCheckpointStore.checkpointMatches(stored, "Open Chrome"))
+        assertFalse(TaskCheckpointStore.checkpointMatches("", "Send hi to Mom"))
+    }
+
+
+    @Test
     fun `renderMarkdown handles empty steps`() {
         val md = TaskCheckpointStore.renderMarkdown("t", 1724000000000L, emptyList())
         assertTrue(md.contains("(no steps executed)"))

@@ -211,6 +211,9 @@ object AppUpdateManager {
                 try {
                     val token = com.returngift.agent.dev.DevConfig.getGithubToken()
                     val slug = com.returngift.agent.dev.DevConfig.getRepoSlug()
+                    if (slug.isBlank()) {
+                        return@withContext UpdateState.Failed("No GitHub repository configured (Developer settings)", true, "CHECKING")
+                    }
                     if (token.isBlank()) {
                         return@withContext UpdateState.Failed("No GitHub token configured", true, "CHECKING")
                     }

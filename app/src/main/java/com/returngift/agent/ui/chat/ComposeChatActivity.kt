@@ -101,6 +101,7 @@ class ComposeChatActivity : ComponentActivity() {
             onPersistConversation = { saveChat() },
             onTaskSettled = { deferLocalChatBootstrapForAutoTask = false },
             onTaskTerminal = { sendExternalAutomationTerminalCallback(it) },
+            onContinueNewChat = { summary -> continueInNewChat(summary) },
         )
     }
     private val taskFlowController: TaskFlowController get() = taskFlowControllerLazy.value
@@ -180,6 +181,7 @@ class ComposeChatActivity : ComponentActivity() {
                 onOpenVault = {
                     startActivity(Intent(this, com.returngift.agent.ui.vault.VaultActivity::class.java))
                 },
+                onContinueNewChat = { summary -> continueInNewChat(summary) },
                 onFixPermissions = { startActivity(Intent(this, SettingsActivity::class.java)) },
                 onAttach = { Toast.makeText(this, "Image upload coming soon", Toast.LENGTH_SHORT).show() },
                 conversations = _conversations,
@@ -433,6 +435,32 @@ class ComposeChatActivity : ComponentActivity() {
             _isAwaitingReply.value = false
             _isTaskRunning.value = false
             chatSessionController.startNewConversationRuntime()
+        }
+    }
+
+    /**
+     * "Continue in New Chat" after a successfully completed task: opens a fresh
+     * conversation seeded with the result summary as context (ASSISTANT role so the
+     * cloud history rebuild includes it). Successful tasks are NOT resumable — the
+     * RESUME card only appears for genuinely interrupted tasks.
+     */
+    private fun continueInNewChat(summary: String) {
+        lifecycleScope.launch {
+            val session = conversationStore.startNewConversation(_messages, currentConversationModelName())
+            syncSidebar(session.conversations)
+            _messages.clear()
+            _sessionTokens.value = 0
+            _sessionCost.value = 0.0
+            _isAwaitingReply.value = false
+            _isTaskRunning.value = false
+            chatSessionController.startNewConversationRuntime()
+            _messages.add(
+                ChatMessage(
+                    ChatMessage.Role.ASSISTANT,
+                    "Continuing in a new chat. Context from the previous task:\n\n$summary"
+                )
+            )
+            saveChat()
         }
     }
 

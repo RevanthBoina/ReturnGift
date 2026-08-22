@@ -229,10 +229,20 @@ object ModelConfigRepository {
             .ifEmpty { KVUtils.getLlmApiKey() }
         return CloudModelConfig(
             providerName = normalizedProvider,
-            modelName = modelName,
+            modelName = coerceOmniRouteModel(normalizedProvider, modelName),
             baseUrl = resolveCloudBaseUrl(normalizedProvider, baseUrl),
             apiKey = apiKey
         )
+    }
+
+    /**
+     * OmniRoute exposes only "Auto" to the user; older installs may have a per-provider
+     * model persisted — coerce it back to "auto" while routing stays internal to OmniRoute.
+     */
+    private fun coerceOmniRouteModel(providerName: String, modelName: String): String {
+        return if (providerName == CloudProvider.OMNIROUTE.name && modelName.isNotBlank() && modelName != "auto") {
+            "auto"
+        } else modelName
     }
 
     private fun normalizeCloudProvider(providerName: String): String {
