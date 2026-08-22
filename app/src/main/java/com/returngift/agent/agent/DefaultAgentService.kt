@@ -69,7 +69,7 @@ class DefaultAgentService : AgentService {
 - Open app (verified foreground) → open_app(package_name="com.example.app"). Returns a verified failure if the app does not reach the foreground — do NOT assume it opened on success alone.
 - Switch to a running app (verified) → switch_app(package_name="com.example.app"). Handles Recents overlays.
 - Check which app is foreground → get_foreground_app()
-- Tap UI element → PREFER visual grounding: tap(x, y) at the exact center of the target's bounding box (visual identification is currently more reliable than text-node identification). Fall back to tap_node(text="Send") / tap_node(content_desc="Cancel") / tap_node(resource_id="com.app:id/btn") when coordinates are unclear or a coordinate tap failed. Legacy node_id="n3" is re-grounded live but may be stale after a transition.
+- Tap UI element → resolve semantically first: tap_node(text="Send") / tap_node(content_desc="Cancel") / tap_node(resource_id="com.app:id/btn"); use tap(x, y) at the bounding-box center ONLY as the last resort when no semantic property matches. Act immediately once the target is identified — never re-read an unchanged screen. Legacy node_id="n3" is re-grounded live but may be stale after a transition.
 - Type text (focus verified) → input_text(text="hello") or input_text(text="hello", node_id="n5")
 - System navigation → system_key(key="back"|"home"|"enter")
 - Search list/page → scroll_to_find(text="Settings")
@@ -319,14 +319,20 @@ class DefaultAgentService : AgentService {
 
     // ==================== LLM Call (with retry) ====================
 
-    private fun chatWithRetry(messages: List<ChatMessage>, callback: AgentCallback, iteration: Int): LlmResponse {
+    private fun chatWithRetry(
+        messages: List<ChatMessage>,
+        callback: AgentCallback,
+        iteration: Int,
+        specs: List<dev.langchain4j.agent.tool.ToolSpecification>? = null,
+    ): LlmResponse {
+        val effectiveSpecs = specs ?: toolSpecs
         var lastException: Exception? = null
         for (attempt in 0 until MAX_API_RETRIES) {
             if (cancelled.get()) throw RuntimeException(ClawApplication.instance.getString(R.string.agent_task_cancelled))
             try {
                 return if (config.streaming) {
                     val textBuilder = StringBuilder()
-                    llmClient.chatStreaming(messages, toolSpecs, object : StreamingListener {
+                    llmClient.chatStreaming(messages, effectiveSpecs, object : StreamingListener {
                         override fun onPartialText(token: String) {
                             textBuilder.append(token)
                             callback.onContent(iteration, token)
@@ -335,7 +341,7 @@ class DefaultAgentService : AgentService {
                         override fun onError(error: Throwable) {}
                     })
                 } else {
-                    llmClient.chat(messages, toolSpecs)
+                    llmClient.chat(messages, effectiveSpecs)
                 }
             } catch (e: Exception) {
                 lastException = e
@@ -492,6 +498,35 @@ class DefaultAgentService : AgentService {
         val parsedPrompt = TaskPromptEnvelope.parse(userPrompt)
         val rawUserRequest = parsedPrompt.currentRequest
 
+        // ── Intent gate (bounded executor spec) ─────────────────────────────
+        // Classify BEFORE the loop starts. Knowledge/vault/research questions
+        // get NO observation/device tools — the model cannot UI-scrape its own
+        // chat window instead of answering (the OmniRoute Q&A token-burn bug).
+        val taskIntent = com.returngift.agent.agent.exec.TaskIntentClassifier.classify(rawUserRequest)
+        XLog.i(TAG, "runAgentLoop: intent=${taskIntent.intent} (${taskIntent.reason})")
+
+        // Two-layer path: a known structured routine runs on the deterministic
+        // executor; the AI is consulted only through the escalation seam.
+        if (taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION) {
+            com.returngift.agent.agent.exec.StructuredRoutineRegistry.match(rawUserRequest)?.let { match ->
+                runStructuredRoutine(match, rawUserRequest, callback, stepHistory)
+                return
+            }
+        }
+
+        val allowedTools = com.returngift.agent.agent.exec.RunToolPolicy.allowedTools(taskIntent.intent)
+        val runToolSpecs = if (allowedTools != null) {
+            LangChain4jToolBridge.buildToolSpecifications(allowedTools)
+        } else {
+            toolSpecs
+        }
+        // Bounded budgets for device work: screen-read gate + action/retry budget.
+        val screenReadGate = com.returngift.agent.agent.exec.ScreenReadGate()
+        val execBudget = com.returngift.agent.agent.exec.ExecutionBudget(
+            wallClockMs = Long.MAX_VALUE // LLM-loop wall time stays governed by token budget/maxIterations
+        )
+        var watchdogRecoveries = 0
+
         // Build System Prompt — use optimized prompt for local LLM
         val basePrompt = if (config.provider == LlmProvider.LOCAL) {
             LOCAL_TASK_PROMPT
@@ -532,6 +567,12 @@ class DefaultAgentService : AgentService {
             append(emailComposeGuard.buildPromptSection())
             append(directDeviceDataGuard.buildPromptSection())
             append(artifactContract.buildPromptSection())
+            if (allowedTools != null) {
+                append("\n\n## Task type: ").append(taskIntent.intent.name)
+                append("\nThis is NOT a device-control task. Answer directly from knowledge")
+                append(" or the available lookup tools. Screen/device tools are unavailable")
+                append(" for this request — do not attempt to inspect the screen.")
+            }
             append(buildDeviceContext())
         }
 
@@ -558,21 +599,12 @@ class DefaultAgentService : AgentService {
             rawUserRequest
         }
 
-        // Opt-2: Pre-warm — only attach screen info for task-like prompts.
-        // Chat/questions should NOT see screen data (it confuses the LLM into using tools).
-        val lowerPrompt = rawUserRequest.lowercase()
-        val looksLikeTask = lowerPrompt.contains("open ") || lowerPrompt.contains("send ") ||
-            lowerPrompt.contains("tap ") || lowerPrompt.contains("search ") ||
-            lowerPrompt.contains("play ") || lowerPrompt.contains("take ") ||
-            lowerPrompt.contains("install ") || lowerPrompt.contains("click ") ||
-            lowerPrompt.contains("go to ") || lowerPrompt.contains("navigate ") ||
-            lowerPrompt.contains("turn on ") || lowerPrompt.contains("turn off ") ||
-            lowerPrompt.contains("monitor ") || lowerPrompt.contains("close ") ||
-            lowerPrompt.contains("swipe ") || lowerPrompt.contains("scroll ") ||
-            lowerPrompt.contains("check ") || lowerPrompt.contains("compose ") ||
-            lowerPrompt.contains("find ") || lowerPrompt.contains("screen") ||
-            lowerPrompt.contains("notification") || lowerPrompt.contains("read my") ||
-            lowerPrompt.contains("call ") || lowerPrompt.contains("dial ")
+        // Opt-2: Pre-warm — only attach screen info for device-automation prompts.
+        // Chat/knowledge/research questions never see screen data (the intent gate
+        // replaces the old keyword heuristic that misrouted Q&A into UI scraping).
+        val looksLikeTask =
+            taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION ||
+                taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.EXTERNAL_AI_QUERY
 
         val enrichedPrompt = if (looksLikeTask) {
             try {
@@ -591,9 +623,14 @@ class DefaultAgentService : AgentService {
                     }
                 }
                 val screenTool = ToolRegistry.getInstance().getTool("get_screen_info")
-                if (screenTool != null) {
+                if (screenTool != null &&
+                    screenReadGate.requestRead(
+                        com.returngift.agent.agent.exec.ScreenReadGate.Purpose.STATE_ENTRY
+                    ) is com.returngift.agent.agent.exec.ScreenReadGate.Decision.Allow
+                ) {
                     val screenResult = screenTool.execute(emptyMap())
                     if (screenResult.isSuccess && !screenResult.data.isNullOrBlank()) {
+                        screenReadGate.recordRead(screenResult.data!!.hashCode())
                         XLog.i(TAG, "runAgentLoop: pre-warm screen attached (${screenResult.data!!.length} chars)")
                         ExecutionTracker.recordObservation(
                             taskId = taskId,
@@ -636,10 +673,10 @@ class DefaultAgentService : AgentService {
             // Compress history messages before sending to save tokens
             compressHistoryForSend(messages)
 
-            // LLM call (with retry)
+            // LLM call (with retry) — per-run tool specs from the intent gate.
             val llmResponse: LlmResponse
             try {
-                llmResponse = chatWithRetry(messages, callback, iterations)
+                llmResponse = chatWithRetry(messages, callback, iterations, runToolSpecs)
             } catch (e: Exception) {
                 XLog.e(TAG, "LLM API call failed after retries", e)
                 callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_api_call_failed, e.message)), totalTokens)
@@ -861,6 +898,40 @@ class DefaultAgentService : AgentService {
                 }
                 // ── End allow-list gate ─────────────────────────────────────────────
 
+                // ── Intent tool gate: a knowledge/vault/research task must not be able
+                // to execute observation/device tools even if the model hallucinates one
+                // (the spec list already hides them; this is the enforcement half).
+                val policyBlock = com.returngift.agent.agent.exec.RunToolPolicy
+                    .blockReason(taskIntent.intent, toolName)
+                if (policyBlock != null) {
+                    val blockedResult = ToolResult.error(policyBlock)
+                    XLog.i(TAG, "RunToolPolicy blocked $toolName for intent ${taskIntent.intent}")
+                    callback.onToolResult(iterations, toolName, displayName, params.toString(), blockedResult)
+                    messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(blockedResult)))
+                    messages.add(UserMessage.from(policyBlock))
+                    continue
+                }
+
+                // ── Screen-read gate: every observation needs a declared purpose; a
+                // passive re-read of an unchanged screen is denied with guidance
+                // instead of burning tokens on an identical tree dump.
+                if (toolName == "get_screen_info") {
+                    val purpose = if (lastToolError != null) {
+                        com.returngift.agent.agent.exec.ScreenReadGate.Purpose.ACTION_FAILURE
+                    } else {
+                        com.returngift.agent.agent.exec.ScreenReadGate.Purpose.STATE_ENTRY
+                    }
+                    val decision = screenReadGate.requestRead(purpose)
+                    if (decision is com.returngift.agent.agent.exec.ScreenReadGate.Decision.Deny) {
+                        val denied = ToolResult.error(decision.guidance)
+                        XLog.w(TAG, "ScreenReadGate denied get_screen_info: ${decision.guidance}")
+                        callback.onToolResult(iterations, toolName, displayName, params.toString(), denied)
+                        messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(denied)))
+                        messages.add(UserMessage.from(decision.guidance))
+                        continue
+                    }
+                }
+
                 // Unified control loop: capture the state BEFORE the action so we can verify
                 // the action's effect afterwards (observe → resolve → act → verify → recover).
                 val a11ySvc = ClawAccessibilityService.getInstance()
@@ -870,6 +941,24 @@ class DefaultAgentService : AgentService {
 
                 val actStartTime = System.currentTimeMillis()
                 var result = ToolRegistry.getInstance().executeTool(toolName, params)
+                if (toolName == "get_screen_info" && result.isSuccess && !result.data.isNullOrBlank()) {
+                    screenReadGate.recordRead(result.data!!.hashCode())
+                }
+                if (toolName in ACTION_TOOLS) {
+                    screenReadGate.recordAction()
+                    execBudget.recordAction()?.let { breach ->
+                        XLog.e(TAG, "Execution budget breach: ${breach.detail}")
+                        ExecutionTracker.endTask(taskId, "BUDGET_EXCEEDED", iterations, totalTokens)
+                        callback.onComplete(
+                            iterations,
+                            "Task stopped: execution budget exceeded (${breach.detail}). " +
+                                "The bounded executor never retries open-endedly — re-run with a narrower instruction.",
+                            totalTokens,
+                            actualModelName
+                        )
+                        return
+                    }
+                }
                 // Tap recovery (Design v2 Phase F): a failed tap is usually a moved or
                 // off-screen target — steer the model at the existing find_and_tap
                 // composite (scroll + semantic re-resolve + tap) instead of letting it
@@ -914,10 +1003,27 @@ class DefaultAgentService : AgentService {
                         overlayPresent = overlay
                     )
                     if (recovery.strategy != InteractionWatchdog.RecoveryStrategy.NONE) {
+                        // Bounded recovery: at most 2 automatic recoveries per task; a
+                        // third watchdog trigger STOPS and reports instead of restarting
+                        // (bounded-executor spec — no open-ended recovery loops).
+                        if (watchdogRecoveries >= 2) {
+                            XLog.e(TAG, "Watchdog recovery budget exhausted (${recovery.strategy}) — stopping task")
+                            ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
+                            callback.onComplete(
+                                iterations,
+                                "Task stopped: ${recovery.message} " +
+                                    "Automatic recovery was already attempted $watchdogRecoveries times; " +
+                                    "stopping instead of retrying endlessly.",
+                                totalTokens,
+                                actualModelName
+                            )
+                            return
+                        }
+                        watchdogRecoveries++
                         recoveryExecuted = interactionWatchdog.executeRecovery(
                             recovery.strategy, a11ySvc, currentTargetPackage
                         )
-                        XLog.i(TAG, "Watchdog recovery (${recovery.strategy}): $recoveryExecuted")
+                        XLog.i(TAG, "Watchdog recovery #${watchdogRecoveries} (${recovery.strategy}): $recoveryExecuted")
                         consecutiveActionsWithoutObserve = 0  // force a fresh observation next round
                     }
                 }
@@ -995,7 +1101,17 @@ class DefaultAgentService : AgentService {
                     screenHashChanged = (lastScreenDiffCount > 0)
                 )
 
-                val combinedResultData: String = if (toolName in ACTION_TOOLS && obsDecision != ObservationPolicy.ObservationDecision.SKIP) {
+                // Post-action auto-attach is a VERIFY-purpose read and must pass the
+                // gate too — otherwise the loop itself becomes the open-ended observer.
+                val autoAttachPurpose = if (result.isSuccess) {
+                    com.returngift.agent.agent.exec.ScreenReadGate.Purpose.POST_ACTION_VERIFY
+                } else {
+                    com.returngift.agent.agent.exec.ScreenReadGate.Purpose.ACTION_FAILURE
+                }
+                val autoAttachAllowed = toolName in ACTION_TOOLS &&
+                    obsDecision != ObservationPolicy.ObservationDecision.SKIP &&
+                    screenReadGate.requestRead(autoAttachPurpose) is com.returngift.agent.agent.exec.ScreenReadGate.Decision.Allow
+                val combinedResultData: String = if (autoAttachAllowed) {
                     try {
                         consecutiveActionsWithoutObserve = 0
                         Thread.sleep(SCREEN_SETTLE_MS) // let UI animate/settle
@@ -1023,8 +1139,9 @@ class DefaultAgentService : AgentService {
                         val screenTool = ToolRegistry.getInstance().getTool("get_screen_info")
                         val screenAfter = screenTool?.execute(emptyMap())
                         if (screenAfter != null && screenAfter.isSuccess && !screenAfter.data.isNullOrBlank()) {
-                            // Update lastScreenHash for loop detection
+                            // Update lastScreenHash for loop detection + gate accounting
                             lastScreenHash = screenAfter.data!!.hashCode()
+                            screenReadGate.recordRead(lastScreenHash)
                             ExecutionTracker.recordObservation(
                                 taskId = taskId,
                                 stepIndex = iterations,
@@ -1136,6 +1253,78 @@ class DefaultAgentService : AgentService {
             callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
         } else {
             callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_max_iterations, maxIterations)), totalTokens)
+        }
+    }
+
+    // ==================== Structured Routine Path (two-layer executor) ====================
+
+    /**
+     * Run a registered structured routine on the deterministic executor. The
+     * controller owns state/selectors/actions/retries/budgets/verification; the
+     * LLM is consulted ONLY through the escalation seam (bounded, no tools) when
+     * deterministic target resolution fails, and its answer is parsed into a
+     * selector the controller executes — the AI never drives the loop.
+     */
+    private fun runStructuredRoutine(
+        match: com.returngift.agent.agent.exec.StructuredRoutineRegistry.Match,
+        rawUserRequest: String,
+        callback: AgentCallback,
+        stepHistory: MutableList<String>?,
+    ) {
+        XLog.i(TAG, "runStructuredRoutine: ${match.routineId} for '$rawUserRequest'")
+        val taskId = UUID.randomUUID().toString()
+        ExecutionTracker.beginTask(taskId, rawUserRequest, "structured:${match.routineId}")
+
+        val escalator = com.returngift.agent.agent.exec.DeterministicUiExecutor.Escalator { screenDump, hint ->
+            try {
+                val messages = listOf(
+                    SystemMessage.from(
+                        "You identify UI elements in an Android accessibility tree. " +
+                            "Reply with ONLY a JSON object describing the target the controller should act on. " +
+                            "Allowed keys: text, content_desc, resource_id, class, x, y. " +
+                            "Prefer text, then content_desc, then resource_id; coordinates only as last resort. " +
+                            "Never invent a node_id."
+                    ),
+                    UserMessage.from("Target needed: $hint\n\nScreen tree:\n${screenDump.take(6000)}")
+                )
+                val response = llmClient.chat(messages, emptyList())
+                response.text?.let {
+                    com.returngift.agent.agent.exec.DeterministicUiExecutor.parseEscalationResponse(GSON, it)
+                }
+            } catch (e: Exception) {
+                XLog.w(TAG, "escalation call failed: ${e.message}")
+                null
+            }
+        }
+
+        val executor = com.returngift.agent.agent.exec.DeterministicUiExecutor(
+            escalator = escalator,
+            shouldAbort = { cancelled.get() },
+        )
+        callback.onLoopStart(1)
+        val report = try {
+            executor.execute(match.spec)
+        } catch (a: com.returngift.agent.agent.exec.DeterministicUiExecutor.AbortedException) {
+            ExecutionTracker.endTask(taskId, "CANCELLED", 1, 0)
+            callback.onComplete(1, ClawApplication.instance.getString(R.string.agent_task_cancel), 0, null)
+            return
+        } catch (e: Exception) {
+            XLog.e(TAG, "structured routine crashed", e)
+            com.returngift.agent.agent.exec.ExecReport(
+                outcome = com.returngift.agent.agent.exec.ExecOutcome.FAILED_ACTION,
+                reason = "executor error: ${e.message}",
+                screenReads = 0, actions = 0, escalations = 0,
+                elapsedMs = 0, stateTrace = emptyList(),
+            )
+        }
+        ExecutionTracker.endTask(taskId, report.trackerStatus(), 1, 0)
+        stepHistory?.add("1. structured:${match.routineId} — ${report.outcome}: ${report.reason}")
+
+        if (report.outcome == com.returngift.agent.agent.exec.ExecOutcome.SUCCESS) {
+            callback.onComplete(1, report.toSummary(), 0, null)
+        } else {
+            // Genuine pre-completion stop → ERROR outcome (resumable via checkpoint).
+            callback.onError(1, RuntimeException(report.toSummary()), 0)
         }
     }
 

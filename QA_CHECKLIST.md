@@ -1956,11 +1956,15 @@ source-repo reference scrub, task-state FAB sync, RESUME-vs-Continue semantics.
   to resume."). Agent path: "delete the notes/plan.md file from the vault" → kb_delete
   reports "Deleted: notes/plan.md"; deleting a non-existent file is an honest error.
 
-### FX.6 Visual grounding preference `[ADB]`
+### FX.6 Selector priority & act-immediately `[ADB]`
 - **Act**: any UI task (e.g. "open Settings and tap Network").
-- **PASS**: the model's first-choice action is tap(x, y) with bounding-box center
-  coordinates (logcat tool params); tap_node semantic selectors appear only as
-  fallback after unclear/failed coordinate taps.
+- **PASS**: the model resolves targets semantically first — tap_node(text →
+  content_desc → resource_id) — and uses tap(x, y) bounding-box coordinates ONLY
+  as the last resort (logcat tool params). Once a target is identified the next
+  tool call is the ACTION, not another get_screen_info of an unchanged screen.
+  (Supersedes the earlier visual-first preference per the bounded-executor spec;
+  tap_node semantic resolution re-queries the live hierarchy each call, and the
+  deterministic executor uses the same text→desc→id→props→coords order.)
 
 ### FX.7 No source-repo references `[UI/logcat]`
 - **Act**: Settings → About (no GitHub source link); debug export (grep the prompt
@@ -1993,9 +1997,111 @@ source-repo reference scrub, task-state FAB sync, RESUME-vs-Continue semantics.
 
 ---
 
+## EX — Bounded State-Machine Executor (2026-08-22)
+
+Incident: a general cloud Q&A (OmniRoute) entered Observe → get_screen_info loops on
+ReturnGift's own chat UI → ObserveStallGuard hard stop, ~211K tokens burned, OmniRoute
+120s empty-stream timeout. Fix: intent gate + bounded executor (agent/exec/).
+
+### EX.1 Knowledge Q&A never observes `[ADB/cloud]`
+- **Act**: OmniRoute selected; ask "What is the capital of France?" then "Explain how
+  photosynthesis works" then "Tell me about black holes".
+- **PASS**: zero get_screen_info/tool calls (logcat shows `intent=KNOWLEDGE_QA`); the
+  answer arrives as a single text response; token usage stays in the low hundreds; no
+  stall watchdog, no 120s timeout. The model physically cannot call observation tools
+  (specs filtered + RunToolPolicy execution gate returns guidance if hallucinated).
+
+### EX.2 Vault / web intents get the right minimal tool set `[ADB/cloud]`
+- **Act**: "What did I save about the trip?" (VAULT_QUERY: kb_* only); "Search the web
+  for today's weather in Oslo" (WEB_RESEARCH: web_* + kb_write only).
+- **PASS**: intent logged correctly; no screen tools visible/executable; answers come
+  from kb_search / web_search + web_fetch respectively.
+
+### EX.3 Screen-read gate — the purpose invariant `[ADB/logcat]`
+- **Act**: run a multi-step UI task; grep logcat for `ScreenReadGate denied`.
+- **PASS**: every get_screen_info (model-called or auto-attached) has a declared purpose;
+  a 3rd consecutive passive read of an unchanged screen is DENIED with "act now / finish"
+  guidance; total reads ≤ 8; an action between reads resets the passive streak.
+
+### EX.4 Bounded watchdog — stop and report `[ADB]`
+- **Act**: run a task whose target never appears (e.g. open an app mid-update).
+- **PASS**: at most 2 automatic recoveries execute; the 3rd trigger STOPS the task with
+  "Task stopped: <reason>. Automatic recovery was already attempted 2 times…" — the task
+  never auto-restarts, ExecutionTracker ends with FAILED_ACTION.
+
+### EX.5 LinkedIn reference flow on the deterministic executor `[ADB]`
+- **Act**: "Post on LinkedIn: Excited to share our Q3 results!" with LinkedIn installed.
+- **PASS**: logcat shows the state trace START → CHECK_TARGET_APP → (OPEN_TARGET_APP) →
+  FIND_TARGET → PERFORM_ACTION → VERIFY_ACTION → DONE; total screen reads ≈ 2 (one
+  verification read, plus at most one escalation read); composer input is deterministic
+  (focus → clear → set → field-content verify, no clipboard); terminal ExecReport logged
+  as SUCCESS; the published post is visible in the feed.
+- **FAIL paths**: LinkedIn not installed → FAILED_ACTION after ≤2 open retries; composer
+  missing → ≤2 state retries + ≤2 AI selector escalations → FAILED_TARGET_NOT_FOUND with
+  reason + state trace; publish tap unconfirmed → FAILED_VERIFICATION. Every terminal
+  report includes reads/actions/escalations/elapsed.
+
+### EX.6 Ephemeral node IDs `[ADB/logcat]`
+- **PASS**: no tool call reuses a node_id across a screen transition; after a transition
+  the target is re-resolved semantically (logcat ResolutionMethod ∈ TEXT/DESC/RESOURCE_ID,
+  never a stale LEGACY_NODE_ID re-tap loop).
+
+### EX.7 Budget termination `[unit]`
+- `ExecutionBudgetTest`, `ScreenReadGateTest`, `TaskIntentClassifierTest`,
+  `SelectorChainTest` — 20 tests covering action/read/retry/escalation/wall-clock
+  budgets, passive-read denial, intent routing, and selector ordering.
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-22 — Bounded state-machine executor (EX fix pack)
+
+**Change:**
+1. **Intent gate** (`agent/exec/TaskIntentClassifier.kt`, pure): every task is
+   classified BEFORE the loop — KNOWLEDGE_QA / VAULT_QUERY / WEB_RESEARCH /
+   EXTERNAL_AI_QUERY / DEVICE_AUTOMATION. Device intent requires an imperative
+   command; a device verb inside a question no longer triggers UI automation.
+2. **Tool policy enforcement** (`RunToolPolicy.kt` + `LangChain4jToolBridge.
+   buildToolSpecifications(allowed)`): knowledge/vault/research runs get a
+   restricted tool list the model never SEES, plus an execution-time gate that
+   returns guidance if a disallowed tool is hallucinated. Prewarm screen attach
+   now follows the intent gate instead of a keyword heuristic — Q&A never
+   receives screen data.
+3. **ScreenReadGate** (`ScreenReadGate.kt`, pure): every get_screen_info —
+   model-called, prewarm, or post-action auto-attach — declares a Purpose
+   (STATE_ENTRY / POST_ACTION_VERIFY / ACTION_FAILURE / UI_TRANSITION /
+   RESOLUTION_ESCALATION). Budget: ≤8 reads, ≤2 consecutive passive reads of an
+   unchanged screen; denied reads return act-now/finish guidance instead of the
+   tree. Core invariant: no purpose → no read.
+4. **ExecutionBudget** (`ExecutionBudget.kt`, pure): 60s wall clock, 15 actions,
+   8 reads, 2 retries per state, 2 AI escalations. The LLM loop keeps its token/
+   iteration ceilings for wall time; the deterministic executor enforces all five.
+5. **Two-layer executor** (`DeterministicUiExecutor.kt`): START → CHECK_TARGET_APP
+   → OPEN_TARGET_APP → FIND_TARGET → PERFORM_ACTION → VERIFY_ACTION → DONE, with
+   failures in RECOVER → RETRY_CURRENT_STATE (≤2 per state, current state only —
+   never a workflow restart). SelectorChain order: text → content-desc →
+   resource-id → a11y-props/class → coordinates (last resort). node_id is never
+   reused across transitions (semantic re-resolution only). Input is deterministic:
+   tap composer → waitForEditableFocus → explicit clear → set text → verify field
+   content — no clipboard. AI escalation is a single no-tool LLM call returning a
+   JSON selector the CONTROLLER executes; the AI never drives the loop.
+6. **Terminal outcomes**: every run ends SUCCESS / FAILED_TARGET_NOT_FOUND /
+   FAILED_ACTION / FAILED_VERIFICATION / TIMEOUT / BUDGET_EXCEEDED with reason +
+   state trace (ExecReport) and a matching ExecutionTracker status. Watchdog
+   recoveries are now bounded to 2 per task in the LLM loop — the third trigger
+   STOPS and reports instead of restarting.
+7. **LinkedIn reference routine** (`exec/routines/LinkedInPostRoutine.kt` +
+   `StructuredRoutineRegistry`): "post on LinkedIn: …" runs fully deterministic —
+   ~2 screen reads, no indefinite retries. Playbook `playbooks/linkedin-post.md`.
+8. **Prompts**: Rule 2 (cloud) + LOCAL_TASK_PROMPT now semantic-first selector
+   priority + act-immediately + the observation-purpose invariant (supersedes
+   the earlier visual-first preference per the new spec).
+
+**Validation:** `scripts/ci-preflight.sh` green; 20 new pure-JVM unit tests
+(EX.7); structural balance check on all touched files. Device runs: EX.1–EX.6.
 
 ### 2026-08-22 — FX fix pack (external AI / OmniRoute / vault / task state)
 

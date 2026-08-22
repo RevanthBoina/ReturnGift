@@ -38,8 +38,20 @@ public class LangChain4jToolBridge {
      * Builds LangChain4j ToolSpecification list from all registered tools.
      */
     public static List<ToolSpecification> buildToolSpecifications() {
+        return buildToolSpecifications(null);
+    }
+
+    /**
+     * Builds ToolSpecifications restricted to {@code allowedNames} (null = all).
+     * Used by the intent gate: a knowledge question never SEES observation
+     * tools, so the model cannot UI-scrape the chat window instead of answering.
+     */
+    public static List<ToolSpecification> buildToolSpecifications(java.util.Set<String> allowedNames) {
         List<ToolSpecification> specs = new ArrayList<>();
         for (BaseTool tool : ToolRegistry.getInstance().getAllTools()) {
+            if (allowedNames != null && !allowedNames.contains(tool.getName())) {
+                continue;
+            }
             specs.add(toSpecification(tool));
         }
         return specs;
