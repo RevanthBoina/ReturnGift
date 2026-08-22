@@ -50,6 +50,12 @@ graph LR
     I --> J
 ```
 
+## Demo
+
+| Conversational task | Background monitoring |
+|---|---|
+| ![Task demo](demo/hi-demo.gif) | ![Monitor demo](demo/monitor-demo.gif) |
+
 ---
 
 ## Features

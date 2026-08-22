@@ -2053,9 +2053,72 @@ ReturnGift's own chat UI → ObserveStallGuard hard stop, ~211K tokens burned, O
 
 ---
 
+## HY — Repo Hygiene Audit & Local Streaming (2026-08-22)
+
+Full-repo audit driven by `.agents_tmp/PLAN.md` with a four-signal verification gate
+(literal grep + manifest view + doc-pointer rule + fixture disambiguation) before any
+removal. The gate invalidated most of the plan's "zero references" candidates:
+`core/` (15/16 files), `server/` (4/4), root `fixtures/`, `golden_transcripts/`,
+`docs/` website, `prototype/`, and `demo/` are all LIVE — kept.
+
+### HY.1 Local-model chat streams for real `[ADB]`
+- **Act**: Local model loaded; send a chat message with a long answer.
+- **PASS**: the assistant bubble fills progressively (no frozen "..." indicator);
+  logcat shows `chatStreaming: send user`; final bubble text equals the accumulated
+  stream; token/cost counters update once at completion. GPU-failure path still falls
+  back to CPU (`retryLocalChatOnCpu`) with a visible result.
+
+### HY.2 Agent loop streaming parity `[ADB/logcat]`
+- **Act**: run a Local task with `streaming` enabled in agent config.
+- **PASS**: `DefaultAgentService.chatWithRetry` receives partial deltas via
+  `LocalLlmClient.chatStreaming` (no more single-shot simulated stream); tool-call
+  markup in the accumulated stream still parses (`extractToolCalls` path unchanged);
+  the SDK "Failed to parse tool calls" recovery still yields a usable response.
+
+### HY.3 Skill-asset drift guard `[HOST]`
+- **Act**: `echo "# x" >> skill_library/skills/web_search.yaml` then run
+  `bash scripts/ci-preflight.sh`; restore the file.
+- **PASS**: preflight FAILS with `skill-assets-in-sync` naming the drifted file while
+  drifted; passes clean after restore.
+
+### HY.4 Dead-code removals compile `[CI]`
+- **Act**: push the branch; watch `Auto Build & Test`.
+- **PASS**: build green after deleting `core/telemetry/DirectTelemetryTools.kt`,
+  root `lint-baseline.xml` (diverged duplicate of `app/lint-baseline.xml`, which is
+  the only one Gradle reads), the empty `source_repo/` gitlink, and replacing stale
+  `Expert_tasks.md` with a pointer to `EXPERT_REVIEW_TASKS.md`. No references to any
+  removed file anywhere (four-signal gate evidence in the PR description).
+
+### HY.5 Demo assets wired `[HUMAN]`
+- **Act**: open README.md on GitHub; open the published docs site.
+- **PASS**: README shows the `demo/hi-demo.gif` + `demo/monitor-demo.gif` table.
+  NOTE (pre-existing, not fixed here): `docs/index.html` references
+  `hi-demo.mp4`/`monitor-demo.mp4` which do not exist in the repo — the site owner
+  must either add the mp4s or switch the markup to the gifs.
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-22 — Repo hygiene audit & local streaming (HY pack)
+
+- `[PASS] HY-gate` Four-signal gate re-verified every PLAN.md candidate. Result: only
+  `core/telemetry/DirectTelemetryTools.kt` (zero refs), root `lint-baseline.xml`
+  (diverged duplicate; Gradle reads `app/lint-baseline.xml`), the empty `source_repo/`
+  gitlink, and stale `Expert_tasks.md` (now a pointer to `EXPERT_REVIEW_TASKS.md`)
+  were removed. `core/` (15 files), `server/` (4 files), root `fixtures/`,
+  `golden_transcripts/`, `docs/` site, `prototype/`, `demo/` all proven live — kept.
+- `[IMPL] HY-stream` `LocalLlmClient.chatStreaming` now uses LiteRT-LM
+  `sendMessageAsync` + `MessageCallback` (blocking caller thread on a latch, deltas
+  forwarded to `StreamingListener`); `ChatSessionController` local branch streams into
+  the typing bubble with the same 60 ms throttle as the cloud path. Shared
+  `sendAndRecover`/`recoverRawOutput` helpers dedupe the SDK tool-call parse recovery.
+- `[PASS] HY.3-host` Skill-asset drift guard (`skill-assets-in-sync`) added to
+  `scripts/ci-preflight.sh`; verified failing on injected drift and passing clean.
+- `[NOTE] HY.5` `demo/*.gif` now embedded in README; `docs/index.html` mp4 references
+  are a pre-existing site gap recorded for the site owner.
 
 ### 2026-08-22 — Bounded state-machine executor (EX fix pack)
 

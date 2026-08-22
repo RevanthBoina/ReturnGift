@@ -11,7 +11,7 @@ ReturnGift is a private/internal Android mobile-agent harness built on a single 
 | File | What | When to update |
 |------|------|----------------|
 | `README.md` | Architecture direction, full repo structure | When direction or structure changes |
-| `docs/AI_INDEX.md` | Repo map for coding agents | When files or directories move |
+| `AI_INDEX.md` | Repo map for coding agents | When files or directories move |
 | `CLAUDE.md` | Project rules | When workflow/rules change |
 | `QA_CHECKLIST.md` | E2E test cases + debug changelog | Every code change |
 | `RELEASING.md` | Signing and release workflow | When the release process changes |
@@ -24,7 +24,7 @@ ReturnGift is a private/internal Android mobile-agent harness built on a single 
 - **skill_library/** — YAML skill definitions + Python lifecycle pipeline. No Kotlin.
 - **docs/** — documentation only. No code. ADRs in `docs/adr/`, specs in `docs/specs/`.
 - **scripts/** — shell scripts only. No app logic.
-- Do NOT add new root-level directories without updating `README.md` and `docs/AI_INDEX.md`.
+- Do NOT add new root-level directories without updating `README.md` and `AI_INDEX.md`.
 
 ## QA-First Development (MANDATORY)
 

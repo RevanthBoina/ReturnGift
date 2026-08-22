@@ -81,6 +81,20 @@ audit_missing_import "com.returngift.agent.tool.ToolResult" "ToolResult"
 audit_missing_import "com.returngift.agent.tool.BaseTool" "BaseTool"
 audit_missing_import "com.returngift.agent.tool.ToolParameter" "ToolParameter"
 
+# Skill-source drift guard: root skill_library/skills/ is the source of truth for the
+# Python lifecycle; app/src/main/assets/skill_library/skills/ is what ships in the APK.
+# scripts/update-skill-registry.sh syncs them — fail fast if they drift apart.
+if [ -d skill_library/skills ] && [ -d app/src/main/assets/skill_library/skills ]; then
+  drift="$(diff -rq skill_library/skills app/src/main/assets/skill_library/skills 2>&1 || true)"
+  if [ -n "$drift" ]; then
+    red "PREFLIGHT FAIL [skill-assets-in-sync]: bundled skill assets differ from skill_library/skills/ — run scripts/update-skill-registry.sh."
+    printf '%s\n' "$drift" | sed 's/^/    /'
+    fail=1
+  else
+    grn "OK skill-assets-in-sync"
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   red ""
   red "CI pre-flight found known-pitfall patterns. Fix them before Gradle runs."

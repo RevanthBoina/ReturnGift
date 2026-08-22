@@ -24,9 +24,12 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.SamplerConfig
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicReference
 
 data class ChatSessionUiState(
     val messages: SnapshotStateList<ChatMessage>,
@@ -373,9 +376,8 @@ class ChatSessionController(
                     ensureCloudHistoryInitialized()
                     cloudHistory.add(UserMessage.from(text))
                     // Stream deltas into the placeholder bubble (Kimi-style live answer).
-                    // Local model keeps the typing indicator until LiteRT-LM exposes a
-                    // MessageCallback/Flow streaming API (LocalLlmClient.chatStreaming
-                    // currently delegates to the blocking call).
+                    // The local-model branch below streams the same way via
+                    // sendMessageAsync + MessageCallback.
                     val partial = StringBuilder()
                     var lastUiPostMs = 0L
                     // The client reports streaming failures via onError but still returns a
@@ -422,8 +424,35 @@ class ChatSessionController(
                     if (currentConversation == null || !isModelReady) {
                         throw IllegalStateException("Local model is still loading. Try again in a moment.")
                     }
-                    val response = currentConversation.sendMessage(text)
-                    val responseText = response?.toString() ?: "(no response)"
+                    // Stream deltas into the placeholder bubble via LiteRT-LM's
+                    // sendMessageAsync + MessageCallback (same UX as the cloud path).
+                    val partial = StringBuilder()
+                    var lastUiPostMs = 0L
+                    val streamDone = CountDownLatch(1)
+                    val streamError = AtomicReference<Throwable?>()
+                    currentConversation.sendMessageAsync(text, object : MessageCallback {
+                        override fun onMessage(message: com.google.ai.edge.litertlm.Message) {
+                            val part = message.toString()
+                            if (part.isEmpty()) return
+                            partial.append(part)
+                            val now = SystemClock.uptimeMillis()
+                            if (now - lastUiPostMs >= STREAM_UI_THROTTLE_MS) {
+                                lastUiPostMs = now
+                                val snapshot = partial.toString()
+                                postToMain { replaceTypingIndicator(snapshot) }
+                            }
+                        }
+                        override fun onDone() {
+                            streamDone.countDown()
+                        }
+                        override fun onError(throwable: Throwable) {
+                            streamError.set(throwable)
+                            streamDone.countDown()
+                        }
+                    })
+                    streamDone.await()
+                    streamError.get()?.let { throw Exception(it.message ?: "local stream failed", it) }
+                    val responseText = partial.toString().ifEmpty { "(no response)" }
                     val inputTokensEst = text.length / 4 + 1
                     val outputTokensEst = responseText.length / 4 + 1
                     val modelPath = ModelConfigRepository.snapshot().local.modelPath.ifEmpty { loadedModelPath.orEmpty() }

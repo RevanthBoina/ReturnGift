@@ -180,22 +180,7 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
                 is UserMessage -> {
                     val conv = conversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
                     XLog.d(TAG, "chat: sendMessage user (${msg.singleText().take(80)}...) sendCount=$sendCount")
-                    try {
-                        lastResponse = conv.sendMessage(msg.singleText())
-                    } catch (e: Exception) {
-                        // LiteRT-LM SDK may fail to parse tool calls with standard quotes.
-                        // Extract raw model output from error message and parse ourselves.
-                        val errorMsg = e.message ?: ""
-                        if (errorMsg.contains("Failed to parse tool calls") && errorMsg.contains("tool_call")) {
-                            XLog.w(TAG, "SDK tool call parse failed, extracting from error: ${errorMsg.take(200)}")
-                            // Extract the raw output between "from response: " and the next error description
-                            val rawOutput = errorMsg.substringAfter("from response: ").substringBefore("code block:")
-                                .ifEmpty { errorMsg.substringAfter("from response: ") }
-                            lastResponse = rawOutput.trim()
-                        } else {
-                            throw e
-                        }
-                    }
+                    lastResponse = sendAndRecover(conv, msg.singleText())
                     sendCount++
                 }
                 is AiMessage -> { /* already in conversation state */ }
@@ -205,19 +190,7 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
                     val toolResultText = "[Tool ${msg.toolName()} result]: $truncatedResult"
                     val conv = conversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
                     XLog.d(TAG, "chat: sendMessage toolResult (${toolResultText.take(80)}...) sendCount=$sendCount")
-                    try {
-                        lastResponse = conv.sendMessage(toolResultText)
-                    } catch (e: Exception) {
-                        val errorMsg = e.message ?: ""
-                        if (errorMsg.contains("Failed to parse tool calls") && errorMsg.contains("tool_call")) {
-                            XLog.w(TAG, "SDK tool call parse failed on toolResult, extracting: ${errorMsg.take(200)}")
-                            val rawOutput = errorMsg.substringAfter("from response: ").substringBefore("code block:")
-                                .ifEmpty { errorMsg.substringAfter("from response: ") }
-                            lastResponse = rawOutput.trim()
-                        } else {
-                            throw e
-                        }
-                    }
+                    lastResponse = sendAndRecover(conv, toolResultText)
                     sendCount++
                 }
             }
@@ -227,17 +200,132 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
         return parseResponse(lastResponse)
     }
 
+    /**
+     * LiteRT-LM may fail to parse tool calls with standard quotes; in that case the raw
+     * model output is embedded in the error message and parsed by us instead.
+     */
+    private fun sendAndRecover(conv: com.google.ai.edge.litertlm.Conversation, text: String): Any {
+        return try {
+            conv.sendMessage(text) ?: ""
+        } catch (e: Exception) {
+            recoverRawOutput(e) ?: throw e
+        }
+    }
+
+    private fun recoverRawOutput(e: Exception): String? {
+        val errorMsg = e.message ?: return null
+        if (!errorMsg.contains("Failed to parse tool calls") || !errorMsg.contains("tool_call")) return null
+        XLog.w(TAG, "SDK tool call parse failed, extracting raw output: ${errorMsg.take(200)}")
+        return errorMsg.substringAfter("from response: ").substringBefore("code block:")
+            .ifEmpty { errorMsg.substringAfter("from response: ") }
+            .trim()
+    }
+
+    /**
+     * True streaming send via sendMessageAsync + MessageCallback. The calling thread blocks on a
+     * latch while partial deltas are forwarded to the listener from the SDK inference thread.
+     */
+    private fun sendStreaming(
+        conv: com.google.ai.edge.litertlm.Conversation,
+        text: String,
+        listener: StreamingListener
+    ): Any {
+        val done = CountDownLatch(1)
+        val errorRef = AtomicReference<Throwable?>()
+        val accumulated = StringBuilder()
+        conv.sendMessageAsync(text, object : MessageCallback {
+            override fun onMessage(message: com.google.ai.edge.litertlm.Message) {
+                val part = message.toString()
+                if (part.isNotEmpty()) {
+                    accumulated.append(part)
+                    listener.onPartialText(part)
+                }
+            }
+            override fun onDone() {
+                done.countDown()
+            }
+            override fun onError(throwable: Throwable) {
+                errorRef.set(throwable)
+                done.countDown()
+            }
+        })
+        done.await()
+        val error = errorRef.get()
+        if (error != null) {
+            val recovered = if (error is Exception) recoverRawOutput(error) else null
+            if (recovered != null) return recovered
+            listener.onError(error)
+            throw RuntimeException(error.message ?: "LiteRT-LM streaming failed", error)
+        }
+        return accumulated.toString()
+    }
+
     override fun chatStreaming(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
         listener: StreamingListener
     ): LlmResponse {
-        // For now, delegate to blocking chat and simulate streaming
-        // LiteRT-LM streaming requires Flow or MessageCallback which needs more integration
-        val response = chat(messages, toolSpecs)
-        if (!response.text.isNullOrEmpty()) {
-            listener.onPartialText(response.text)
+        return try {
+            chatStreamingInternal(messages, toolSpecs, listener)
+        } catch (e: Exception) {
+            if (!gpuFailed && LocalModelRuntime.isGpuBackendFailure(e)) {
+                XLog.w(TAG, "chatStreaming: GPU inference failed, retrying with CPU: ${e.message}")
+                fallbackToCpu()
+                chatStreamingInternal(messages, toolSpecs, listener)
+            } else {
+                throw e
+            }
         }
+    }
+
+    private fun chatStreamingInternal(
+        messages: List<ChatMessage>,
+        toolSpecs: List<ToolSpecification>,
+        listener: StreamingListener
+    ): LlmResponse {
+        ensureEngine()
+
+        if (processedMessageCount == 0 || messages.size < processedMessageCount || sendCount >= 8) {
+            val systemPrompt = messages.filterIsInstance<SystemMessage>().firstOrNull()?.text()
+                ?: config.systemPrompt.ifEmpty { LOCAL_SYSTEM_PROMPT }
+            createConversation(systemPrompt, toolSpecs)
+            sendCount = 0
+            processedMessageCount = 0
+        }
+
+        val newMessages = messages.subList(
+            processedMessageCount.coerceAtMost(messages.size),
+            messages.size
+        )
+
+        var lastResponse: Any? = null
+
+        for ((index, msg) in newMessages.withIndex()) {
+            val isLast = index == newMessages.lastIndex
+            when (msg) {
+                is SystemMessage -> { /* handled in createConversation */ }
+                is UserMessage -> {
+                    val conv = conversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
+                    XLog.d(TAG, "chatStreaming: send user (${msg.singleText().take(80)}...) sendCount=$sendCount last=$isLast")
+                    lastResponse = if (isLast) sendStreaming(conv, msg.singleText(), listener)
+                        else sendAndRecover(conv, msg.singleText())
+                    sendCount++
+                }
+                is AiMessage -> { /* already in conversation state */ }
+                is ToolExecutionResultMessage -> {
+                    val truncatedResult = msg.text().take(400)
+                    val toolResultText = "[Tool ${msg.toolName()} result]: $truncatedResult"
+                    val conv = conversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
+                    XLog.d(TAG, "chatStreaming: send toolResult (${toolResultText.take(80)}...) sendCount=$sendCount last=$isLast")
+                    lastResponse = if (isLast) sendStreaming(conv, toolResultText, listener)
+                        else sendAndRecover(conv, toolResultText)
+                    sendCount++
+                }
+            }
+        }
+
+        processedMessageCount = messages.size
+        val response = parseResponse(lastResponse)
         listener.onComplete(response)
         return response
     }
