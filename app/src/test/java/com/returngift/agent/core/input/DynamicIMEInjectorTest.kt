@@ -68,10 +68,10 @@ class DynamicIMEInjectorTest {
         return service
     }
 
-    private fun failingNode(password: Boolean, hints: Array<String>? = null): AccessibilityNodeInfo {
+    private fun failingNode(password: Boolean, hintText: String? = null): AccessibilityNodeInfo {
         val node = mock(AccessibilityNodeInfo::class.java)
         `when`(node.isPassword).thenReturn(password)
-        `when`(node.autofillHints).thenReturn(hints)
+        `when`(node.hintText).thenReturn(hintText)
         `when`(node.text).thenReturn(null)
         // Every action fails → ACTION_SET_TEXT retries exhaust, forcing the fallback decision.
         `when`(node.performAction(eq(AccessibilityNodeInfo.ACTION_SET_TEXT), any(Bundle::class.java)))
@@ -95,19 +95,19 @@ class DynamicIMEInjectorTest {
     }
 
     @Test
-    fun `credential autofill hints mark the field sensitive`() {
-        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, arrayOf("password"))))
-        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, arrayOf("username"))))
-        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, arrayOf("one-time-code"))))
-        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, arrayOf("OTP"))))
-        // Mixed-case + multi-hint arrays still match.
-        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, arrayOf("emailAddress", "Password"))))
+    fun `credential hint text marks the field sensitive`() {
+        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, "Enter your password")))
+        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, "One-time code")))
+        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, "Enter OTP")))
+        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, "CVV")))
+        // Mixed-case still matches.
+        assertTrue(DynamicIMEInjector.isSensitiveField(failingNode(false, "Type your PaSsWoRd")))
     }
 
     @Test
     fun `non-sensitive field still uses the clipboard fallback path`() {
         val service = serviceWithClipboard()
-        val node = failingNode(password = false, hints = null)
+        val node = failingNode(password = false, hintText = null)
 
         val result = DynamicIMEInjector.injectText(service, "hello", node, clearFirst = true)
 
@@ -122,6 +122,7 @@ class DynamicIMEInjectorTest {
     fun `isSensitiveField handles nulls and ordinary fields`() {
         assertFalse(DynamicIMEInjector.isSensitiveField(null))
         assertFalse(DynamicIMEInjector.isSensitiveField(failingNode(false, null)))
-        assertFalse(DynamicIMEInjector.isSensitiveField(failingNode(false, arrayOf("emailAddress", "name"))))
+        assertFalse(DynamicIMEInjector.isSensitiveField(failingNode(false, "Search")))
+        assertFalse(DynamicIMEInjector.isSensitiveField(failingNode(false, "Email address")))
     }
 }

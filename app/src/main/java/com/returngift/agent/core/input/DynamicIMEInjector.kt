@@ -7,6 +7,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -27,10 +28,12 @@ object DynamicIMEInjector {
     /** Typed failure method returned when a sensitive field rejects ACTION_SET_TEXT. */
     const val METHOD_SENSITIVE_FIELD_INPUT_FAILED = "SENSITIVE_FIELD_INPUT_FAILED"
 
-    /** Autofill hint values (lowercased) that mark a field as credential/OTP input. */
-    private val SENSITIVE_AUTOFILL_HINTS = setOf(
-        "password", "username", "one-time-code", "otp", "sms-otp", "email_otp"
-    )
+    /**
+     * Keywords (lowercased) in a field's placeholder/hint text that mark it as
+     * credential/OTP input. AccessibilityNodeInfo does NOT expose View autofill
+     * hints; hintText (API 26) is the available accessibility-side signal.
+     */
+    private val SENSITIVE_HINT_KEYWORDS = listOf("password", "passcode", "one-time", "otp", "cvv")
 
     /**
      * Test hook for the clipboard write in [pasteFromClipboard]: posts to the main
@@ -40,15 +43,17 @@ object DynamicIMEInjector {
     internal var mainThreadPoster: (Runnable) -> Unit = { Handler(Looper.getMainLooper()).post(it) }
 
     /**
-     * True when [node] is a password field or carries a credential/OTP autofill hint.
+     * True when [node] is a password field, is marked accessibility-data-sensitive
+     * (API 34+, e.g. banking/OTP screens), or its hint text names a credential/OTP.
      * Such fields must never receive text via the shared clipboard (readable by other
-     * apps / clipboard managers). minSdk is 28, so autofillHints (API 26) always exists.
+     * apps / clipboard managers).
      */
     fun isSensitiveField(node: AccessibilityNodeInfo?): Boolean {
         if (node == null) return false
         if (node.isPassword) return true
-        val hints = node.autofillHints ?: return false
-        return hints.any { it != null && it.lowercase(java.util.Locale.US) in SENSITIVE_AUTOFILL_HINTS }
+        if (Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive) return true
+        val hint = node.hintText?.toString()?.lowercase(java.util.Locale.US) ?: return false
+        return SENSITIVE_HINT_KEYWORDS.any { hint.contains(it) }
     }
 
     data class InjectionResult(

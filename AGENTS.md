@@ -217,6 +217,11 @@ GitHub code engine — MUST NOT reintroduce them.
    its declaration site (`grep -n "class X" file.kt`) and match the actual nesting.
    In this sandbox (no SDK), the cheapest real gate is: push → watch
    `gh run view --log-failed` of `Auto Build & Test` before tagging.
+   (c) **Verify Android SDK methods against AOSP, not memory** — the PV.1
+   clipboard fix (2026-08-23) used `AccessibilityNodeInfo.getAutofillHints()`,
+   which does NOT exist (autofill hints live on `android.view.View`, not on the
+   a11y node). Accessibility-side sensitivity signals that DO exist:
+   `isPassword()`, `isAccessibilityDataSensitive()` (API 34+), `hintText` (API 26+).
 
 The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
