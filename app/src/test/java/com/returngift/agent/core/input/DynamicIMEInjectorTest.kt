@@ -87,7 +87,7 @@ class DynamicIMEInjectorTest {
         // The strong assertion: the system clipboard was never written.
         assertNull(clipboardManager().primaryClip)
         // And no paste action was ever dispatched to the node.
-        verify(node, never()).performAction(eq(AccessibilityNodeInfo.ACTION_PASTE), any(Bundle::class.java))
+        verify(node, never()).performAction(eq(AccessibilityNodeInfo.ACTION_PASTE))
     }
 
     @Test
@@ -111,7 +111,7 @@ class DynamicIMEInjectorTest {
         assertEquals("all_failed", result.method)
         // Behavior unchanged for normal fields: the clipboard WAS populated as before.
         assertEquals("hello", clipboardManager().primaryClip?.getItemAt(0)?.text?.toString())
-        verify(node).performAction(eq(AccessibilityNodeInfo.ACTION_PASTE), any(Bundle::class.java))
+        verify(node).performAction(eq(AccessibilityNodeInfo.ACTION_PASTE))
     }
 
     @Test
