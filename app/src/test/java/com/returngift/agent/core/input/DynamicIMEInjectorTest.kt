@@ -22,8 +22,6 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.shadows.ShadowClipboardManager
-import org.robolectric.shadow.api.Shadow
 
 /**
  * Privacy tests for the clipboard-paste fallback: sensitive fields (password /
@@ -52,11 +50,9 @@ class DynamicIMEInjectorTest {
         DynamicIMEInjector.mainThreadPoster = defaultPoster
     }
 
-    private fun clipboard(): ShadowClipboardManager {
-        val cm = org.robolectric.RuntimeEnvironment.getApplication()
+    private fun clipboardManager(): ClipboardManager =
+        org.robolectric.RuntimeEnvironment.getApplication()
             .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        return Shadow.extract(cm)
-    }
 
     /** Mock service wired to the REAL shadow ClipboardManager. */
     private fun serviceWithClipboard(): ClawAccessibilityService {
@@ -89,7 +85,7 @@ class DynamicIMEInjectorTest {
         assertFalse(result.success)
         assertEquals(DynamicIMEInjector.METHOD_SENSITIVE_FIELD_INPUT_FAILED, result.method)
         // The strong assertion: the system clipboard was never written.
-        assertNull(clipboard().primaryClip)
+        assertNull(clipboardManager().primaryClip)
         // And no paste action was ever dispatched to the node.
         verify(node, never()).performAction(eq(AccessibilityNodeInfo.ACTION_PASTE), any(Bundle::class.java))
     }
@@ -114,7 +110,7 @@ class DynamicIMEInjectorTest {
         assertFalse(result.success)
         assertEquals("all_failed", result.method)
         // Behavior unchanged for normal fields: the clipboard WAS populated as before.
-        assertEquals("hello", clipboard().primaryClip?.getItemAt(0)?.text?.toString())
+        assertEquals("hello", clipboardManager().primaryClip?.getItemAt(0)?.text?.toString())
         verify(node).performAction(eq(AccessibilityNodeInfo.ACTION_PASTE), any(Bundle::class.java))
     }
 
