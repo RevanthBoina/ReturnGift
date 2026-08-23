@@ -223,6 +223,19 @@ checker only; it does NOT catch these (they are valid Kotlin *syntax* but invali
 semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnitTest` +
 `lintDebug`), fronted by `scripts/ci-preflight.sh`.
 
+## CI artifact-quota resilience (2026-08-23, TL fix pack push)
+- **Two failure classes seen across the last main pushes**: (a) REAL lint error
+  `ImportDownloadTool.java:136: Value must be >= 0 but getColumnIndex can be -1 [Range]`
+  — fixed with `getColumnIndexOrThrow` (columns are in the projection, so it can't
+  throw); (b) `Failed to CreateArtifact: Artifact storage quota has been hit` —
+  an ACCOUNT-level GitHub Actions quota (repo has 0 artifacts), recalculated every
+  6-12h, NOT a code error: tests/lint/APK all BUILD SUCCESSFUL before it.
+- **Fix**: `continue-on-error: true` on the `upload-artifact` steps in
+  `auto_build_and_test.yml` and `build.yml` (uploads are best-effort distribution).
+  `emulator-matrix.yml` intentionally NOT changed — smoke-test downloads the
+  `debug-apk` artifact, so its upload is a real pipeline dependency; that workflow
+  will stay red during quota outages and self-heals when quota refreshes.
+
 ## V2.2.0 release CI breakage (verified 2026-08-18, PR #50)
 The `v2.2.0` tag (commit `5597917`, "feat(v2.2.0): Perception & Interaction architecture…")
 broke EVERY compiling workflow (Release APK, Auto Build & Test, Build Debug APK, Android
