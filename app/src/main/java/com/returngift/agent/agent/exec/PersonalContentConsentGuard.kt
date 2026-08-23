@@ -23,6 +23,10 @@ object PersonalContentConsentGuard {
 
     private const val TAG = "PersonalContentConsent"
     private const val KEY_PREFIX = "personal_consent_"
+    private const val KEY_TS_SUFFIX = "_ts"
+
+    /** "Allow & remember" grants expire after this; re-prompt afterwards. */
+    const val REMEMBER_TTL_MS: Long = 60L * 24 * 60 * 60 * 1000  // 60 days
 
     enum class Decision { ALLOW_ONCE, ALLOW_REMEMBER, CANCEL }
 
@@ -81,6 +85,27 @@ object PersonalContentConsentGuard {
         }
     }
 
+    /** Grant timestamps (epoch ms) for TTL expiry; injectable for tests. */
+    internal var persistenceGetLong: (String) -> Long = { key ->
+        try {
+            KVUtils.getLong(key, 0L)
+        } catch (e: Exception) {
+            XLog.w(TAG, "consent ts read failed for $key", e)
+            0L
+        }
+    }
+
+    internal var persistencePutLong: (String, Long) -> Unit = { key, value ->
+        try {
+            KVUtils.putLong(key, value)
+        } catch (e: Exception) {
+            XLog.w(TAG, "consent ts write failed for $key", e)
+        }
+    }
+
+    /** Wall clock — injectable so TTL tests don't sleep. */
+    internal var nowMs: () -> Long = { System.currentTimeMillis() }
+
     /**
      * The distinct content-app labels mentioned in [task], in detection order.
      * Empty when the task does not touch personal content.
@@ -92,20 +117,44 @@ object PersonalContentConsentGuard {
         }.distinct()
     }
 
-    fun isRemembered(appLabel: String): Boolean =
-        persistenceGet(KEY_PREFIX + appLabel.lowercase())
+    /**
+     * True only when a remembered grant exists AND is within its TTL. Expired
+     * grants are dropped on read so the next task re-prompts.
+     */
+    fun isRemembered(appLabel: String): Boolean {
+        val key = KEY_PREFIX + appLabel.lowercase()
+        if (!persistenceGet(key)) return false
+        val grantedAt = persistenceGetLong(key + KEY_TS_SUFFIX)
+        if (grantedAt <= 0L) return true  // legacy grant without timestamp — keep honoring
+        if (nowMs() - grantedAt > REMEMBER_TTL_MS) {
+            forget(appLabel)
+            XLog.i(TAG, "remembered consent for $appLabel expired (TTL ${REMEMBER_TTL_MS}ms)")
+            return false
+        }
+        return true
+    }
 
-    /** Persisted "Allow & remember" decisions — one key per app label. */
+    /** Persisted "Allow & remember" decisions — one key per app label, with timestamp. */
     fun remember(appLabel: String) {
-        persistencePut(KEY_PREFIX + appLabel.lowercase(), true)
+        val key = KEY_PREFIX + appLabel.lowercase()
+        persistencePut(key, true)
+        persistencePutLong(key + KEY_TS_SUFFIX, nowMs())
         XLog.i(TAG, "remembered consent for $appLabel")
     }
 
-    /** Revoke a remembered consent (Settings reset / future privacy UI). */
+    /** Revoke a remembered consent (Settings reset / privacy UI). */
     fun forget(appLabel: String) {
-        persistencePut(KEY_PREFIX + appLabel.lowercase(), false)
+        val key = KEY_PREFIX + appLabel.lowercase()
+        persistencePut(key, false)
+        persistencePutLong(key + KEY_TS_SUFFIX, 0L)
         XLog.i(TAG, "forgot consent for $appLabel")
     }
+
+    /** All known app labels (for the Settings revocation list). */
+    fun knownAppLabels(): List<String> = APP_LABELS.map { it.second }.distinct()
+
+    /** The labels with a currently-active remembered grant (for Settings UI). */
+    fun rememberedApps(): List<String> = knownAppLabels().filter { isRemembered(it) }
 
     /** The question text surfaced to the user for the detected apps. */
     fun buildQuestion(apps: List<String>): String {
@@ -122,6 +171,56 @@ object PersonalContentConsentGuard {
         CHOICE_ALLOW_ONCE.lowercase(), "allow", "yes", "ok" -> Decision.ALLOW_ONCE
         CHOICE_ALLOW_REMEMBER.lowercase(), "always allow", "remember" -> Decision.ALLOW_REMEMBER
         CHOICE_CANCEL.lowercase(), "no", "deny", "stop" -> Decision.CANCEL
+        else -> null
+    }
+
+    // ── Dispatch-site check (additive to the pre-loop text gate) ─────────────
+    // The pre-loop gate reads the TASK TEXT; the dispatch-site gate reads the
+    // actual TOOL CALL, so a personal surface the model reaches mid-task (e.g.
+    // "also check my WhatsApp" after a Gmail summary) is gated too.
+
+    /** Tools that open a specific app — package name is in the args. */
+    private val APP_TARGETING_TOOLS = setOf("open_app", "switch_app")
+
+    /** Tools that read whatever is on screen — gated on the tracked target app. */
+    private val CONTENT_READING_TOOLS = setOf(
+        "get_screen_info", "take_screenshot", "find_and_tap", "tap_node",
+        "input_text", "long_press",
+    )
+
+    /** Android package name → personal-content label (null = not personal). */
+    private val PACKAGE_TO_LABEL: Map<String, String> = mapOf(
+        "com.google.android.gm" to "Gmail",
+        "com.microsoft.office.outlook" to "Outlook",
+        "com.whatsapp" to "WhatsApp",
+        "org.telegram.messenger" to "Telegram",
+        "com.google.android.apps.messaging" to "Messages",
+        "com.samsung.android.messaging" to "Messages",
+        "com.android.contacts" to "Contacts",
+        "com.google.android.contacts" to "Contacts",
+        "com.google.android.apps.photos" to "Photos",
+        "com.sec.android.gallery3d" to "Photos",
+        "com.google.android.calendar" to "Calendar",
+        "com.google.android.documentsui" to "Files",
+    )
+
+    /** The personal label for a package name, or null. */
+    fun labelForPackage(pkg: String?): String? = pkg?.let { PACKAGE_TO_LABEL[it] }
+
+    /**
+     * Which personal surface (if any) a dispatched tool call would touch.
+     * [currentTargetPackage] is the app the task is currently driving (for
+     * content-reading tools that don't name an app in their args).
+     */
+    fun checkToolTarget(
+        toolName: String,
+        params: Map<String, Any?>,
+        currentTargetPackage: String?,
+    ): String? = when {
+        toolName in APP_TARGETING_TOOLS ->
+            labelForPackage(params["package_name"]?.toString())
+        toolName in CONTENT_READING_TOOLS ->
+            labelForPackage(currentTargetPackage)
         else -> null
     }
 }

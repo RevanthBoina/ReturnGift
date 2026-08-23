@@ -366,6 +366,11 @@ class ChatSessionController(
             onPersistConversation()
             return
         }
+        // Stale-answer race: the question resolved just before this text arrived
+        // (timeout/cancel) — acknowledge instead of silently starting a new chat.
+        if (!markEdited && com.returngift.agent.agent.clarify.ClarificationManager.resolvedRecently()) {
+            addSystem("ℹ️ That question was already closed (timed out or cancelled) — your message was sent as a new chat instead.")
+        }
         addUser(text, markEdited)
         uiState.isAwaitingReply.value = true
         uiState.messages.add(ChatMessage(ChatMessage.Role.ASSISTANT, "..."))

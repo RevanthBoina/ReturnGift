@@ -43,6 +43,16 @@ object ClarificationManager {
         val createdAtMs: Long,
     )
 
+    /** True when a question just resolved within [windowMs] — used by the chat
+     *  funnels to detect a stale-answer race (UI saw the question but the loop
+     *  already timed out / was cancelled) and acknowledge it instead of
+     *  silently routing the text as a new message. */
+    fun resolvedRecently(windowMs: Long = 30_000L): Boolean =
+        System.currentTimeMillis() - lastResolvedAtMs <= windowMs
+
+    @Volatile
+    private var lastResolvedAtMs: Long = 0L
+
     @Volatile
     private var pending: PendingQuestion? = null
 
@@ -226,6 +236,7 @@ object ClarificationManager {
             latch = null
             answer = null
             cancelled = false
+            lastResolvedAtMs = System.currentTimeMillis()
         }
         persistHook(null)
         notifyListeners(null)

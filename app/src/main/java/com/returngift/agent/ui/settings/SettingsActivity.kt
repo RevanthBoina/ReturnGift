@@ -168,7 +168,8 @@ class SettingsActivity : BaseActivity() {
     private fun applyThemeToGroups(tc: com.returngift.agent.ui.chat.ThemeManager.ChatColors) {
         val groups = listOf(
             R.id.permissionsGroup, R.id.channelGroup, R.id.modelGroup,
-            R.id.appearanceGroup, R.id.toolsGroup, R.id.remoteGroup, R.id.aboutGroup
+            R.id.appearanceGroup, R.id.toolsGroup, R.id.remoteGroup,
+            R.id.privacyGroup, R.id.aboutGroup
         )
         for (id in groups) {
             val g = findViewById<MenuGroup>(id) ?: continue
@@ -519,6 +520,42 @@ class SettingsActivity : BaseActivity() {
             showDivider = false
         ).apply {
             setTrailingText("Coming soon")
+        }
+
+        // Privacy — remembered personal-content consent grants (TTL'd; revoke per app)
+        val privacyGroup = findViewById<MenuGroup>(R.id.privacyGroup)
+        privacyGroup.setTitle("Privacy")
+        val remembered = com.returngift.agent.agent.exec.PersonalContentConsentGuard.rememberedApps()
+        if (remembered.isEmpty()) {
+            privacyGroup.addMenuItem(
+                leadingIcon = android.R.drawable.ic_lock_lock,
+                title = "Personal-content access",
+                onClick = { },
+                showDivider = false
+            ).apply {
+                setTrailingText("No remembered apps")
+            }
+        } else {
+            remembered.forEachIndexed { i, app ->
+                privacyGroup.addMenuItem(
+                    leadingIcon = android.R.drawable.ic_lock_lock,
+                    title = app,
+                    onClick = {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Revoke access?")
+                            .setMessage("ReturnGift will ask again before reading personal content from $app.")
+                            .setPositiveButton("Revoke") { _, _ ->
+                                com.returngift.agent.agent.exec.PersonalContentConsentGuard.forget(app)
+                                recreate()
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    },
+                    showDivider = i < remembered.size - 1
+                ).apply {
+                    setTrailingText("Remembered — tap to revoke")
+                }
+            }
         }
 
         // About

@@ -130,12 +130,28 @@ object TaskCheckpointStore {
     /** True when [text] is exactly a resume keyword (regardless of checkpoint presence). */
     fun isResumeKeyword(text: String): Boolean = isResumeIntent(text)
 
+    /** Checkpoints older than this are too stale to resume blindly. */
+    const val FRESHNESS_MS: Long = 24L * 60 * 60 * 1000  // 24 hours
+
+    /** Wall clock — injectable so staleness tests don't sleep. */
+    internal var nowMs: () -> Long = { System.currentTimeMillis() }
+
+    /** True when the checkpoint is too old to resume without asking. */
+    fun isStale(checkpoint: Checkpoint): Boolean =
+        nowMs() - checkpoint.timestamp > FRESHNESS_MS
+
     /** If [text] is a resume intent, consume and return the parked checkpoint, else null. */
     fun consumeIfResumeIntent(text: String): Checkpoint? {
         if (!isResumeIntent(text)) return null
         val checkpoint = peek() ?: return null
         KVUtils.remove(KV_LATEST)
         return checkpoint
+    }
+
+    /** Peek at the parked checkpoint WITHOUT consuming it (freshness check first). */
+    fun peekIfResumeIntent(text: String): Checkpoint? {
+        if (!isResumeIntent(text)) return null
+        return peek()
     }
 
     /**

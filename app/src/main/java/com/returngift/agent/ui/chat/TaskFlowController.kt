@@ -78,6 +78,9 @@ class TaskFlowController(
     private val pipelineRouter = PipelineRouter(activity)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var checkpointHintShown = false
+
+    /** A stale checkpoint awaiting the user's resume-fresh decision (see sendTask). */
+    private var staleResumeCheckpoint: com.returngift.agent.agent.checkpoint.TaskCheckpointStore.Checkpoint? = null
     /** True when this task backgrounded the chat at task start — the
      *  terminal event then also posts a completion notification (Kimi-Work style). */
     private var minimizedForTask = false
@@ -157,6 +160,12 @@ class TaskFlowController(
             submitClarificationAnswer(text)
             return
         }
+        // Stale-answer race: the UI still showed a question but the loop already
+        // resolved it (timeout/cancel). Don't silently treat the text as a brand-new
+        // task — acknowledge the mismatch so the user knows what just happened.
+        if (ClarificationManager.resolvedRecently()) {
+            addSystem("ℹ️ That question was already closed (timed out or cancelled) — your message was sent as a new task instead.")
+        }
 
         // NOTE: the personal-content consent gate lives INSIDE the loop now
         // (DefaultAgentService.runAgentLoop → PersonalContentConsentGuard). It
@@ -177,16 +186,44 @@ class TaskFlowController(
         // Checkpoint resume: an explicit "resume"/"continue" restarts the interrupted
         // task with its M3A-style step history prepended; otherwise hint once.
         var text = text
-        val checkpoint = com.returngift.agent.agent.checkpoint.TaskCheckpointStore.consumeIfResumeIntent(text)
-        if (checkpoint != null) {
-            addSystem("↩️ Resuming interrupted task (${checkpoint.path})")
-            text = checkpoint.taskText + "\n\n" +
-                com.returngift.agent.agent.checkpoint.TaskCheckpointStore.renderPromptContext(checkpoint)
-        } else if (com.returngift.agent.agent.checkpoint.TaskCheckpointStore.isResumeKeyword(text)) {
-            // Resume card/button tapped after the checkpoint was already consumed.
-            addSystem("No interrupted task to resume.")
+        val peeked = com.returngift.agent.agent.checkpoint.TaskCheckpointStore.peekIfResumeIntent(text)
+        if (peeked != null && com.returngift.agent.agent.checkpoint.TaskCheckpointStore.isStale(peeked)) {
+            // Too old to resume blindly — park on a fresh-start question instead of
+            // silently resuming a checkpoint whose context the user has forgotten.
+            // The user's next message is consumed as the answer; "resume" re-runs
+            // this branch (now fresh-checked against the same checkpoint), anything
+            // else discards the checkpoint and starts a new task.
+            addSystem("⏳ That interrupted task is over ${com.returngift.agent.agent.checkpoint.TaskCheckpointStore.FRESHNESS_MS / 3_600_000}h old — start fresh instead? Type \"resume\" to still resume it, or send anything else to start fresh.")
+            staleResumeCheckpoint = peeked
             return
-        } else if (!checkpointHintShown) {
+        }
+        if (staleResumeCheckpoint != null && com.returngift.agent.agent.checkpoint.TaskCheckpointStore.isResumeKeyword(text)) {
+            // User explicitly confirmed resuming the stale checkpoint.
+            val checkpoint = com.returngift.agent.agent.checkpoint.TaskCheckpointStore.consumeIfResumeIntent(text)
+            staleResumeCheckpoint = null
+            if (checkpoint != null) {
+                addSystem("↩️ Resuming interrupted task (${checkpoint.path})")
+                text = checkpoint.taskText + "\n\n" +
+                    com.returngift.agent.agent.checkpoint.TaskCheckpointStore.renderPromptContext(checkpoint)
+            }
+        } else if (staleResumeCheckpoint != null) {
+            // User sent something else — start fresh, drop the stale checkpoint.
+            val droppedTaskText = staleResumeCheckpoint?.taskText ?: ""
+            staleResumeCheckpoint = null
+            com.returngift.agent.agent.checkpoint.TaskCheckpointStore.clearIfTaskMatches(droppedTaskText)
+        } else {
+            val checkpoint = com.returngift.agent.agent.checkpoint.TaskCheckpointStore.consumeIfResumeIntent(text)
+            if (checkpoint != null) {
+                addSystem("↩️ Resuming interrupted task (${checkpoint.path})")
+                text = checkpoint.taskText + "\n\n" +
+                    com.returngift.agent.agent.checkpoint.TaskCheckpointStore.renderPromptContext(checkpoint)
+            } else if (com.returngift.agent.agent.checkpoint.TaskCheckpointStore.isResumeKeyword(text)) {
+                // Resume card/button tapped after the checkpoint was already consumed.
+                addSystem("No interrupted task to resume.")
+                return
+            }
+        }
+        if (!checkpointHintShown && peeked == null) {
             com.returngift.agent.agent.checkpoint.TaskCheckpointStore.peek()?.let { cp ->
                 checkpointHintShown = true
                 addSystem("$RESUME_HINT_PREFIX — tap Resume (or type \"resume\") to continue it (${cp.path}).")

@@ -2164,11 +2164,82 @@ content read, so the SAME UI works in preview mode too.
   cleared by `cleanupAfterTask` once the consent-cancelled task settles, and
   the guard's cancelled loop never calls REAL tools.
 
+### TL.10 Dispatch-site consent: mid-task pivot to a personal app re-asks `[ADB] [LLM-CLOUD]`
+- **Act**: "Summarize my Gmail" → Allow once. Then mid-task the model opens
+  WhatsApp (`open_app com.whatsapp`) without it being in the task text.
+- **PASS**: a NEW consent card appears for WhatsApp (the per-task grant covers
+  Gmail only); Allow once lets the rest of the task read WhatsApp without
+  asking again; Cancel ends the task with the honest "I need your permission"
+  message and `open_app` is never executed.
+
+### TL.11 Allow-once covers the whole task, not per call `[ADB] [LLM-CLOUD]`
+- **Act**: Allow once on a Gmail task that does 3+ `get_screen_info` reads.
+- **PASS**: exactly ONE consent card; subsequent reads to the same surface
+  proceed silently (per-task `taskConsentedSurfaces`).
+
+### TL.12 Remembered consent expires after TTL `[ADB]`
+- **Act**: Allow & remember Gmail; set the device clock forward 61 days
+  (or temporarily lower `REMEMBER_TTL_MS` in a debug build); run a Gmail task.
+- **PASS**: the consent card re-appears (grant expired); `isRemembered` also
+  drops the stored key so Settings no longer lists it.
+
+### TL.13 Settings → Privacy lists and revokes remembered grants `[ADB]`
+- **Act**: Allow & remember Gmail + Photos; open Settings → Privacy.
+- **PASS**: both apps listed with "Remembered — tap to revoke"; tapping one →
+  confirm dialog → grant revoked, list refreshes, and the next task for that
+  app re-asks.
+
+### TL.14 Stale clarification answer is acknowledged, not silently routed `[ADB]`
+- **Act**: trigger a clarification, let it time out (120s) while the card is
+  still visible, then type an answer and send.
+- **PASS**: an ℹ️ system line "That question was already closed … sent as a
+  new task/chat instead" appears above the new message — the user is not
+  confused about where their text went.
+
+### TL.15 Stale checkpoint prompts instead of silently resuming `[ADB]`
+- **Act**: interrupt a task (checkpoint written), wait >24h (or temporarily
+  lower `FRESHNESS_MS`), then tap the RESUME card or type "resume".
+- **PASS**: a ⏳ "over 24h old — start fresh instead?" system card appears;
+  typing "resume" again resumes it explicitly, anything else discards the
+  checkpoint and starts a fresh task.
+
 ---
 
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-23 — Consent/clarification hardening (TL.10–TL.15)
+
+**Change:**
+1. **Dispatch-site consent** (`PersonalContentConsentGuard.checkToolTarget` +
+   wiring in `DefaultAgentService.runAgentLoop` before `executeTool`): gates
+   `open_app`/`switch_app` by package name and content-reading tools by the
+   tracked target package. A per-task `taskConsentedSurfaces` set makes one
+   "Allow once" cover every later call to that surface for the rest of the
+   task run; Cancel produces the same honest terminal outcome as the pre-loop
+   gate. The pre-loop text gate is unchanged (additive).
+2. **Consent TTL + revocation**: `remember()` stores a timestamp; `isRemembered`
+   returns false past `REMEMBER_TTL_MS` (60 days) and drops the expired key.
+   Settings → Privacy lists active remembered grants with a per-app revoke
+   (confirm dialog → `forget()` → recreate).
+3. **Stale-answer acknowledgment**: `ClarificationManager.finishRequest` stamps
+   `lastResolvedAtMs`; `resolvedRecently(30s)` lets both funnels
+   (`TaskFlowController.sendTask`, `ChatSessionController.sendChat`) post an
+   ℹ️ system line when text arrives just after a question closed, instead of
+   silently routing it as a new task/chat.
+4. **Resume staleness**: `TaskCheckpointStore.FRESHNESS_MS` (24h) + `isStale`;
+   `sendTask` peeks before consuming — a stale checkpoint posts a ⏳
+   "start fresh instead?" card; "resume" again confirms, anything else drops
+   the checkpoint and starts fresh. Applies to RESUME card taps (they call
+   `sendTask("resume")`) and the typed keyword alike.
+
+**Unit tests**: `PersonalContentConsentGuardTest` (9 tests: TTL expiry,
+legacy-grant compat, revocation, rememberedApps, dispatch target mapping),
+`TaskCheckpointStoreTest` +2 (staleness window).
+
+**Status:** `[2026-08-23] [PENDING-DEVICE] [TL.10–TL.15]` — compile/lint gated
+by CI; ADB runtime QA on device.
 
 ### 2026-08-23 — Task Lifecycle usability (TL fix pack)
 

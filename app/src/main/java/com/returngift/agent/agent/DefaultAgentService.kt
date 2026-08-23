@@ -506,6 +506,10 @@ class DefaultAgentService : AgentService {
         val taskIntent = com.returngift.agent.agent.exec.TaskIntentClassifier.classify(rawUserRequest)
         XLog.i(TAG, "runAgentLoop: intent=${taskIntent.intent} (${taskIntent.reason})")
 
+        // Per-task consent grants: one "Allow once" covers ALL tool calls touching
+        // that personal surface for the rest of THIS task run (never persisted).
+        val taskConsentedSurfaces = mutableSetOf<String>()
+
         // ── Personal-content consent gate (Rule 14) ─────────────────────
         // Reading the user's own emails/messages/photos is a supported device
         // task (see classifier), but the FIRST content read is gated on
@@ -543,6 +547,9 @@ class DefaultAgentService : AgentService {
                         com.returngift.agent.agent.exec.PersonalContentConsentGuard.remember(it)
                     }
                 }
+                // "Allow once" grants live for the rest of THIS task — the
+                // dispatch-site check honors them without re-asking.
+                taskConsentedSurfaces.addAll(pendingApps)
                 XLog.i(TAG, "Personal-content consent granted ($decision) for $pendingApps")
             }
         }
@@ -995,6 +1002,53 @@ class DefaultAgentService : AgentService {
                             messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(blocked)))
                             messages.add(UserMessage.from(msg))
                             continue
+                        }
+                    }
+                }
+
+                // ── Dispatch-site personal-content consent (additive to the
+                // pre-loop text gate): if the dispatched tool would touch a
+                // personal surface that hasn't been consented-to THIS task and
+                // isn't remembered, park on the same three choices. One
+                // "Allow once" covers every later call to that surface in this
+                // task run (taskConsentedSurfaces).
+                val dispatchSurface = com.returngift.agent.agent.exec.PersonalContentConsentGuard
+                    .checkToolTarget(toolName, params, currentTargetPackage)
+                if (dispatchSurface != null
+                    && dispatchSurface !in taskConsentedSurfaces
+                    && !com.returngift.agent.agent.exec.PersonalContentConsentGuard.isRemembered(dispatchSurface)
+                ) {
+                    val answer = com.returngift.agent.agent.clarify.ClarificationManager.request(
+                        com.returngift.agent.agent.exec.PersonalContentConsentGuard
+                            .buildQuestion(listOf(dispatchSurface)),
+                        com.returngift.agent.agent.exec.PersonalContentConsentGuard.CHOICES,
+                        false,
+                    )
+                    val decision = answer?.let {
+                        com.returngift.agent.agent.exec.PersonalContentConsentGuard.decisionFor(it)
+                    }
+                    when (decision) {
+                        com.returngift.agent.agent.exec.PersonalContentConsentGuard.Decision.ALLOW_ONCE -> {
+                            taskConsentedSurfaces.add(dispatchSurface)
+                            XLog.i(TAG, "Dispatch-site consent (once) for $dispatchSurface via $toolName")
+                        }
+                        com.returngift.agent.agent.exec.PersonalContentConsentGuard.Decision.ALLOW_REMEMBER -> {
+                            com.returngift.agent.agent.exec.PersonalContentConsentGuard.remember(dispatchSurface)
+                            taskConsentedSurfaces.add(dispatchSurface)
+                            XLog.i(TAG, "Dispatch-site consent (remembered) for $dispatchSurface via $toolName")
+                        }
+                        else -> {
+                            // Cancel / timeout / unrecognized — honest terminal outcome,
+                            // same as the pre-loop gate.
+                            ExecutionTracker.endTask(taskId, "CANCELLED", iterations, totalTokens)
+                            callback.onComplete(
+                                iterations,
+                                "Stopped: I need your permission before I can read personal content " +
+                                    "($dispatchSurface). The tool call ($toolName) was not executed.",
+                                totalTokens,
+                                actualModelName,
+                            )
+                            return
                         }
                     }
                 }

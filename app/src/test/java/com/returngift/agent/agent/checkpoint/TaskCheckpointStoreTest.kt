@@ -100,4 +100,24 @@ class TaskCheckpointStoreTest {
         assertTrue(ctx.contains("Do NOT redo steps"))
         assertTrue(ctx.contains("- 1. open_app — ok"))
     }
+
+    @Test
+    fun `isStale false within freshness window`() {
+        val now = 1_800_000_000_000L
+        TaskCheckpointStore.nowMs = { now }
+        val cp = TaskCheckpointStore.Checkpoint("notes/x-draft.md", "t", now - 1_000L, emptyList())
+        assertFalse(TaskCheckpointStore.isStale(cp))
+    }
+
+    @Test
+    fun `isStale true past freshness window`() {
+        val now = 1_800_000_000_000L
+        TaskCheckpointStore.nowMs = { now }
+        val cp = TaskCheckpointStore.Checkpoint(
+            "notes/x-draft.md", "t",
+            now - TaskCheckpointStore.FRESHNESS_MS - 1,
+            emptyList(),
+        )
+        assertTrue(TaskCheckpointStore.isStale(cp))
+    }
 }

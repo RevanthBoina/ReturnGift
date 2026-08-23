@@ -223,6 +223,13 @@ checker only; it does NOT catch these (they are valid Kotlin *syntax* but invali
 semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnitTest` +
 `lintDebug`), fronted by `scripts/ci-preflight.sh`.
 
+## Consent/clarification hardening (2026-08-23, TL.10–TL.15)
+- **Dispatch-site consent**: `PersonalContentConsentGuard.checkToolTarget(toolName, params, currentTargetPackage)` gates `open_app`/`switch_app` by package (`PACKAGE_TO_LABEL`) and content-reading tools (`get_screen_info`/`take_screenshot`/`find_and_tap`/`tap_node`/`input_text`/`long_press`) by the tracked target package. Wired in `runAgentLoop` BEFORE `executeTool`, after the allow-list gate. Per-task `taskConsentedSurfaces` set = Allow-once covers the whole task for that surface (NOT per-call). Pre-loop text gate is unchanged (additive). Seeding order: the set is declared right after `TaskIntentClassifier.classify`, before the pre-loop gate.
+- **TTL + revocation**: `remember()` stores `personal_consent_<label>_ts`; `isRemembered` is TTL-aware (`REMEMBER_TTL_MS` = 60d) and drops expired keys on read; legacy grants without a timestamp are still honored. Settings → Privacy (`R.id.privacyGroup`, added to `activity_settings.xml` + `applyThemeToGroups` list) lists `rememberedApps()` with per-app revoke. Persistence + clock injectable (`persistenceGetLong`/`persistencePutLong`/`nowMs`) for JVM tests.
+- **Stale-answer ack**: `ClarificationManager.finishRequest` stamps `lastResolvedAtMs`; `resolvedRecently(30s)` is the funnel signal — both `sendTask` and `sendChat` post an ℹ️ system line instead of silently routing a late answer as a new task/chat.
+- **Resume staleness**: `TaskCheckpointStore.FRESHNESS_MS` (24h) + `isStale` + `peekIfResumeIntent` (peek WITHOUT consuming). `TaskFlowController.sendTask` holds a `staleResumeCheckpoint` field: stale → ⏳ prompt, "resume" again = explicit confirm (consume), anything else = drop + fresh start. RESUME card taps and typed keyword share this path (both are `sendTask("resume")`).
+- Unit tests: `PersonalContentConsentGuardTest` (9), `TaskCheckpointStoreTest` +2.
+
 ## CI artifact-quota resilience (2026-08-23, TL fix pack push)
 - **Two failure classes seen across the last main pushes**: (a) REAL lint error
   `ImportDownloadTool.java:136: Value must be >= 0 but getColumnIndex can be -1 [Range]`
