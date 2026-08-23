@@ -2226,11 +2226,36 @@ content read, so the SAME UI works in preview mode too.
   stopped. Three stalls on the SAME unchanged screen still stop the task with
   `FAILED_ACTION` ("…attempted 2 times for this screen state…").
 
+### PV.3 import_download ignores files older than the task `[ADB] [LLM-CLOUD]`
+- **Act**: place a decoy `gemini-old.png` in Downloads; run "generate an image
+  of a cat in Gemini and save it to the vault"; when the app's download lands,
+  the agent calls import_download.
+- **PASS**: the NEW file is imported, never the decoy. Negative path: delete
+  the new download and let the agent call import_download again → typed error
+  `NO_RECENT_DOWNLOAD_FOUND: … none was added since this task started …`
+  instead of silently importing the stale decoy.
+
 ---
 
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-23 — PV.3 import_download task-start time window
+
+**Change:** `DefaultAgentService.executeTask` stamps
+`ImportDownloadTool.taskStartTimestamp` at task start. The tool now collects
+ALL matching candidates with their creation time (MediaStore `DATE_ADDED`
+seconds→ms on API 29+, `File.lastModified` on API 28) and selects through the
+pure `DownloadWindowFilter.newestIndex(addedMs, taskStartMs)` — only files
+added at/after the task started are eligible. No in-window match → typed
+`NO_RECENT_DOWNLOAD_FOUND` error (never a silent stale pick). Window disabled
+when the timestamp is unknown (0) → legacy newest-overall behavior.
+
+**Unit tests:** `DownloadWindowFilterTest` (5: post-start only, boundary
+inclusive, all-stale → -1, newest-in-window, window disabled).
+
+**Status:** `[2026-08-23] [PENDING-DEVICE] [PV.3]` — CI gates compile/lint/tests.
 
 ### 2026-08-23 — PV.2 per-state watchdog recovery budget
 

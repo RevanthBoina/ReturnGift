@@ -44,6 +44,15 @@ public class ImportDownloadTool extends BaseTool {
 
     private static final String TAG = "ImportDownloadTool";
 
+    /**
+     * Epoch millis when the current device-automation task started, stamped by
+     * DefaultAgentService.executeTask. Only downloads added at/after this moment
+     * are imported — a stale download from an earlier (failed) task must never be
+     * mistaken for the current task's output. {@code 0} = unknown (window disabled,
+     * legacy newest-overall behavior).
+     */
+    public static volatile long taskStartTimestamp = 0L;
+
     @Override
     public String getName() {
         return "import_download";
@@ -83,13 +92,26 @@ public class ImportDownloadTool extends BaseTool {
     public ToolResult execute(Map<String, Object> params) {
         String hint = optionalString(params, "name_hint", "").trim().toLowerCase(Locale.US);
         try {
-            DownloadCandidate candidate = findNewestDownload(hint);
-            if (candidate == null) {
+            List<DownloadCandidate> candidates = findDownloads(hint);
+            if (candidates.isEmpty()) {
                 return ToolResult.error(
                         hint.isEmpty()
                                 ? "import_download: no files found in the system Downloads folder"
                                 : "import_download: no file in Downloads matches '" + hint + "'");
             }
+            List<Long> addedMs = new ArrayList<>(candidates.size());
+            for (DownloadCandidate c : candidates) addedMs.add(c.addedMs);
+            int idx = DownloadWindowFilter.newestIndex(addedMs, taskStartTimestamp);
+            if (idx < 0) {
+                XLog.w(TAG, "no download inside task window (taskStart=" + taskStartTimestamp
+                        + ", candidates=" + candidates.size() + ")");
+                return ToolResult.error(
+                        "NO_RECENT_DOWNLOAD_FOUND: " + candidates.size()
+                                + " file(s) exist in Downloads but none was added since this task started"
+                                + (hint.isEmpty() ? "" : " (matching '" + hint + "')")
+                                + ". Re-download the file now, then call import_download again.");
+            }
+            DownloadCandidate candidate = candidates.get(idx);
             byte[] bytes = readAll(candidate);
             if (bytes == null || bytes.length == 0) {
                 return ToolResult.error("import_download: could not read '" + candidate.displayName + "'");
@@ -113,7 +135,7 @@ public class ImportDownloadTool extends BaseTool {
 
     // ── Discovery ────────────────────────────────────────────────────────────
 
-    private DownloadCandidate findNewestDownload(String hintLower) {
+    private List<DownloadCandidate> findDownloads(String hintLower) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             return queryMediaStoreDownloads(hintLower);
         }
@@ -121,52 +143,55 @@ public class ImportDownloadTool extends BaseTool {
     }
 
     /** MediaStore.Downloads is readable without storage permission (API 29+). */
-    private DownloadCandidate queryMediaStoreDownloads(String hintLower) {
+    private List<DownloadCandidate> queryMediaStoreDownloads(String hintLower) {
         ContentResolver resolver = ClawApplication.Companion.getInstance().getContentResolver();
         Uri collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL);
         String[] projection = {
                 MediaStore.Downloads.DISPLAY_NAME,
                 MediaStore.Downloads._ID,
+                MediaStore.Downloads.DATE_ADDED,
         };
+        List<DownloadCandidate> out = new ArrayList<>();
         try (Cursor cursor = resolver.query(
                 collection, projection, null, null,
                 MediaStore.Downloads.DATE_ADDED + " DESC")) {
-            if (cursor == null) return null;
+            if (cursor == null) return out;
             while (cursor.moveToNext()) {
                 String name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME));
                 if (name == null) continue;
                 if (!hintLower.isEmpty() && !name.toLowerCase(Locale.US).contains(hintLower)) continue;
                 long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID));
+                // DATE_ADDED is seconds since epoch.
+                long addedMs = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_ADDED)) * 1000L;
                 Uri uri = Uri.withAppendedPath(collection, String.valueOf(id));
-                return new DownloadCandidate(uri, null, name);
+                out.add(new DownloadCandidate(uri, null, name, addedMs));
             }
-            return null;
         } catch (Exception e) {
             XLog.e(TAG, "MediaStore Downloads query failed", e);
-            return null;
         }
+        return out;
     }
 
     /** Legacy (API 28): direct file scan; needs READ_EXTERNAL_STORAGE granted. */
-    private DownloadCandidate scanLegacyDownloadsDir(String hintLower) {
+    private List<DownloadCandidate> scanLegacyDownloadsDir(String hintLower) {
+        List<DownloadCandidate> out = new ArrayList<>();
         if (ContextCompat.checkSelfPermission(
                         ClawApplication.Companion.getInstance(),
                         Manifest.permission.READ_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
             XLog.w(TAG, "READ_EXTERNAL_STORAGE not granted — cannot scan legacy Downloads");
-            return null;
+            return out;
         }
         File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
         File[] files = dir == null ? null : dir.listFiles();
-        if (files == null) return null;
-        File best = null;
+        if (files == null) return out;
         for (File f : files) {
             if (!f.isFile()) continue;
             if (!hintLower.isEmpty()
                     && !f.getName().toLowerCase(Locale.US).contains(hintLower)) continue;
-            if (best == null || f.lastModified() > best.lastModified()) best = f;
+            out.add(new DownloadCandidate(null, f, f.getName(), f.lastModified()));
         }
-        return best == null ? null : new DownloadCandidate(null, best, best.getName());
+        return out;
     }
 
     private byte[] readAll(DownloadCandidate candidate) {
@@ -194,11 +219,13 @@ public class ImportDownloadTool extends BaseTool {
         final Uri uri;      // MediaStore path (API 29+)
         final File file;    // legacy path (API 28)
         final String displayName;
+        final long addedMs; // epoch millis (DATE_ADDED or lastModified)
 
-        DownloadCandidate(Uri uri, File file, String displayName) {
+        DownloadCandidate(Uri uri, File file, String displayName, long addedMs) {
             this.uri = uri;
             this.file = file;
             this.displayName = displayName;
+            this.addedMs = addedMs;
         }
     }
 }

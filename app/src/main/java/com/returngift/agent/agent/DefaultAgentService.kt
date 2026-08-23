@@ -179,6 +179,9 @@ class DefaultAgentService : AgentService {
 
         running.set(true)
         cancelled.set(false)
+        // import_download correlates Downloads-folder files with THIS task run —
+        // files added before this moment are stale and must not be imported.
+        com.returngift.agent.tool.impl.ImportDownloadTool.taskStartTimestamp = System.currentTimeMillis()
         var terminalCallback: (() -> Unit)? = null
         var terminalOutcome = TerminalOutcome.COMPLETED
         // M3A-style per-step history — the resumable memory persisted as a checkpoint
