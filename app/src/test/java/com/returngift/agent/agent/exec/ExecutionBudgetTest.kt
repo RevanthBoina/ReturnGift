@@ -39,6 +39,28 @@ class ExecutionBudgetTest {
     }
 
     @Test
+    fun `watchdog stall in state B is not failed by an earlier stall in state A`() {
+        // Regression: a task-global recovery counter permanently exhausted the budget
+        // after two unrelated benign stalls. Per-state keys (screen hash + package)
+        // give each UI state its own budget.
+        val budget = ExecutionBudget(maxRetriesPerState = 2)
+        val stateA = "111@com.whatsapp"
+        val stateB = "222@com.whatsapp"
+        // Stall in state A → first recovery consumed for A.
+        assertNull(budget.recordRetry(stateA))
+        assertEquals(1, budget.retriesUsed(stateA))
+        // Progress happens (screen changes) → stall in state B must get a FRESH budget.
+        assertNull(budget.recordRetry(stateB))
+        assertEquals(1, budget.retriesUsed(stateB))
+        // A's own budget is unaffected by B and still bounds A at 2.
+        assertNull(budget.recordRetry(stateA))
+        assertEquals(ExecutionBudget.Violation.RETRY_BUDGET, budget.recordRetry(stateA)?.violation)
+        // B still has one recovery left even after A is exhausted.
+        assertNull(budget.recordRetry(stateB))
+        assertEquals(ExecutionBudget.Violation.RETRY_BUDGET, budget.recordRetry(stateB)?.violation)
+    }
+
+    @Test
     fun `escalations are bounded`() {
         val budget = ExecutionBudget(maxEscalations = 2)
         assertNull(budget.recordEscalation())

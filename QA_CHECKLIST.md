@@ -2217,11 +2217,36 @@ content read, so the SAME UI works in preview mode too.
   on an emulator). A normal (non-sensitive) field on the same screen still
   gets the clipboard fallback when ACTION_SET_TEXT fails.
 
+### PV.2 Watchdog recovery budget is per UI state, not per task `[ADB] [LLM-CLOUD]`
+- **Act**: run a multi-app task where the watchdog triggers a recovery on an
+  early screen (e.g. app slow to load → RE_QUERY), succeeds, then later stalls
+  on a DIFFERENT screen of another app.
+- **PASS**: the second stall gets its own recovery budget — logcat shows
+  `Watchdog recovery #1 for state <hashB>@<pkg>` (not `#3`); the task is NOT
+  stopped. Three stalls on the SAME unchanged screen still stop the task with
+  `FAILED_ACTION` ("…attempted 2 times for this screen state…").
+
 ---
 
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-23 — PV.2 per-state watchdog recovery budget
+
+**Change:** the LLM loop's watchdog recovery counter is no longer a
+task-global `var watchdogRecoveries`. Recoveries are consumed through the
+EXISTING `ExecutionBudget.recordRetry(stateName)` per-state tracker
+(same type the deterministic executor uses for RETRY ≤ 2 per state), keyed
+by `<screenSignatureHash>@<targetPackage>`. A stall on a new screen gets a
+fresh budget of 2; a 3rd trigger on the SAME unchanged state stops the task
+with FAILED_ACTION exactly as before. Recovery strategies are unchanged —
+only the budget scope changed.
+
+**Unit tests:** `ExecutionBudgetTest` +1 regression test (stall in state A →
+recovery, stall in state B → NOT failed; A and B each exhaust independently).
+
+**Status:** `[2026-08-23] [PENDING-DEVICE] [PV.2]` — CI gates compile/lint/tests.
 
 ### 2026-08-23 — PV.1 sensitive-field clipboard exclusion
 

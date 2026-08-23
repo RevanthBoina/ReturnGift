@@ -574,8 +574,6 @@ class DefaultAgentService : AgentService {
         val execBudget = com.returngift.agent.agent.exec.ExecutionBudget(
             wallClockMs = Long.MAX_VALUE // LLM-loop wall time stays governed by token budget/maxIterations
         )
-        var watchdogRecoveries = 0
-
         // Build System Prompt — use optimized prompt for local LLM
         val basePrompt = if (config.provider == LlmProvider.LOCAL) {
             LOCAL_TASK_PROMPT
@@ -1124,27 +1122,32 @@ class DefaultAgentService : AgentService {
                         overlayPresent = overlay
                     )
                     if (recovery.strategy != InteractionWatchdog.RecoveryStrategy.NONE) {
-                        // Bounded recovery: at most 2 automatic recoveries per task; a
-                        // third watchdog trigger STOPS and reports instead of restarting
-                        // (bounded-executor spec — no open-ended recovery loops).
-                        if (watchdogRecoveries >= 2) {
-                            XLog.e(TAG, "Watchdog recovery budget exhausted (${recovery.strategy}) — stopping task")
+                        // Bounded recovery: at most 2 automatic recoveries PER UI STATE
+                        // (screen signature + target package — the same per-state budget
+                        // philosophy as the deterministic executor's ExecutionBudget
+                        // retriesPerState, reusing that very type). A stall on a NEW
+                        // screen gets a fresh budget; a 3rd trigger on the SAME state
+                        // STOPS and reports instead of restarting.
+                        val stateKey = "${(verification?.afterSignature ?: "0").hashCode()}@$currentTargetPackage"
+                        val budgetBreach = execBudget.recordRetry(stateKey)
+                        if (budgetBreach?.violation == com.returngift.agent.agent.exec.ExecutionBudget.Violation.RETRY_BUDGET) {
+                            XLog.e(TAG, "Watchdog recovery budget exhausted for state $stateKey (${recovery.strategy}) — stopping task")
                             ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                             callback.onComplete(
                                 iterations,
                                 "Task stopped: ${recovery.message} " +
-                                    "Automatic recovery was already attempted $watchdogRecoveries times; " +
+                                    "Automatic recovery was already attempted " +
+                                    "${execBudget.retriesUsed(stateKey)} times for this screen state; " +
                                     "stopping instead of retrying endlessly.",
                                 totalTokens,
                                 actualModelName
                             )
                             return
                         }
-                        watchdogRecoveries++
                         recoveryExecuted = interactionWatchdog.executeRecovery(
                             recovery.strategy, a11ySvc, currentTargetPackage
                         )
-                        XLog.i(TAG, "Watchdog recovery #${watchdogRecoveries} (${recovery.strategy}): $recoveryExecuted")
+                        XLog.i(TAG, "Watchdog recovery #${execBudget.retriesUsed(stateKey)} for state $stateKey (${recovery.strategy}): $recoveryExecuted")
                         consecutiveActionsWithoutObserve = 0  // force a fresh observation next round
                     }
                 }
