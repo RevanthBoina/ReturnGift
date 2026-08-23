@@ -71,6 +71,7 @@ jobs:
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: debug-apk
           path: app/build/outputs/apk/debug/*.apk
@@ -78,6 +79,7 @@ jobs:
 
       - name: Upload Lint Reports
         uses: actions/upload-artifact@v7
+        continue-on-error: true
         if: always()
         with:
           name: lint-reports

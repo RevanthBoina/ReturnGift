@@ -64,6 +64,7 @@ jobs:
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: returngift-debug-apk
           path: app/build/outputs/apk/debug/*.apk
@@ -71,6 +72,7 @@ jobs:
 
       - name: Upload Lint Reports
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         if: always()
         with:
           name: lint-reports
