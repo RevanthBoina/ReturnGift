@@ -2205,9 +2205,41 @@ content read, so the SAME UI works in preview mode too.
 
 ---
 
+## PV — Privacy & Input Safety (2026-08-23)
+
+### PV.1 Password field never receives clipboard paste `[ADB]`
+- **Act**: "open <banking app> and type hunter2 into the password field" on a
+  field where ACTION_SET_TEXT fails (e.g. custom PIN/OTP view).
+- **PASS**: logcat shows `Sensitive field rejected all input strategies;
+  clipboard fallback refused`; the tool returns
+  `SENSITIVE_FIELD_INPUT_FAILED`; the system clipboard is NEVER populated
+  (verify via a clipboard-manager app or `adb shell cmd clipboard get-primary-clip`
+  on an emulator). A normal (non-sensitive) field on the same screen still
+  gets the clipboard fallback when ACTION_SET_TEXT fails.
+
+---
+
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-23 — PV.1 sensitive-field clipboard exclusion
+
+**Change:** `DynamicIMEInjector.injectText` checks `isSensitiveField(node)`
+(`AccessibilityNodeInfo.isPassword` OR credential/OTP autofill hints:
+password/username/one-time-code/otp) before the clipboard-paste fallback.
+Sensitive fields get one final ACTION_SET_TEXT retry and then a typed
+`SENSITIVE_FIELD_INPUT_FAILED` result — the shared clipboard is never
+populated with credentials. Non-sensitive fields are unchanged. Adds an
+internal `mainThreadPoster` hook so the clipboard path is unit-testable
+(Robolectric's paused looper would otherwise starve the latch).
+
+**Unit tests:** `DynamicIMEInjectorTest` (4 tests: password field never
+writes the system clipboard nor dispatches ACTION_PASTE; autofill-hint
+detection; non-sensitive field still uses clipboard fallback; null handling).
+Mocked node per spec; clipboard asserted via the real shadow ClipboardManager.
+
+**Status:** `[2026-08-23] [PENDING-DEVICE] [PV.1]` — CI gates compile/lint/tests.
 
 ### 2026-08-23 — Consent/clarification hardening (TL.10–TL.15)
 

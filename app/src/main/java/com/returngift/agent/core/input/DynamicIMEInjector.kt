@@ -24,6 +24,33 @@ object DynamicIMEInjector {
 
     private const val TAG = "DynamicIMEInjector"
 
+    /** Typed failure method returned when a sensitive field rejects ACTION_SET_TEXT. */
+    const val METHOD_SENSITIVE_FIELD_INPUT_FAILED = "SENSITIVE_FIELD_INPUT_FAILED"
+
+    /** Autofill hint values (lowercased) that mark a field as credential/OTP input. */
+    private val SENSITIVE_AUTOFILL_HINTS = setOf(
+        "password", "username", "one-time-code", "otp", "sms-otp", "email_otp"
+    )
+
+    /**
+     * Test hook for the clipboard write in [pasteFromClipboard]: posts to the main
+     * thread in production; unit tests replace it with immediate execution (the
+     * production latch-await would otherwise deadlock Robolectric's paused main looper).
+     */
+    internal var mainThreadPoster: (Runnable) -> Unit = { Handler(Looper.getMainLooper()).post(it) }
+
+    /**
+     * True when [node] is a password field or carries a credential/OTP autofill hint.
+     * Such fields must never receive text via the shared clipboard (readable by other
+     * apps / clipboard managers). minSdk is 28, so autofillHints (API 26) always exists.
+     */
+    fun isSensitiveField(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
+        if (node.isPassword) return true
+        val hints = node.autofillHints ?: return false
+        return hints.any { it != null && it.lowercase(java.util.Locale.US) in SENSITIVE_AUTOFILL_HINTS }
+    }
+
     data class InjectionResult(
         val success: Boolean,
         val method: String,
@@ -58,6 +85,23 @@ object DynamicIMEInjector {
         if (trySetText(node, text, clearFirst)) {
             XLog.i(TAG, "Injected text via ACTION_SET_TEXT")
             return InjectionResult(true, "ACTION_SET_TEXT", "Successfully entered text")
+        }
+
+        // Sensitive fields (password / username / OTP): the clipboard is readable by
+        // other apps and clipboard managers, so pasting credentials there is a privacy
+        // leak. Retry ACTION_SET_TEXT one final time; never fall back to clipboard.
+        if (isSensitiveField(node)) {
+            if (trySetText(node, text, clearFirst)) {
+                XLog.i(TAG, "Injected text via ACTION_SET_TEXT (sensitive retry)")
+                return InjectionResult(true, "ACTION_SET_TEXT", "Successfully entered text")
+            }
+            XLog.w(TAG, "Sensitive field rejected all input strategies; clipboard fallback refused")
+            return InjectionResult(
+                false,
+                METHOD_SENSITIVE_FIELD_INPUT_FAILED,
+                "SENSITIVE_FIELD_INPUT_FAILED: field is a password/credential/OTP input — " +
+                    "clipboard paste is disabled for sensitive fields; ask the user to type it manually"
+            )
         }
 
         // 4. Strategy 2: Clipboard Paste
@@ -108,7 +152,7 @@ object DynamicIMEInjector {
         val latch = CountDownLatch(1)
         var clipSet = false
 
-        Handler(Looper.getMainLooper()).post {
+        mainThreadPoster(Runnable {
             try {
                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                 if (cm != null) {
@@ -117,7 +161,7 @@ object DynamicIMEInjector {
                 }
             } catch (_: Exception) {}
             latch.countDown()
-        }
+        })
 
         try {
             latch.await(1, TimeUnit.SECONDS)
