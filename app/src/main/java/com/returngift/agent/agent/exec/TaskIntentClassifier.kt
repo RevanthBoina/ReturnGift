@@ -70,6 +70,23 @@ object TaskIntentClassifier {
 
     private val QUESTION_MARK = Regex("\\?\\s*$")
 
+    // Named apps that hold the user's personal content — reading/viewing them on
+    // device is a valid device-automation target (consent gate handles the
+    // privacy check further down the pipeline). Watch these BEFORE the
+    // summarize/question fallbacks claim the sentence as knowledge.
+    private val PERSONAL_CONTENT_NOUNS = Regex(
+        "\\b(email|e-mails?|inbox|mailbox|gmail|outlook|whatsapp|telegram|sms|texts?|" +
+            "messages?|chats?|conversations?|contacts?|photos?|gallery|files?|downloads?|" +
+            "documents?|pdfs?|calendar|events?)\\b"
+    )
+
+    // Reading verbs that only imply device intent when paired with a personal
+    // content noun ("summarize my emails" reads the Gmail app; "summarize this"
+    // stays knowledge).
+    private val READ_VERBS = Regex(
+        "\\b(read|show|view|list|display|get|fetch|check|catch up on|go through)\\b"
+    )
+
     /**
      * Classify [task]. The result is advisory for prompt selection and
      * authoritative for tool gating — KNOWLEDGE_QA/VAULT_QUERY/WEB_RESEARCH tasks
@@ -81,8 +98,14 @@ object TaskIntentClassifier {
 
         // Device intent requires the sentence to COMMAND a device action — a
         // device verb inside a question ("what does this button do when I tap
-        // it?", "what is open source?") is not a request to act.
+        // it?", "what is open source?") is not a request to act. A named personal
+        // content noun (emails/inbox/messages/…) with read/summarize intent IS
+        // device intent — it directs UI automation at that app; the knowledge
+        // fallbacks only fire for content-free targets.
         val hasDeviceVerb = DEVICE_VERBS.containsMatchIn(lower)
+        val mentionsPersonalContent = PERSONAL_CONTENT_NOUNS.containsMatchIn(lower)
+        val hasReadIntent = hasDeviceVerb || READ_VERBS.containsMatchIn(lower) ||
+            KNOWLEDGE_HINTS.containsMatchIn(lower)
         val startsImperative = Regex(
             "^(please )?(open|launch|tap|click|swipe|scroll|type|fill|install|uninstall|" +
                 "enable|disable|turn|toggle|set|call|dial|text|send|post|upload|download|" +
@@ -101,6 +124,13 @@ object TaskIntentClassifier {
                 lower.contains("create") || lower.contains("image") || lower.contains("using"))
         ) {
             return Result(Intent.EXTERNAL_AI_QUERY, "external AI app mention + action")
+        }
+
+        // Personal content apps with read intent → device automation (Gmail,
+        // WhatsApp, gallery…). The personal-content consent guard further down
+        // the pipeline asks before the first content read.
+        if (mentionsPersonalContent && hasReadIntent) {
+            return Result(Intent.DEVICE_AUTOMATION, "personal content noun + read intent")
         }
 
         // Explicit device action wins over everything else.

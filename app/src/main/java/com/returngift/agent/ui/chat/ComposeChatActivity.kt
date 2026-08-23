@@ -232,6 +232,9 @@ class ComposeChatActivity : ComponentActivity() {
                 onModelSwitch = { modelId, displayName -> switchModel(modelId, displayName) },
                 pendingClarification = taskFlowController.pendingClarification.value,
                 onClarificationAnswer = { taskFlowController.submitClarificationAnswer(it) },
+                previewPlan = taskFlowController.previewPlan.value,
+                onExecutePreviewPlan = { taskFlowController.executePreviewPlan() },
+                onDismissPreviewPlan = { taskFlowController.dismissPreviewPlan() },
                 colors = composeColors,
             )
         }

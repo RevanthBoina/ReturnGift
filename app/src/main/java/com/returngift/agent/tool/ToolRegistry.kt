@@ -12,6 +12,14 @@ object ToolRegistry {
 
     enum class DeviceType { TV, MOBILE }
 
+    /**
+     * Preview/Dry-Run mode: when non-null, executeTool short-circuits to this
+     * recorder instead of touching the device. Set only by DryRunRunner, then
+     * restored to null. Volatile + synchronized setter for the worker thread.
+     */
+    @Volatile
+    var stubHook: ((String, Map<String, Any>) -> ToolResult)? = null
+
     private val tools = LinkedHashMap<String, BaseTool>()
     var deviceType: DeviceType = DeviceType.TV
         private set
@@ -93,6 +101,7 @@ object ToolRegistry {
     fun getAllTools(): List<BaseTool> = tools.values.toList()
 
     fun executeTool(name: String, params: Map<String, Any>): ToolResult {
+        stubHook?.let { return it(name, params) }
         val tool = tools[name] ?: return ToolResult.error("Unknown tool: $name")
 
         // C3 fix: SafetyInterceptor existed but had zero call sites anywhere in the

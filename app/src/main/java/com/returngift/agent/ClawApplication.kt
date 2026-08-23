@@ -35,6 +35,7 @@ class ClawApplication : BaseApp() {
         AppCapabilityCoordinator.markProcessStart()
         instance = this
         AppLogStore.init(this)
+        com.returngift.agent.utils.AppUiState.registerIn(this)
         XLog.setDEBUG(BuildConfig.DEBUG)
         registerNetworkCallback()
         appViewModelInstance = getAppViewModelProvider()[AppViewModel::class.java]

@@ -71,8 +71,6 @@ class TaskFlowController(
          * TaskEvent.Completed; interrupted tasks get the RESUME_HINT instead.
          */
         const val CONTINUE_HINT_PREFIX = "Task completed. Continue in a new chat:"
-        /** How long to wait for a verified-foreground event before minimizing anyway. */
-        private const val MINIMIZE_FALLBACK_MS = 10_000L
     }
 
     private var sendTaskRetryCount = 0
@@ -80,14 +78,20 @@ class TaskFlowController(
     private val pipelineRouter = PipelineRouter(activity)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var checkpointHintShown = false
-    private var pendingMinimizeTaskText: String? = null
-    /** True when this task backgrounded the chat via minimize-on-verified — the
+    /** True when this task backgrounded the chat at task start — the
      *  terminal event then also posts a completion notification (Kimi-Work style). */
     private var minimizedForTask = false
-    private var minimizeFallbackRunnable: Runnable? = null
 
     /** Live ask_user question the agent is parked on, or null. */
     val pendingClarification = androidx.compose.runtime.mutableStateOf<ClarificationManager.PendingQuestion?>(null)
+
+
+
+    /** Latest Preview (dry-run) mode plan, rendered as a plan card with
+     *  an "Execute now" button. */
+    val previewPlan = androidx.compose.runtime.mutableStateOf<List<com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep>?>(null)
+    private var previewOriginalTask: String? = null
+    private val previewPlanSteps = mutableListOf<com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep>()
 
     private val clarificationListener: (ClarificationManager.PendingQuestion?) -> Unit = { q ->
         pendingClarification.value = q
@@ -130,11 +134,44 @@ class TaskFlowController(
         }
     }
 
+    /** Plan card "Execute now": disable preview and re-dispatch the original task. */
+    fun executePreviewPlan() {
+        val task = previewOriginalTask ?: return
+        previewOriginalTask = null
+        previewPlan.value = null
+        com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(false)
+        sendTask(task)
+    }
+
+    fun dismissPreviewPlan() {
+        previewPlan.value = null
+        previewOriginalTask = null
+    }
+
     fun sendTask(text: String) {
+        // Stale-bubble sweep: a previous task/chat may have left the placeholder
+        // or the FAB thinking state behind (e.g. an exception killed a terminal event).
+        sweepStaleTypingIndicator()
         // A pending ask_user question consumes the next outgoing message as its answer.
         if (ClarificationManager.snapshot() != null) {
             submitClarificationAnswer(text)
             return
+        }
+
+        // NOTE: the personal-content consent gate lives INSIDE the loop now
+        // (DefaultAgentService.runAgentLoop → PersonalContentConsentGuard). It
+        // parks the loop on ask_user-style clarification, so it composes
+        // cleanly with Preview mode (the stub just feeds it back).
+
+        // Preview (dry-run) mode: run the full loop with stubbed tools so the
+        // model's plan is captured without touching the device. The steps show
+        // up as a plan card with an "Execute now" option.
+        val previewActive = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
+        if (previewActive) {
+            com.returngift.agent.agent.dryrun.DryRunRunner.installStub()
+            previewOriginalTask = text
+            previewPlanSteps.clear()
+            addSystem("🔍 Preview mode: the device will NOT be touched.")
         }
 
         // Checkpoint resume: an explicit "resume"/"continue" restarts the interrupted
@@ -289,14 +326,14 @@ class TaskFlowController(
                     appViewModel.startTask(text, taskId, agentPromptOverride = agentPromptOverride) { event ->
                         activity.runOnUiThread { handleTaskEvent(event) }
                     }
-                    // Move ReturnGift to the background once a device-automation task's
-                    // target app is VERIFIED in the foreground
-                    // (TaskEvent.TargetForegroundVerified) so the agent loop observes the
-                    // target app's screen instead of its own chat UI. A timed fallback
-                    // preserves the old behavior for automation tasks that never launch
-                    // another app. The floating pill keeps the user informed.
+                    // Move ReturnGift to the background IMMEDIATELY for device-automation
+                    // tasks so every observation (prewarm, screenshots, reads) sees the
+                    // target app / launcher instead of our own chat UI. The old flow
+                    // deferred this until TargetForegroundVerified (10s fallback), which
+                    // let "open N apps + screenshot" tasks capture the chat screen. The
+                    // floating pill keeps the user informed.
                     if (isDeviceAutomationTask(text)) {
-                        scheduleMinimizeOnVerifiedForeground(text)
+                        minimizeToBackground(text)
                     }
                 } catch (e: Exception) {
                     XLog.e(TAG, "sendTask failed: ${e.message}", e)
@@ -341,46 +378,6 @@ class TaskFlowController(
         }
     }
 
-    /**
-     * Defer the background-handoff minimize until the agent loop verifies the target app
-     * is in the foreground (TaskEvent.TargetForegroundVerified). If no verification arrives
-     * within [MINIMIZE_FALLBACK_MS] (e.g. tap-only automation on the current screen),
-     * minimize anyway to preserve the original handoff behavior.
-     */
-    private fun scheduleMinimizeOnVerifiedForeground(taskText: String) {
-        cancelPendingMinimize()
-        pendingMinimizeTaskText = taskText
-        pendingTaskTitle = taskText.trim().lineSequence().firstOrNull()?.take(60)
-        val fallback = Runnable {
-            val text = pendingMinimizeTaskText ?: return@Runnable
-            XLog.i(TAG, "no TargetForegroundVerified within ${MINIMIZE_FALLBACK_MS}ms — minimizing as fallback")
-            pendingMinimizeTaskText = null
-            minimizeFallbackRunnable = null
-            minimizeToBackground(text)
-        }
-        minimizeFallbackRunnable = fallback
-        mainHandler.postDelayed(fallback, MINIMIZE_FALLBACK_MS)
-    }
-
-    private fun cancelPendingMinimize() {
-        minimizeFallbackRunnable?.let { mainHandler.removeCallbacks(it) }
-        minimizeFallbackRunnable = null
-        pendingMinimizeTaskText = null
-    }
-
-    private fun onTargetForegroundVerified() {
-        val text = pendingMinimizeTaskText ?: return
-        minimizeFallbackRunnable?.let { mainHandler.removeCallbacks(it) }
-        minimizeFallbackRunnable = null
-        pendingMinimizeTaskText = null
-        // Only minimize when our UI is actually in front — the user may already have
-        // navigated away on their own.
-        if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            minimizeToBackground(text)
-        } else {
-            XLog.i(TAG, "TargetForegroundVerified: activity not resumed, skipping minimize")
-        }
-    }
 
     private fun executeDirectToolTask(text: String, toolCall: DirectDeviceDataGuard.DeterministicToolCall) {
         ensureNotificationPermission()
@@ -556,6 +553,16 @@ class TaskFlowController(
                 is TaskEvent.ToolResult -> {
                     uiState.isAwaitingReply.value = false
                     uiState.isTaskRunning.value = true
+                    if (previewOriginalTask != null && event.success && !event.toolName.equals("Finish", ignoreCase = true)) {
+                        previewPlanSteps.add(
+                            com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep(
+                                sequence = previewPlanSteps.size + 1,
+                                toolId = event.toolName,
+                                displayName = event.toolName,
+                                params = event.detail.take(120),
+                            )
+                        )
+                    }
                     val idx = processSteps.indexOfLast { it.toolName == event.toolName && it.summary == RUNNING_SUMMARY }
                     if (idx >= 0) {
                         val detail = event.detail.trim().replace('\n', ' ')
@@ -596,15 +603,35 @@ class TaskFlowController(
                     uiState.isAwaitingReply.value = false
                     uiState.isTaskRunning.value = true
                 }
+                // Minimize now happens at task start (see sendTask); verification just
+                // confirms the target app reached the foreground.
                 is TaskEvent.TargetForegroundVerified -> {
-                    XLog.i(TAG, "TargetForegroundVerified: ${event.packageName} — performing deferred minimize")
-                    onTargetForegroundVerified()
+                    XLog.i(TAG, "TargetForegroundVerified: ${event.packageName}")
                 }
                 is TaskEvent.TokenUpdate, is TaskEvent.Thinking -> Unit
             }
         } catch (e: Exception) {
             XLog.w(TAG, "handleTaskEvent error", e)
+            // Guaranteed settle: a terminal event that throws halfway through
+            // otherwise leaves the typing bubble and stop FAB alive forever.
+            settleAfterTerminalEvent(event)
         }
+    }
+
+    /** Terminal events that must ALWAYS clear the processing/typing UI state. */
+    private fun isTerminalEvent(event: TaskEvent): Boolean =
+        event is TaskEvent.Completed || event is TaskEvent.Failed ||
+            event is TaskEvent.Cancelled || event is TaskEvent.Blocked
+
+    private fun settleAfterTerminalEvent(event: TaskEvent) {
+        if (isTerminalEvent(event)) cleanupAfterTask()
+    }
+
+    /** Idempotent tidy-up: clear stuck processing flags and any leftover placeholder. */
+    private fun sweepStaleTypingIndicator() {
+        uiState.isAwaitingReply.value = false
+        uiState.isTaskRunning.value = false
+        removeTypingIndicator()
     }
 
     /** Post a completion alert only when the task backgrounded the chat — otherwise
@@ -638,7 +665,20 @@ class TaskFlowController(
 
     private fun cleanupAfterTask() {
         XLog.i(TAG, "cleanupAfterTask: isProcessing=FALSE")
-        cancelPendingMinimize()
+        // Preview mode: flush the collected steps into the plan card and ALWAYS
+        // restore real execution — the stub must never linger after the run.
+        if (previewOriginalTask != null) {
+            com.returngift.agent.agent.dryrun.DryRunRunner.removeStub()
+            if (previewPlanSteps.isNotEmpty()) {
+                previewPlan.value = previewPlanSteps.toList()
+            } else {
+                addSystem("🔍 No actions were planned.")
+            }
+            previewPlanSteps.clear()
+            // previewOriginalTask is kept alive so the plan card's 'Execute now'
+            // button can re-dispatch the SAME task; cleared on execute/dismiss.
+            onPersistConversation()
+        }
         uiState.isAwaitingReply.value = false
         uiState.isTaskRunning.value = false
         removeTypingIndicator()

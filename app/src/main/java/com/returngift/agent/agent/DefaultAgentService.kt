@@ -100,6 +100,7 @@ class DefaultAgentService : AgentService {
 - Failed taps: when tap/tap_node/long_press fails, do NOT re-tap the same coordinates — use find_and_tap with the target's visible text or description.
 - Ambiguity: if the request lacks a required detail or has multiple valid targets/apps, call ask_user BEFORE acting and wait for the answer. Never guess and complete on a guess. Do not ask when the request is already clear.
 - External content: when the task mentions a URL/article, web_fetch it first and answer from the fetched text; to look something up, web_search then web_fetch the best result. Never fabricate content; if search/fetch fails, say so honestly.
+- Personal content: reading the user's own emails/messages/photos/files is supported when the user asks for it. A consent question is asked before the first content read — never refuse on privacy grounds after consent is granted. Use ask_user for scope (which label, how many, which item) instead of guessing.
 - Privacy & Safety: Do NOT interact with payment, checkout, UPI PIN, or CVV screens. If encountered, immediately call finish(summary="Payment required; please complete manually")."""
 
         /** Maximum number of retries on LLM API call failure */
@@ -504,6 +505,47 @@ class DefaultAgentService : AgentService {
         // chat window instead of answering (the OmniRoute Q&A token-burn bug).
         val taskIntent = com.returngift.agent.agent.exec.TaskIntentClassifier.classify(rawUserRequest)
         XLog.i(TAG, "runAgentLoop: intent=${taskIntent.intent} (${taskIntent.reason})")
+
+        // ── Personal-content consent gate (Rule 14) ─────────────────────
+        // Reading the user's own emails/messages/photos is a supported device
+        // task (see classifier), but the FIRST content read is gated on
+        // consent: Allow once / Allow & remember (persisted per app) / Cancel.
+        // device automation intent only.
+        if (taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION) {
+            val pendingApps = com.returngift.agent.agent.exec.PersonalContentConsentGuard
+                .detectApps(rawUserRequest)
+                .filterNot { com.returngift.agent.agent.exec.PersonalContentConsentGuard.isRemembered(it) }
+            if (pendingApps.isNotEmpty()) {
+                val question = com.returngift.agent.agent.exec.PersonalContentConsentGuard.buildQuestion(pendingApps)
+                val answer = com.returngift.agent.agent.clarify.ClarificationManager.request(
+                    question,
+                    com.returngift.agent.agent.exec.PersonalContentConsentGuard.CHOICES,
+                    false,
+                )
+                val decision = answer?.let {
+                    com.returngift.agent.agent.exec.PersonalContentConsentGuard.decisionFor(it)
+                }
+                if (decision == null ||
+                    decision == com.returngift.agent.agent.exec.PersonalContentConsentGuard.Decision.CANCEL
+                ) {
+                    callback.onComplete(
+                        0,
+                        "Stopped: I need your permission before I can read personal content " +
+                            "(${pendingApps.joinToString(", ")}). Tap one of the consent options " +
+                            "and I'll continue.",
+                        0,
+                        null,
+                    )
+                    return
+                }
+                if (decision == com.returngift.agent.agent.exec.PersonalContentConsentGuard.Decision.ALLOW_REMEMBER) {
+                    pendingApps.forEach {
+                        com.returngift.agent.agent.exec.PersonalContentConsentGuard.remember(it)
+                    }
+                }
+                XLog.i(TAG, "Personal-content consent granted ($decision) for $pendingApps")
+            }
+        }
 
         // Two-layer path: a known structured routine runs on the deterministic
         // executor; the AI is consulted only through the escalation seam.
@@ -929,6 +971,31 @@ class DefaultAgentService : AgentService {
                         messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(denied)))
                         messages.add(UserMessage.from(decision.guidance))
                         continue
+                    }
+                }
+
+                // ── Foreground discipline: never capture/observe our own chat UI.
+                // Screenshot and screen-read tools must look at the TARGET app; if
+                // ReturnGift somehow landed in the foreground (e.g. a chat UI came up
+                // between two steps), relaunch the tracked target before executing.
+                val obsTools = setOf("take_screenshot", "get_screen_info")
+                if (toolName in obsTools && currentTargetPackage != null
+                        && ClawAccessibilityService.getInstance() != null) {
+                    val svc = ClawAccessibilityService.getInstance()
+                    val fg = svc.getForegroundPackage()
+                    if (fg == com.returngift.agent.ClawApplication.instance.packageName) {
+                        val restore = svc.openAppForeground(currentTargetPackage, 3000L)
+                        if (!restore.success) {
+                            val msg = "Foreground discipline: skipped $toolName — our own chat was " +
+                                "in front and restoring ${currentTargetPackage} failed " +
+                                "(${restore.error ?: "no error"}). Try again."
+                            val blocked = ToolResult.error(msg)
+                            XLog.w(TAG, msg)
+                            callback.onToolResult(iterations, toolName, displayName, params.toString(), blocked)
+                            messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(blocked)))
+                            messages.add(UserMessage.from(msg))
+                            continue
+                        }
                     }
                 }
 

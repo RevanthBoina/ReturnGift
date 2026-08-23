@@ -2096,11 +2096,108 @@ removal. The gate invalidated most of the plan's "zero references" candidates:
   `hi-demo.mp4`/`monitor-demo.mp4` which do not exist in the repo — the site owner
   must either add the mp4s or switch the markup to the gifs.
 
+## TL — Task Lifecycle Usability (2026-08-23)
+
+Personal-content consent (mid-loop via ClarificationManager), Preview/Dry-Run,
+and mid-task heads-up notification. The gate parks the loop on ask_user
+choices (Allow once / Allow & remember / Cancel) BEFORE the first personal-
+content read, so the SAME UI works in preview mode too.
+
+### TL.1 Personal-content consent card gates the task `[ADB] [LLM-CLOUD]`
+- **Act**: send a task that targets a personal-content surface, e.g.
+  "read my Gmail unread emails and summarize them".
+- **PASS**: before any personal-content read the loop PARKS on an ask_user
+  style card (ClarificationCard) with the three choices (Allow once / Allow &
+  remember / Cancel). The device stays IDLE until you pick.
+
+### TL.2 Allow once continues the SAME run `[ADB]`
+- **Act**: from TL.1, tap "Allow once".
+- **PASS**: the SAME task run continues (the parked loop resumes past the
+  gate) and finishes the summarization. Re-sending the SAME text re-asks
+  (nothing persisted).
+
+### TL.3 Allow & remember persists `[ADB]`
+- **Act**: from TL.1, tap "Allow & remember"; then force-stop the app and
+  re-send the identical task.
+- **PASS**: no consent card the second time — the task runs immediately
+  (per-app `personal_consent_<surface>` KV keys are consulted in
+  `PersonalContentConsentGuard.isRemembered`).
+
+### TL.4 Cancel refuses at the gate `[ADB]`
+- **Act**: from TL.1, tap "Cancel".
+- **PASS**: the loop never proceeds and posts an honest terminal answer
+  ("Stopped: I need your permission before I can read personal content …").
+  The FAB settles to not-running.
+
+### TL.5 Preview mode stubs the loop end-to-end `[ADB] [LLM-LOCAL]`
+- **Act**: toggle the top-bar 🔍 chip ON (accent-colored when set), then send
+  any multi-step device task, e.g. "open WhatsApp and send a message to Mom".
+- **PASS**: a "🔍 Preview mode: the device will NOT be touched." system line
+  posts; the agent loop runs to a finish; NO real taps/open_app happen
+  (ToolResult "PREVIEW (dry-run) — <tool> was not executed." in logcat via
+  `XLog.i`); at completion a plan card lists every proposed tool+param.
+
+### TL.6 Plan card Execute-now runs for REAL `[ADB] [LLM-LOCAL]`
+- **Act**: from TL.5, tap "Execute now".
+- **PASS**: the plan card disappears, the SAME task re-dispatches with the
+  stub removed (`DryRunRunner.removeStub` log line visible), and the device
+  actually acts. Toggling Preview OFF and re-sending the SAME text never
+  shows the stub result.
+
+### TL.7 Plan card Dismiss abandons the plan `[ADB]`
+- **Act**: from TL.5, tap "Dismiss".
+- **PASS**: card disappears, no re-dispatch, NO device actions fired.
+
+### TL.8 Mid-task question posts a heads-up alert when backgrounded `[ADB]`
+- **Act**: trigger any ambiguous task ("send a message") so ask_user parks,
+  THEN press Home while the clarification card is on-screen.
+- **PASS**: a heads-up-style notification (`ClarificationNotifier`, wired
+  from `ClarificationManager.headsUpHook` when `AppUiState.isForeground ==
+  false`) posts with the question in the body. Tapping it reopens the chat at
+  the clarification card; answering resumes the loop. Direct-notification
+  answer via RemoteInput (ClarificationAnswerReceiver) also resumes the loop.
+
+### TL.9 Preview + consent compose: no stub survives a cancelled plan `[ADB]`
+- **Act**: enable Preview mode, send a Gmail-consent task, tap "Cancel" in
+  the CLARIFICATION card, then send "open Settings".
+- **PASS**: the second task shows REAL tool results — the stub is always
+  cleared by `cleanupAfterTask` once the consent-cancelled task settles, and
+  the guard's cancelled loop never calls REAL tools.
+
 ---
 
 ## QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-23 — Task Lifecycle usability (TL fix pack)
+
+**Change:**
+1. **Personal-content consent** (`agent/privacy/PersonalContentGate.kt`, pure):
+   `TaskFlowController.sendTask` consults a keyword gate before dispatch. When
+   the task targets a personal-content surface (Email/SMS/Contacts/Photos &
+   Gallery/WhatsApp/Banking) AND has an imperative verb, the task is held and a
+   🔐 ConsentCard replaces the FAB — Allow once / Allow & remember / Cancel.
+   Allow once re-dispatches through a one-shot bypass so the SAME surface does
+   NOT re-ask during re-dispatch; Allow & remember persists in KV
+   (`personal_content_remembered`); Cancel ends with `❌ ... task cancelled`.
+2. **Preview / Dry-Run mode** (`agent/dryrun/DryRunRunner.kt`): the top-bar 🔍
+   chip toggles the KV flag `preview_mode_enabled`. `sendTask` installs a stub
+   into `ToolRegistry.stubHook` so the FULL agent loop runs without touching
+   the device; `handleTaskEvent` collects successful tool results into plan
+   steps and `cleanupAfterTask` ALWAYS removes the stub so a real task never
+   inherits it. The plan card (PreviewPlanCard) has Execute now / Dismiss.
+3. **Mid-task question heads-up**: `ForegroundService.notifyQuestionAsked(context,
+   question)` (RESULT_CHANNEL_ID, IMPORTANCE_DEFAULT,
+   NOTIFICATION_QUESTION_ID 1003) is posted from the ClarificationManager listener
+   in `TaskFlowController` whenever the chat was minimized for the running task,
+   so a backgrounded user still sees the parked ask_user question.
+4. **Consent BEFORE Preview stub**: the consent gate runs BEFORE the
+   `installStub` call in `sendTask` so a Cancel path never leaves the dry-run
+   stub armed for the NEXT task (was briefly inverted in the first draft).
+
+**Tests:** TL.1–TL.9 in `QA_CHECKLIST.md` (all `[ADB]`-tagged; TL.5/TL.6 also
+need `[LLM-LOCAL]`).
 
 ### 2026-08-22 — Repo hygiene audit & local streaming (HY pack)
 

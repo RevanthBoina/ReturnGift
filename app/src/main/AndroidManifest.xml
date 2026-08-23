@@ -114,6 +114,10 @@
         </activity>
 
         <receiver
+            android:name=".service.ClarificationAnswerReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".automation.ExternalAutomationReceiver"
             android:exported="true">
             <intent-filter>

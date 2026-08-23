@@ -6,6 +6,8 @@ package com.returngift.agent.agent.clarify
 import android.os.Handler
 import android.os.Looper
 import com.google.gson.Gson
+import com.returngift.agent.ClawApplication
+import com.returngift.agent.utils.AppUiState
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 import java.util.UUID
@@ -75,6 +77,29 @@ object ClarificationManager {
     }
 
     /**
+     * Heads-up notification hook — posts/cancels the WhatsApp-style notification
+     * when the chat UI is not in front. Overridable in JVM unit tests.
+     */
+    internal var headsUpHook: (PendingQuestion) -> Unit = { q ->
+        try {
+            val ctx = ClawApplication.instance
+            if (!AppUiState.isForeground) {
+                com.returngift.agent.service.ClarificationNotifier.show(ctx, q)
+            }
+        } catch (e: Exception) {
+            XLog.w(TAG, "heads-up hook failed", e)
+        }
+    }
+
+    internal var headsUpDismissHook: () -> Unit = {
+        try {
+            com.returngift.agent.service.ClarificationNotifier.dismiss(ClawApplication.instance)
+        } catch (e: Exception) {
+            XLog.w(TAG, "heads-up dismiss failed", e)
+        }
+    }
+
+    /**
      * Read and clear a persisted parked question (from a previous process). The restored
      * question is informational only — no loop thread is parked on it anymore.
      */
@@ -140,6 +165,7 @@ object ClarificationManager {
         XLog.i(TAG, "Clarification pending: \"$question\" choices=${choices.size} freeText=$allowFreeText")
         persistHook(pending)
         notifyListeners(pending)
+        pending?.let { headsUpHook(it) }
 
         val activeLatch = latch
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -203,6 +229,7 @@ object ClarificationManager {
         }
         persistHook(null)
         notifyListeners(null)
+        headsUpDismissHook()
     }
 
     private fun notifyListeners(q: PendingQuestion?) {

@@ -133,10 +133,10 @@ public class ImportDownloadTool extends BaseTool {
                 MediaStore.Downloads.DATE_ADDED + " DESC")) {
             if (cursor == null) return null;
             while (cursor.moveToNext()) {
-                String name = cursor.getString(cursor.getColumnIndex(MediaStore.Downloads.DISPLAY_NAME));
+                String name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME));
                 if (name == null) continue;
                 if (!hintLower.isEmpty() && !name.toLowerCase(Locale.US).contains(hintLower)) continue;
-                long id = cursor.getLong(cursor.getColumnIndex(MediaStore.Downloads._ID));
+                long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID));
                 Uri uri = Uri.withAppendedPath(collection, String.valueOf(id));
                 return new DownloadCandidate(uri, null, name);
             }

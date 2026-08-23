@@ -167,6 +167,9 @@ fun ChatScreen(
     onModelSwitch: (modelId: String, displayName: String) -> Unit = { _, _ -> },
     pendingClarification: ClarificationManager.PendingQuestion? = null,
     onClarificationAnswer: (String) -> Unit = {},
+    previewPlan: List<com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep>? = null,
+    onExecutePreviewPlan: () -> Unit = {},
+    onDismissPreviewPlan: () -> Unit = {},
     colors: ReturnGiftColors = AbyssDark,
 ) {
     val focusManager = LocalFocusManager.current
@@ -322,6 +325,16 @@ fun ChatScreen(
                                 colors = colors,
                             )
                         }
+
+                        previewPlan?.let { plan ->
+                            PreviewPlanCard(
+                                plan = plan,
+                                onExecute = onExecutePreviewPlan,
+                                onDismiss = onDismissPreviewPlan,
+                                colors = colors,
+                            )
+                        }
+
 
                         ChatInputBar(
                             isAwaitingReply = isAwaitingReply,
@@ -488,6 +501,26 @@ private fun ChatTopBar(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                     )
                 }
+                // Preview/Dry-Run toggle: the agent plans without touching the
+                // device; the "Execute now" plan card runs the steps for real.
+                val previewOn = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
+                Surface(
+                    onClick = {
+                        val runner = com.returngift.agent.agent.dryrun.DryRunRunner
+                        runner.setEnabled(!runner.isEnabled())
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (previewOn) colors.aiBubble else Color.Transparent,
+                    border = if (previewOn) androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder) else null,
+                ) {
+                    Text(
+                        "🔍",
+                        fontSize = 12.sp,
+                        color = if (previewOn) colors.accent else colors.textTertiary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onOpenVault) {
                     Icon(Icons.Default.Folder, contentDescription = "Vault")
                 }
@@ -710,7 +743,8 @@ private fun MessageList(
                     text = message.content,
                     timestamp = message.timestamp,
                     colors = colors,
-                    modelName = message.modelName
+                    modelName = message.modelName,
+                    onContinueNewChat = onContinueNewChat,
                 )
                 ChatMessage.Role.SYSTEM -> {
                     when {
@@ -719,7 +753,7 @@ private fun MessageList(
                             ResumeTaskCard(message.content, colors, onResume = onResumeCheckpoint)
                         message.content.startsWith(TaskFlowController.CONTINUE_HINT_PREFIX) ->
                             ContinueNewChatCard(
-                                message.content,
+                                message.content.removePrefix(TaskFlowController.CONTINUE_HINT_PREFIX).trim(),
                                 colors,
                                 onContinue = {
                                     onContinueNewChat(
@@ -934,7 +968,13 @@ private fun inlineAnnotated(text: String, colors: ReturnGiftColors): AnnotatedSt
     }
 
 @Composable
-private fun AssistantBubble(text: String, timestamp: Long, colors: ReturnGiftColors, modelName: String? = null) {
+private fun AssistantBubble(
+    text: String,
+    timestamp: Long,
+    colors: ReturnGiftColors,
+    modelName: String? = null,
+    onContinueNewChat: ((String) -> Unit)? = null,
+) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
@@ -1011,6 +1051,38 @@ private fun AssistantBubble(text: String, timestamp: Long, colors: ReturnGiftCol
                             Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
                         }
                 )
+                Box {
+                    var menuOpen by remember { mutableStateOf(false) }
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Message options",
+                        tint = colors.textTertiary,
+                        modifier = Modifier
+                            .size(13.dp)
+                            .clickable { menuOpen = true }
+                    )
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Copy", fontSize = 13.sp) },
+                            onClick = {
+                                menuOpen = false
+                                clipboardManager.setText(AnnotatedString(text))
+                                Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Continue in new chat", fontSize = 13.sp) },
+                            onClick = {
+                                menuOpen = false
+                                onContinueNewChat?.invoke(text)
+                            },
+                            enabled = onContinueNewChat != null,
+                        )
+                    }
+                }
             }
         }
     }
@@ -1182,35 +1254,22 @@ private fun ResumeTaskCard(content: String, colors: ReturnGiftColors, onResume: 
  */
 @Composable
 private fun ContinueNewChatCard(content: String, colors: ReturnGiftColors, onContinue: () -> Unit) {
-    Surface(
-        color = colors.surface,
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.accent.copy(alpha = 0.4f)),
+    // Compact single-line chip — the old full-width card dominated the transcript.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 4.dp),
+            .padding(horizontal = 40.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = null,
-                tint = colors.accent,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                content,
-                fontSize = 12.sp,
-                color = colors.textSecondary,
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(8.dp))
-            TextButton(onClick = onContinue) {
-                Text("New Chat", color = colors.accent, fontWeight = FontWeight.SemiBold)
-            }
+        Text(
+            content,
+            fontSize = 11.sp,
+            color = colors.textTertiary,
+            maxLines = 1,
+        )
+        TextButton(onClick = onContinue) {
+            Text("New Chat", color = colors.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -1371,6 +1430,89 @@ private fun ClarificationCard(
                         .clickable { onStop() }
                         .padding(4.dp),
                 )
+            }
+        }
+    }
+}
+
+// ======================== PREVIEW PLAN CARD ========================
+
+@Composable
+private fun PreviewPlanCard(
+    plan: List<com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep>,
+    onExecute: () -> Unit,
+    onDismiss: () -> Unit,
+    colors: ReturnGiftColors,
+) {
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.accent.copy(alpha = 0.45f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = "🔍 Preview plan (" + plan.size + " step" + (if (plan.size == 1) "" else "s") + ")",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.textPrimary,
+            )
+            Spacer(Modifier.height(6.dp))
+            plan.forEach { step ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = step.sequence.toString() + ".",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colors.accent,
+                        modifier = Modifier.width(18.dp),
+                    )
+                    Column(modifier = Modifier.padding(vertical = 2.dp)) {
+                        Text(step.displayName, fontSize = 12.sp, color = colors.textPrimary)
+                        if (step.params.isNotBlank()) {
+                            Text(
+                                step.params,
+                                fontSize = 10.sp,
+                                color = colors.textTertiary,
+                                maxLines = 2,
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Preview only — nothing ran on the device",
+                    fontSize = 11.sp,
+                    color = colors.textTertiary,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "Dismiss",
+                    fontSize = 11.sp,
+                    color = colors.textTertiary,
+                    modifier = Modifier
+                        .clickable { onDismiss() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+                Surface(
+                    onClick = onExecute,
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.accent,
+                ) {
+                    Text(
+                        text = "Execute now",
+                        fontSize = 11.sp,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    )
+                }
             }
         }
     }
