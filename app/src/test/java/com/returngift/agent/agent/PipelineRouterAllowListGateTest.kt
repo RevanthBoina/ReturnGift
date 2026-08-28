@@ -81,4 +81,56 @@ class PipelineRouterAllowListGateTest {
         )
         assertNotNull(msg)
     }
+
+    // ── FIX 11a: global blocklist (sensitive content) on Tier-1 DirectTool ─────────
+    @Test
+    fun `global blocklist blocks otp in params`() {
+        val msg = SafetyInterceptor.checkGlobalBlocklist("send the OTP to mom")
+        assertNotNull(msg)
+        assertEquals(true, msg!!.contains("otp"))
+    }
+
+    @Test
+    fun `global blocklist blocks one-time password phrase`() {
+        assertNotNull(SafetyInterceptor.checkGlobalBlocklist("here is my one-time password: 1234"))
+    }
+
+    @Test
+    fun `global blocklist blocks cvv`() {
+        assertNotNull(SafetyInterceptor.checkGlobalBlocklist("cvv 123"))
+    }
+
+    @Test
+    fun `global blocklist blocks pin code`() {
+        assertNotNull(SafetyInterceptor.checkGlobalBlocklist("pin code is 4321"))
+    }
+
+    @Test
+    fun `global blocklist passes benign message text`() {
+        assertNull(SafetyInterceptor.checkGlobalBlocklist("remind mom about dinner at 7"))
+    }
+
+    @Test
+    fun `global blocklist is case-insensitive`() {
+        assertNotNull(SafetyInterceptor.checkGlobalBlocklist("my OTP is 123456"))
+    }
+
+    @Test
+    fun `blocklisted param text blocks the tier-1 tool call`() {
+        // The blocklist gate runs BEFORE the allow-list and before ToolRegistry, so a
+        // blocked phrase short-circuits without touching Android (mock context is fine).
+        val r = router()
+        val result = r.executeTool("send_message", mapOf("app" to "WhatsApp", "body" to "the OTP is 1234"))
+        assertEquals(false, result.isSuccess)
+        assertEquals(true, result.error!!.contains("blocked"))
+    }
+
+    @Test
+    fun `blocklisted text blocks even an own-package-exempt call`() {
+        // Blocklist is content-based; it applies even when the allow-list would skip.
+        val r = router()
+        val result = r.executeTool("send_message", mapOf("app" to "com.returngift.agent", "body" to "cvv 999"))
+        assertEquals(false, result.isSuccess)
+        assertEquals(true, result.error!!.contains("blocked"))
+    }
 }

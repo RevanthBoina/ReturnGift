@@ -150,6 +150,15 @@ open class PipelineRouter(private val context: Context) {
      * not apply to them; see docs/specs/tier1-intent-matching.md.
      */
     open fun executeTool(toolName: String, params: Map<String, Any>): ToolResult {
+        // FIX 11a: global blocklist check runs on EVERY Tier-1 DirectTool before any
+        // execution. SafetyInterceptor's skill-YAML blocklist needs an activeSkillId,
+        // which Tier 1 never has, so the sensitive-content patterns are enforced here
+        // directly (mirrors send_message's blocklist_patterns; see checkGlobalBlocklist).
+        val paramText = params.values.joinToString(" ") { it.toString() }
+        SafetyInterceptor.checkGlobalBlocklist(paramText)?.let { block ->
+            XLog.w(TAG, "Tier-1 tool '$toolName' blocked by safety blocklist: $block")
+            return ToolResult.error(block)
+        }
         val allowListBlock = allowListBlock(toolName, params)
         if (allowListBlock != null) {
             XLog.w(TAG, "Tier-1 tool '$toolName' blocked by allow-list: $allowListBlock")

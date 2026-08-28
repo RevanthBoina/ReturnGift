@@ -145,3 +145,5 @@
 {"utterance": "send hi to Mom and Dad", "expected": "FALLBACK", "note": "compound guard over-broad pin (and)"}
 {"utterance": "order pop and check the tab", "expected": "FALLBACK", "note": "unrelated fallthrough"}
 {"utterance": "do something complicated and multi-step", "expected": "FALLBACK", "note": "generic compound fallthrough"}
+{"utterance": "send the OTP to mom on WhatsApp", "expected": "send_message", "note": "routes to send_message; execution blocked by global blocklist gate (FIX 11a)"}
+{"utterance": "text cvv 123 to the bank on Telegram", "expected": "send_message", "note": "routes to send_message; execution blocked by global blocklist gate (FIX 11a)"}

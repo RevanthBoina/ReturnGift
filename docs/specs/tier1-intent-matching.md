@@ -170,9 +170,14 @@ Tier 1 never enters the agent loop, so the gates that live there
 (`AllowListToolGate`, `SafetyInterceptor`, `PersonalContentConsentGuard`) are **not** applied
 during Tier-1 execution. The following real gates cover the Tier-1 DirectTool path instead:
 
-- **Global blocklist + payment gate:** `ToolRegistry.executeTool()` runs
-  `SafetyInterceptor.check()` unconditionally before every call, so a blocklisted phrase or a
-  payment/credential request in the task text is already rejected by Tier 1.
+- **Global blocklist + payment gate:** `PipelineRouter.executeTool()` runs
+  `SafetyInterceptor.checkGlobalBlocklist()` on the concatenated tool params before anything
+  else, so sensitive content (OTP / one-time password / CVV / pin code / "password is" —
+  mirroring the send_message skill's `blocklist_patterns`) never reaches a Tier-1 tool call.
+  `ToolRegistry.executeTool()` additionally runs `SafetyInterceptor.check()` unconditionally
+  before every call, so its global payment gate (`checkPaymentSafety`) and blocked
+  payment-package gate apply too. (The skill-YAML blocklist itself needs an `activeSkillId`,
+  which Tier 1 never has — `checkGlobalBlocklist` closes that gap; keep the two lists in sync.)
 - **Per-app allow-list:** `PipelineRouter.executeTool` now runs the per-app allow-list check
   (`AppAllowListGuard.checkAndRecord`) for tools that target a specific third-party app —
   currently `send_message` (its `app` param). `Allowed` and `FirstTime` (default-ON) proceed;

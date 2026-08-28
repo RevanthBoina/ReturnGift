@@ -30,6 +30,21 @@ object SafetyInterceptor {
     private const val TAG = "SafetyInterceptor"
     private const val CONFIRM_TIMEOUT_SEC = 30L
 
+    /**
+     * Sensitive-content patterns that are blocked on EVERY execution path, mirroring the
+     * send_message skill's blocklist_patterns. Tier-1 DirectTool has no active skill, so
+     * the YAML-scoped gate never fires there — this global list closes that gap. Matches
+     * `(?i)otp|one[- ]time password|cvv|pin code|password is` from the skill YAML so the
+     * two stay aligned (keep in sync if the skill spec changes).
+     */
+    private val GLOBAL_BLOCKLIST_PATTERNS = listOf(
+        "(?i)otp",
+        "one[- ]time password",
+        "(?i)cvv",
+        "pin code",
+        "password is",
+    )
+
     /** Per-session set of tool names that have been executed and are now terminal. */
     private val executedCheckpoints = mutableSetOf<String>()
     /** The skill id currently active (set by TaskOrchestrator before skill execution). */
@@ -67,6 +82,32 @@ object SafetyInterceptor {
                 val msg = "Safety: Payment feature is currently disabled. Action containing '$kw' was blocked."
                 XLog.w(TAG, msg)
                 return msg
+            }
+        }
+        return null
+    }
+
+    /**
+     * Global blocklist check that applies to ANY execution path (including Tier-1
+     * DirectTool, which has no skill context and therefore no `activeSkillId`-scoped
+     * blocklist). Mirrors the send_message skill's blocklist_patterns so a Tier-1
+     * send_message can never transmit an OTP / password / CVV even though the skill
+     * YAML gate (which requires an active skill) is not in play. Pure JVM — no Android.
+     *
+     * @param paramsText the concatenated tool parameters (or the raw task text)
+     * @return a block message when a sensitive pattern matches, else null
+     */
+    fun checkGlobalBlocklist(paramsText: String): String? {
+        val lower = paramsText.lowercase()
+        for (pattern in GLOBAL_BLOCKLIST_PATTERNS) {
+            try {
+                if (Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(lower)) {
+                    val msg = "Safety: blocked by global blocklist pattern '$pattern'."
+                    XLog.w(TAG, msg)
+                    return msg
+                }
+            } catch (e: Exception) {
+                XLog.w(TAG, "Invalid global blocklist pattern '$pattern': ${e.message}")
             }
         }
         return null

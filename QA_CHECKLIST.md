@@ -2324,6 +2324,19 @@ Format: `[date] [status] [test-id] description`
 
 **Status:** `[2026-08-28] [CI-GREEN] [FIX 7/FIX 8]` — full unit suite green (427 tests).
 
+### 2026-08-28 — Tier-1 global blocklist gate (P2 FIX 11a)
+
+**Change:** `SafetyInterceptor.checkGlobalBlocklist` (pure, JVM-testable) applies the
+send_message skill's sensitive-content patterns (OTP / one-time password / CVV / pin code /
+"password is") on the Tier-1 DirectTool path regardless of `activeSkillId` — the
+skill-YAML-scoped blocklist can never fire for Tier 1 because it has no active skill.
+Wired as the FIRST check in `PipelineRouter.executeTool` (before the allow-list and before
+`ToolRegistry`). Spec §10 updated. Tests: `PipelineRouterAllowListGateTest` +8 (blocklist
+semantics + in-path short-circuit). Corpus: +2 routing pins (sensitive send_message still
+routes to `send_message`; execution is gated).
+
+**Status:** `[2026-08-28] [CI-GREEN] [FIX 11a]` — gate tests 15/15, golden corpus 149/149.
+
 ### 2026-08-28 — T1 dead-code disposal (P3.7 TaskShortcuts + P3.8 TaskClassifier)
 
 **Change:** four-signal gate (literal grep kt/java/xml/kts + manifest + docs + fixtures)
