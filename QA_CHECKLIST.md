@@ -2312,6 +2312,15 @@ Golden-corpus unit coverage lives in `TaskParserGoldenCorpusTest`
       rejected up-front with "exceeds max" (unit: `RepeatActionsToolCapTest`).
 - Env-dependent cases BLOCKED, never product FAIL.
 
+### T1.8 — Idempotent terminal cleanup (P2 FIX 12)
+
+- [ ] [PENDING-DEVICE] press Stop racing a skill→agent-loop fallback → exactly ONE terminal
+      event, exactly ONE channel confirmation, floating circle ends in one final state, lock
+      released once (unit: `releaseIfMatches` CAS + DirectTool double-report suppression).
+- [ ] [PENDING-DEVICE] normal completion / failure path still shows exactly one ✓ / ✗ and
+      one final floating state (regression).
+- Env-dependent cases BLOCKED, never product FAIL.
+
 ### QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
@@ -2353,6 +2362,22 @@ starts; cancelled skill → Cancelled, no fallback) + C3 `tryAcquire` exclusivit
 `RepeatActionsToolCapTest` (2). Full suite: 446 tests, 0 failures; preflight + lintDebug green.
 
 **Status:** `[2026-08-28] [CI-GREEN] [C5/FIX5/FIX9/FIX10]`
+
+### 2026-08-28 — Idempotent terminal cleanup (P2 FIX 12)
+
+**Change:** every terminal handler (agent-loop onComplete/onError/onSystemDialogBlocked +
+DirectIntent/DirectTool/skill) now compare-and-swaps on the session `messageId`
+(`TaskSessionStore.releaseIfMatches` / `TaskOrchestrator.casRelease`). Only the handler that
+releases a MATCHING session performs channel confirmation, `onTaskFinished`, and the
+floating final state; a racing cancel that already released the session makes any later
+terminal block a no-op. Fixes the skill→agent-fallback+racing-cancel double-release that
+silently skipped the cancellation confirmation. Spec §13a.
+
+**Tests:** `TaskOrchestratorTier1Test` +2 (`releaseIfMatches` CAS idempotency + DirectTool
+double-report suppression under a pre-released session). Full suite: 451 tests, 0 failures;
+preflight + lintDebug green.
+
+**Status:** `[2026-08-28] [CI-GREEN] [FIX 12]`
 
 ### 2026-08-28 — Tier-1 global blocklist gate (P2 FIX 11a)
 

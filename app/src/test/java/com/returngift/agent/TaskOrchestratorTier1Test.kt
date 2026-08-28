@@ -16,6 +16,7 @@ import kotlin.concurrent.thread
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -294,5 +295,56 @@ class TaskOrchestratorTier1Test {
         assertFalse(orchestrator.taskSessionStore.tryAcquire("m2", Channel.LOCAL))
         orchestrator.taskSessionStore.release()
         assertTrue(orchestrator.taskSessionStore.tryAcquire("m3", Channel.LOCAL))
+    }
+
+    // ── FIX 12: terminal cleanup CAS is idempotent ───────────────────────────────
+    @Test
+    fun `releaseIfMatches releases only the current owner and no-ops afterwards`() {
+        val store = orchestrator.taskSessionStore
+        assertTrue(store.tryAcquire("msg-a", Channel.LOCAL))
+        // wrong owner id → no release, session still running
+        assertNull(store.releaseIfMatches("msg-other"))
+        assertTrue(store.isTaskRunning())
+        // correct owner id → released, session now free
+        val released = store.releaseIfMatches("msg-a")
+        assertNotNull(released)
+        assertEquals("msg-a", released!!.messageId)
+        assertFalse(store.isTaskRunning())
+        // second cleanup for the same owner is a no-op (racing skill→fallback cancel)
+        assertNull(store.releaseIfMatches("msg-a"))
+        assertFalse(store.isTaskRunning())
+    }
+
+    @Test
+    fun `racing cancel that already released the session suppresses the tool terminal double-report`() {
+        // Simulate a racing cancel that released the session BEFORE this tool's terminal
+        // path runs: the DirectTool thread must then report nothing (no Completed/Failed,
+        // no channel message, no onTaskFinished, no floating state) — the cancel handler
+        // owns those. Conversely the pre-canceled path's normal tool might still run and
+        // mutate; but the terminal accounting must stay exactly silent here.
+        val toolRan = CountDownLatch(1)
+        router = FakeRouter(
+            toolHook = { _, _ ->
+                // simulate cancelCurrentTask's terminal release racing this thread
+                orchestrator.taskSessionStore.release()
+                toolRan.countDown()
+                ToolResult.success("done")
+            }
+        )
+        orchestrator.routerForTesting = router
+
+        orchestrator.taskEventCallback = { event -> terminalEvents.add(event) }
+        // start the DirectTool task, then wait until the tool body has run and released
+        // the session, then assert the thread's terminal block stayed silent.
+        orchestrator.startNewTask(Channel.LOCAL, "stub_x", "m1")
+        assertTrue(toolRan.await(5, TimeUnit.SECONDS))
+        // give the DirectTool thread time to reach its (suppressed) terminal block
+        Thread.sleep(300)
+        // no terminal event, no message, no floating-state, no onTaskFinished from this path
+        assertEquals(0, terminalEvents.size)
+        assertEquals(0, channelMessages.size)
+        assertEquals(0, floatingStates.size)
+        assertEquals(0, finishedCount)
+        assertFalse(orchestrator.isTaskRunning())
     }
 }

@@ -91,4 +91,21 @@ class TaskSessionStore {
             return current
         }
     }
+
+    /**
+     * Compare-and-swap release (FIX 12): releases the session ONLY if the current session
+     * still matches [messageId], returning the released state; returns null when the session
+     * was already released by a different terminal path. Makes terminal cleanup idempotent —
+     * exactly one handler performs channel confirmation / onTaskFinished / floating state.
+     */
+    fun releaseIfMatches(messageId: String): TaskSessionState? {
+        synchronized(lock) {
+            val current = _state.value
+            if (current.messageId != messageId) {
+                return null
+            }
+            _state.value = TaskSessionState()
+            return current
+        }
+    }
 }

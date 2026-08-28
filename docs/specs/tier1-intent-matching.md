@@ -242,6 +242,19 @@ A **cancelled** skill emits `TaskEvent.Cancelled` and **must NOT fall back to th
 (no respawned AI run). `RepeatActionsTool`'s pre-existing `MAX_TOTAL_STEPS` cap is pinned by a
 test rather than re-deriving a token budget.
 
+## 13a. Idempotent terminal cleanup (FIX 12)
+
+Every terminal handler (agent-loop onComplete / onError / onSystemDialogBlocked, plus the
+DirectIntent / DirectTool / skill paths) compare-and-swaps on the session's `messageId`
+(`TaskSessionStore.releaseIfMatches`, `TaskOrchestrator.casRelease`): only the handler that
+releases a **matching** session performs the channel confirmation, `onTaskFinished`, and the
+floating-circle final state. A racing cancel that already released the session makes any
+later terminal block a no-op (no Completed/Failed, no message, no floating state, no
+`onTaskFinished`) — so the skill→agent-fallback recursion racing `cancelCurrentTask` can
+never run two terminal cleanups or read an already-reset session (which previously silently
+skipped the cancellation confirmation). `TaskSessionStore.release()` is retained for the
+test/simple-callers; all orchestrator terminal paths use the CAS release.
+
 ## 14. Revision history
 
 - 2026-08-28 (P3.1): normalization/anchor/number unification, English-only strip, golden corpus.
@@ -251,3 +264,4 @@ test rather than re-deriving a token budget.
 - 2026-08-28 (P2 C5/FIX5/FIX9/FIX10): shared `BoundedExecution` + skill step-bound checks +
   direct-tool wall-clock bound + skill cancellation contract; §13.
 - 2026-08-28 (P2 FIX11a): global blocklist gate on DirectTool; §10.
+- 2026-08-28 (P2 FIX12): idempotent terminal cleanup via `releaseIfMatches` CAS; §13a.
