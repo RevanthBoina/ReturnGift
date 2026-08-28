@@ -33,16 +33,12 @@ object SafetyInterceptor {
     /**
      * Sensitive-content patterns that are blocked on EVERY execution path, mirroring the
      * send_message skill's blocklist_patterns. Tier-1 DirectTool has no active skill, so
-     * the YAML-scoped gate never fires there — this global list closes that gap. Matches
-     * `(?i)otp|one[- ]time password|cvv|pin code|password is` from the skill YAML so the
-     * two stay aligned (keep in sync if the skill spec changes).
+     * the YAML-scoped gate never fires there — this global list closes that gap. The YAML
+     * is the source of truth; set-equality is pinned by SafetyInterceptorBlocklistSyncTest.
+     * Exposed as internal for that test (A5).
      */
-    private val GLOBAL_BLOCKLIST_PATTERNS = listOf(
-        "(?i)otp",
-        "one[- ]time password",
-        "(?i)cvv",
-        "pin code",
-        "password is",
+    internal val GLOBAL_BLOCKLIST_PATTERNS = listOf(
+        "(?i)otp|one[- ]time password|cvv|pin code|password is",
     )
 
     /** Per-session set of tool names that have been executed and are now terminal. */
