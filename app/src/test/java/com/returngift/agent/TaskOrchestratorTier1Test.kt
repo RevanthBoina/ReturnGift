@@ -51,6 +51,9 @@ class TaskOrchestratorTier1Test {
             return when (task) {
                 "stub" -> Route.DirectIntent(Intent(Intent.ACTION_VIEW), "stub intent")
                 "skill" -> Route.Skill("cancellable_skill", mapOf(), "run a skill")
+                "sendmsg" -> Route.DirectTool(
+                    "send_message", mapOf("app" to "WhatsApp", "contact" to "Mom", "message" to "hi"), "send hi"
+                )
                 else -> Route.DirectTool("stub_tool", mapOf(), "stub tool")
             }
         }
@@ -345,6 +348,50 @@ class TaskOrchestratorTier1Test {
         assertEquals(0, channelMessages.size)
         assertEquals(0, floatingStates.size)
         assertEquals(0, finishedCount)
+        assertFalse(orchestrator.isTaskRunning())
+    }
+
+    // ── D3: Tier-1 send_message pre-send confirmation ────────────────────────────
+    @Test
+    fun `send_message declined confirm does not execute and emits Failed`() {
+        router = FakeRouter()
+        orchestrator.routerForTesting = router
+        orchestrator.sendMessageConfirm = { false } // user cancelled / 5s auto-cancel
+
+        val latch = CountDownLatch(1)
+        orchestrator.taskEventCallback = { event ->
+            terminalEvents.add(event)
+            if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+        }
+        orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
+        assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
+        assertTrue("task not finished", awaitFinished())
+
+        assertEquals(0, router.executedTool.size)
+        assertEquals(1, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
+        assertEquals("events=$terminalEvents", 0, terminalEvents.filterIsInstance<TaskEvent.Completed>().size)
+        assertTrue("expected ✗ message, got $channelMessages", channelMessages.any { it.startsWith("✗") })
+        assertFalse(orchestrator.isTaskRunning())
+    }
+
+    @Test
+    fun `send_message confirmed executes and emits Completed`() {
+        router = FakeRouter(toolResult = { ToolResult.success("Written: ok") })
+        orchestrator.routerForTesting = router
+        orchestrator.sendMessageConfirm = { true } // user tapped Send
+
+        val latch = CountDownLatch(1)
+        orchestrator.taskEventCallback = { event ->
+            terminalEvents.add(event)
+            if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+        }
+        orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
+        assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
+        assertTrue("task not finished", awaitFinished())
+
+        assertEquals(listOf("send_message"), router.executedTool)
+        assertEquals(1, terminalEvents.filterIsInstance<TaskEvent.Completed>().size)
+        assertTrue("expected ✓ message, got $channelMessages", channelMessages.any { it.startsWith("✓") })
         assertFalse(orchestrator.isTaskRunning())
     }
 }

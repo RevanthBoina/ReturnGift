@@ -145,6 +145,17 @@ Tier-1 `send_message` must do a non-blocking confirm on the chat surface: a conf
 **tap-to-send**, **5-second auto-cancel** (safe default). Reuses the existing SYSTEM-card path.
 Cold fallback: the existing warm `ConfirmDialog` flow.
 
+Implemented in `TaskOrchestrator`'s DirectTool thread: when the routed tool is `send_message`,
+the confirmation runs **before** execution, inside the same `BoundedExecution` wall-clock bound
+(a stuck confirmation cannot hold the session lock). It reuses the `ClarificationManager`
+pending-question machinery — `Question("Send this message?...", choices=["Send","Cancel"],
+timeoutMs=5000)` — which renders as the existing `ClarificationCard` with choice chips on the
+chat surface. Any outcome other than the user tapping **Send** (Cancel chip, 5s timeout, task
+cancel) suppresses execution and the tool reports "Send cancelled" → the normal Typed-Failed
+terminal path. The seam is `TaskOrchestrator.sendMessageConfirm` (injectable for pure-JVM
+tests). `call`/`sms` keep the dialer / SMS-compose system-UI confirmation per the D3 doctrine —
+never a Tier-1 app-level confirmation.
+
 ## 8. Observability (on-device aggregate)
 
 `tier1_hit_<intent>`, `tier1_total`, `tier3_fallback_total`, `tier1_fp_<intent>` are all
@@ -265,3 +276,4 @@ test/simple-callers; all orchestrator terminal paths use the CAS release.
   direct-tool wall-clock bound + skill cancellation contract; §13.
 - 2026-08-28 (P2 FIX11a): global blocklist gate on DirectTool; §10.
 - 2026-08-28 (P2 FIX12): idempotent terminal cleanup via `releaseIfMatches` CAS; §13a.
+- 2026-08-28 (P2 D3): Tier-1 send_message pre-send confirmation (5s auto-cancel); §7.

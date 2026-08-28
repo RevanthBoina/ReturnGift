@@ -2321,6 +2321,16 @@ Golden-corpus unit coverage lives in `TaskParserGoldenCorpusTest`
       one final floating state (regression).
 - Env-dependent cases BLOCKED, never product FAIL.
 
+### T1.9 — Tier-1 send_message pre-send confirmation (D3)
+
+- [ ] [PENDING-DEVICE] task "send hi to Girlfriend on WhatsApp" → confirm card appears with
+      Send/Cancel; wait 5s WITHOUT tapping → **no message is sent**, task ends Failed, "✗"
+      channel message (unit: declined-confirm test).
+- [ ] [PENDING-DEVICE] same task, tap **Send** on the confirm card → message IS sent, "✓"
+      channel message, Completed (unit: confirmed test).
+- [ ] [PENDING-DEVICE] same task, tap **Cancel** → no message sent, Failed, lock released.
+- Env-dependent cases BLOCKED, never product FAIL.
+
 ### QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
@@ -2378,6 +2388,20 @@ double-report suppression under a pre-released session). Full suite: 451 tests, 
 preflight + lintDebug green.
 
 **Status:** `[2026-08-28] [CI-GREEN] [FIX 12]`
+
+### 2026-08-28 — Tier-1 send_message pre-send confirmation (P2 D3)
+
+**Change:** Tier-1 `send_message` now confirms BEFORE executing via a `ClarificationCard`
+(Send/Cancel chips) with a 5-second auto-cancel safe default. The confirm runs inside the
+DirectTool `BoundedExecution` bound; any outcome other than tapping **Send** suppresses the
+send and falls to the Typed-Failed terminal path. `call`/`sms` keep the dialer/SMS-compose
+system-UI confirmation doctrine. Seam: `TaskOrchestrator.sendMessageConfirm` (injectable for
+JVM tests). Spec §7.
+
+**Tests:** `TaskOrchestratorTier1Test` +2 (declined confirm → no execution + Failed; confirmed
+→ executes + Completed). Full suite: 453 tests, 0 failures; preflight + lintDebug green.
+
+**Status:** `[2026-08-28] [CI-GREEN] [D3]`
 
 ### 2026-08-28 — Tier-1 global blocklist gate (P2 FIX 11a)
 

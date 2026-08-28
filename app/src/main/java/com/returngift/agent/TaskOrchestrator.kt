@@ -8,6 +8,7 @@ import com.returngift.agent.agent.AgentConfig
 import com.returngift.agent.agent.AgentService
 import com.returngift.agent.agent.AgentServiceFactory
 import com.returngift.agent.agent.PipelineRouter
+import com.returngift.agent.agent.clarify.ClarificationManager
 import com.returngift.agent.agent.exec.BoundedExecution
 import com.returngift.agent.agent.skill.SkillExecutor
 import com.returngift.agent.agent.skill.SkillRegistry
@@ -34,6 +35,8 @@ class TaskOrchestrator(
 
     companion object {
         private const val TAG = "TaskOrchestrator"
+        /** D3: 5-second auto-cancel for the Tier-1 send_message pre-send confirmation. */
+        const val TIER1_SEND_CONFIRM_TIMEOUT_MS = 5_000L
     }
 
     private lateinit var agentService: AgentService
@@ -72,6 +75,26 @@ class TaskOrchestrator(
     // the session lock.
     @Volatile
     internal var directToolTimeoutMs: Long = BoundedExecution.DEFAULT_WALL_CLOCK_MS
+
+    // D3: pre-send confirmation for Tier-1 send_message. Non-blocking confirm on the chat
+    // surface (a ClarificationCard with Send/Cancel chips) with a 5-second auto-cancel as the
+    // safe default — send_message is irreversible with no system confirmation surface, so it
+    // must confirm BEFORE executing. The hook is injectable so pure-JVM tests can prove that a
+    // declined or timed-out confirm suppresses execution and a confirmed one proceeds.
+    internal var sendMessageConfirm: (() -> Boolean)? = null
+
+    private fun confirmSendMessage(): Boolean {
+        val injected = sendMessageConfirm
+        if (injected != null) return injected()
+        val answer = ClarificationManager.request(
+            question = "Send this message? Tap Send to confirm, or Cancel.",
+            choices = listOf("Send", "Cancel"),
+            allowFreeText = false,
+            timeoutMs = TIER1_SEND_CONFIRM_TIMEOUT_MS,
+        )
+        // null = timeout (5s auto-cancel) or user cancelled → safe default is NOT to send.
+        return answer == "Send"
+    }
 
     private fun sendChannelMessage(channel: Channel, content: String, messageID: String) {
         val sink = channelMessageSink
@@ -257,7 +280,15 @@ class TaskOrchestrator(
                     val bounded = BoundedExecution.runBounded(
                         wallClockMs = directToolTimeoutMs,
                     ) {
-                        pipelineRouter.executeTool(route.toolName, route.params)
+                        // D3: send_message is irreversible with no system confirmation surface,
+                        // so the Tier-1 path must confirm BEFORE executing. The confirm itself is
+                        // inside the bound so a stuck confirmation cannot hold the session lock.
+                        if (route.toolName == "send_message" && !confirmSendMessage()) {
+                            XLog.i(TAG, "Tier-1 send_message declined or timed out (5s auto-cancel) — not sending")
+                            ToolResult.error("Send cancelled")
+                        } else {
+                            pipelineRouter.executeTool(route.toolName, route.params)
+                        }
                     }
                     when (bounded) {
                         is BoundedExecution.Outcome.TimedOut ->
