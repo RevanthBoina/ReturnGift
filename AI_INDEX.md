@@ -21,6 +21,8 @@ This is the repo map for coding agents. Keep canonical information in existing f
 | `app/src/main/assets/playbooks/` | Built-in playbooks used by the agent harness |
 | `scripts/` | QA and automation scripts |
 | `.github/workflows/` | CI and signed release workflow |
+| `docs/specs/` | Feature/subsystem design specs (e.g. `tier1-intent-matching.md`) |
+| `fixtures/` | Golden corpora for deterministic layers (e.g. `tier1_golden_utterances.jsonl`) |
 
 ## Direction Rules
 

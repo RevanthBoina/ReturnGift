@@ -227,6 +227,49 @@ reply is "thanks, can you attach the debug-report.zip from this build."
 
 ---
 
+## D9. Tier-1 deterministic intent layer is English-only
+
+**Decision.** The Tier-1 `TaskParser` intent vocabulary is English only. All matcher
+alternations for other languages (`打電話|打畀|致電`, `鬧鐘|叫醒`, `計時`, `截圖|影相`,
+`打開|開`, `返回|返回主頁`, `設定`, `，然後`) were removed (D2).
+
+**Why.**
+
+- Tier 1 is tiny, regex-based, and must be auditable in one screen. Multi-language
+  alternations multiplied surface area for false positives with no corpus coverage.
+- Acronyms/short forms (`x`, `torch`) are already a one-letter-substring hazard (A5);
+  cross-language CJK substrings are strictly worse to reason about.
+- The wider project already leans English-first; this decision makes the deterministic
+  layer consistent with it.
+
+**Trade-offs.** Non-English speakers get Tier-2/3 (skill + agent loop) instead of Tier 1.
+Removing the separate `res/values-ja|zh` *string* folders is a distinct, out-of-scope
+follow-up (D2c) and is NOT part of this decision.
+
+## D10. Dialer/SMS system-UI doctrine
+
+**Decision.** Tier 1 (`call`, `sms`) only ever emits `ACTION_DIAL` and `ACTION_SENDTO` —
+never `ACTION_CALL`, never `SmsManager.sendTextMessage`. The dialer / SMS compose UI is the
+system confirmation; the message does not leave the device until the *user* taps in the
+system UI.
+
+**Why.** It matches the existing `MakeCallTool` comment (ACTION_DIAL shows the dialer so the
+user confirms) and keeps Tier 1 honest: an irreversible real-world action is gated by a
+human in the loop. It also justifies why the 3-digit short code `911` can be Tier-1 eligible
+without app-level confirmation (A6): dialing is only dialed once the user confirms.
+
+## D11. App-Actions independence
+
+**Decision.** Tier 1 does not depend on Android App Actions, `shortcuts.xml`, or Slices.
+It is self-contained: regex → `Intent`/`ToolRegistry` → system UI. No platform discovery
+or manifest piping is required.
+
+**Why.** App Actions/Slices are not universally honored, add manifest surface area, and
+duplicate what a plain `Intent` already does. Keeping Tier 1 self-contained means the
+golden corpus is a pure-JVM gate and needs no device to reason about.
+
+---
+
 ## North star (re-anchor)
 
 > ReturnGift is the open-source mobile agent harness. On every Android phone that runs

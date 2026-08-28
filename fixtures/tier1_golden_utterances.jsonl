@@ -1,0 +1,147 @@
+{"utterance": "send hi to Girlfriend on WhatsApp", "expected": "send_message", "note": "canonical send_message positive (existing test string)"}
+{"utterance": "send ok to Chris on Telegram", "expected": "send_message", "note": "send_message alternate app"}
+{"utterance": "text the code zulu731 to Mom on Messages", "expected": "send_message", "note": "send_message 'text' verb, app canonicalized"}
+{"utterance": "send a quick note to Sarah on WhatsApp", "expected": "send_message", "note": "send_message with content phrase"}
+{"utterance": "please send hi to Mom", "expected": "send_message", "note": "send_message prefix-tolerant (find())"}
+{"utterance": "send that to Girlfriend on WhatsApp", "expected": "FALLBACK", "note": "contextual clitic 'that' is not a real message content (existing test string)"}
+{"utterance": "send this to Girlfriend on WhatsApp", "expected": "FALLBACK", "note": "contextual clitic 'this'"}
+{"utterance": "send it to Girlfriend on WhatsApp", "expected": "FALLBACK", "note": "contextual clitic 'it'"}
+{"utterance": "send them to Girlfriend on WhatsApp", "expected": "FALLBACK", "note": "contextual clitic 'them'"}
+{"utterance": "send a message to John", "expected": "FALLBACK", "note": "undefined message body — vector phrase, must not fake a send"}
+{"utterance": "send text to Axel", "expected": "FALLBACK", "note": "bare vector 'text' + no real message and 'x' word-boundary guard (A5)"}
+{"utterance": "send email to nicole@example.com", "expected": "FALLBACK", "note": "email excluded from messaging tool (existing test string)"}
+{"utterance": "message me on whatsapp", "expected": "FALLBACK", "note": "no 'to <contact>' and targeting self"}
+{"utterance": "send message to Mom", "expected": "FALLBACK", "note": "bare vector 'message'"}
+{"utterance": "send 555-0100 to superscript contact", "expected": "FALLBACK", "note": "numeric message body treated as phone, not message content"}
+{"utterance": "call 911", "expected": "call", "note": "short number 3-15 digits eligible per A6"}
+{"utterance": "call 415-555-0100", "expected": "call", "note": "qualifying US-format number"}
+{"utterance": "dial +1 (212) 555-0178", "expected": "call", "note": "dial verb + parenthesis format"}
+{"utterance": "ring 18001234567", "expected": "call", "note": "'ring' verb with long number"}
+{"utterance": "call 5550100", "expected": "call", "note": "bare digits call"}
+{"utterance": "call my brother", "expected": "FALLBACK", "note": "contact name, not number — agent loop resolves contact"}
+{"utterance": "call 1", "expected": "FALLBACK", "note": "1-2 digit number not Tier-1 eligible per A6"}
+{"utterance": "call 12", "expected": "FALLBACK", "note": "2 digits excluded"}
+{"utterance": "call 1234567890123456", "expected": "FALLBACK", "note": ">15 digits excluded per A6"}
+{"utterance": "dont call number 5 at noon", "expected": "FALLBACK", "note": "negation 'dont call' not start-anchored and <3 digits"}
+{"utterance": "on whatsapp call mom", "expected": "FALLBACK", "note": "verb not at start — anchored matching cost (C2)"}
+{"utterance": "call mom on whatsapp", "expected": "FALLBACK", "note": "call to a contact (name) falls to agent"}
+{"utterance": "sms 555-0100", "expected": "sms", "note": "sms to number opens compose UI"}
+{"utterance": "text 4155550100", "expected": "sms", "note": "'text' + pure number sms"}
+{"utterance": "send an sms to 555-0100", "expected": "sms", "note": "send-sms variant"}
+{"utterance": "message 5550100", "expected": "sms", "note": "'message' verb with number"}
+{"utterance": "send a text to 415-555-0100", "expected": "sms", "note": "send a text + number"}
+{"utterance": "sms 555-0100 to mom", "expected": "FALLBACK", "note": "trailing name makes the recipient ambiguous — agent resolves"}
+{"utterance": "sms mom", "expected": "FALLBACK", "note": "contact name needs agent resolution"}
+{"utterance": "text 12", "expected": "FALLBACK", "note": "2-digit number excluded"}
+{"utterance": "text my wife", "expected": "FALLBACK", "note": "contact name, no number"}
+{"utterance": "message the office", "expected": "FALLBACK", "note": "contact name, no number"}
+{"utterance": "dont sms 555-0100", "expected": "FALLBACK", "note": "negation — not start-anchored"}
+{"utterance": "set an alarm at 7 for tomorrow", "expected": "alarm", "note": "alarm with hour, no minutes"}
+{"utterance": "set alarm for 7:30 am", "expected": "alarm", "note": "alarm with am"}
+{"utterance": "wake me up at 6:45 in the morning", "expected": "alarm", "note": "wake-up alias"}
+{"utterance": "wake me at 7:00 pm", "expected": "alarm", "note": "wake me + pm conversion"}
+{"utterance": "alarm for 7 15", "expected": "alarm", "note": "space-separated hour/minute"}
+{"utterance": "remind me at 10 to feed the cat", "expected": "FALLBACK", "note": "reminder, not alarm"}
+{"utterance": "batch 7 alarms tonight", "expected": "FALLBACK", "note": "not a single clean alarm"}
+{"utterance": "alarm tomorrow", "expected": "FALLBACK", "note": "no time part"}
+{"utterance": "alarm at 25:99", "expected": "FALLBACK", "note": "invalid hour/minute out of range"}
+{"utterance": "set a reminder for monday", "expected": "FALLBACK", "note": "reminder calendar not alarm"}
+{"utterance": "set a timer for 10 minutes", "expected": "timer", "note": "timer minutes"}
+{"utterance": "start a 1 minute timer", "expected": "timer", "note": "timer keyword after duration"}
+{"utterance": "timer 45 sec", "expected": "timer", "note": "short suffix sec"}
+{"utterance": "countdown 2 hours", "expected": "timer", "note": "countdown alias hours"}
+{"utterance": "set timer for 90 seconds", "expected": "timer", "note": "90 seconds"}
+{"utterance": "do a 15 second timer starting now", "expected": "timer", "note": "duration present despite trailing filler (find() tolerant)"}
+{"utterance": "time for 5 minutes", "expected": "FALLBACK", "note": "'time' is not the timer verb"}
+{"utterance": "timer please", "expected": "FALLBACK", "note": "no duration"}
+{"utterance": "set a timer at 5", "expected": "FALLBACK", "note": "missing unit"}
+{"utterance": "start a countdown", "expected": "FALLBACK", "note": "no duration"}
+{"utterance": "set a timer for an hour", "expected": "FALLBACK", "note": "no numeric duration"}
+{"utterance": "take a screenshot", "expected": "screenshot", "note": "screenshot positive"}
+{"utterance": "screencap this", "expected": "screenshot", "note": "screencap variant"}
+{"utterance": "screenshot please", "expected": "screenshot", "note": "tolerant of trailing politeness"}
+{"utterance": "screenshot the screen", "expected": "screenshot", "note": "screenshot verb"}
+{"utterance": "take screenshot", "expected": "screenshot", "note": "short screenshot form"}
+{"utterance": "capture the screen", "expected": "FALLBACK", "note": "'capture' ambiguous — could be screen capture feature beyond Tier-1"}
+{"utterance": "photo of the screen", "expected": "FALLBACK", "note": "not a recognized screenshot verb"}
+{"utterance": "record a screen capture", "expected": "FALLBACK", "note": "recording is not a single screenshot intent"}
+{"utterance": "print screen", "expected": "FALLBACK", "note": "not a recognized screenshot verb"}
+{"utterance": "screen shot the page", "expected": "FALLBACK", "note": "two-word 'screen shot' not matched"}
+{"utterance": "press back", "expected": "back", "note": "press back variant (A1)"}
+{"utterance": "back", "expected": "back", "note": "bare exact"}
+{"utterance": "go back", "expected": "back", "note": "phrase exact"}
+{"utterance": "go back please", "expected": "back", "note": "exact with politeness stripped"}
+{"utterance": "press the back button", "expected": "back", "note": "press the back button"}
+{"utterance": "back it up on youtube", "expected": "FALLBACK", "note": "'back' as verb not navigation"}
+{"utterance": "i want my old window back", "expected": "FALLBACK", "note": "not navigation"}
+{"utterance": "return to the chat", "expected": "FALLBACK", "note": "different wording than back — no false match"}
+{"utterance": "press the back button on my phone", "expected": "FALLBACK", "note": "exact-match policy — trailing context falls through"}
+{"utterance": "back to the previous page", "expected": "FALLBACK", "note": "exact-match policy — not a bare back command"}
+{"utterance": "press home", "expected": "home", "note": "press home variant (A1)"}
+{"utterance": "home", "expected": "home", "note": "bare exact"}
+{"utterance": "go home", "expected": "home", "note": "phrase exact"}
+{"utterance": "go home please", "expected": "home", "note": "politeness-stripped exact"}
+{"utterance": "go to the home screen", "expected": "home", "note": "home screen alias"}
+{"utterance": "bring me home", "expected": "FALLBACK", "note": "not a home button command"}
+{"utterance": "home base", "expected": "FALLBACK", "note": "word context mismatch"}
+{"utterance": "i left home", "expected": "FALLBACK", "note": "not a command"}
+{"utterance": "press home right now", "expected": "FALLBACK", "note": "exact-match policy — trailing context falls through"}
+{"utterance": "home sweet home", "expected": "FALLBACK", "note": "not a home button command"}
+{"utterance": "open https://example.com", "expected": "open_url", "note": "basic URL open"}
+{"utterance": "go to https://news.example.com/story?id=7", "expected": "open_url", "note": "query params preserved"}
+{"utterance": "visit http://example.org", "expected": "open_url", "note": "http scheme"}
+{"utterance": "navigate to https://example.com/a path", "expected": "open_url", "note": "space in path tolerated (find())"}
+{"utterance": "open https://example.com please", "expected": "open_url", "note": "politeness stripped"}
+{"utterance": "look up example.com", "expected": "FALLBACK", "note": "no scheme, not URL intent"}
+{"utterance": "open the browser to example.com", "expected": "FALLBACK", "note": "not a bare URL with scheme"}
+{"utterance": "open example.com", "expected": "FALLBACK", "note": "no scheme"}
+{"utterance": "go to the website", "expected": "FALLBACK", "note": "no URL"}
+{"utterance": "browse to example.com", "expected": "FALLBACK", "note": "no scheme and 'browse' not a URL verb"}
+{"utterance": "open settings", "expected": "open_settings", "note": "generic settings"}
+{"utterance": "open wifi settings", "expected": "open_settings", "note": "wifi keyword"}
+{"utterance": "open brightness settings", "expected": "open_settings", "note": "brightness -> display"}
+{"utterance": "go to settings", "expected": "open_settings", "note": "go to variant"}
+{"utterance": "open bluetooth settings please", "expected": "open_settings", "note": "bluetooth keyword"}
+{"utterance": "adjust volume settings", "expected": "open_settings", "note": "sound volume"}
+{"utterance": "open notification settings", "expected": "open_settings", "note": "notification keyword"}
+{"utterance": "open book settings", "expected": "FALLBACK", "note": "substring 'settings' but object not a real settings surface"}
+{"utterance": "show privacy controls in settings", "expected": "FALLBACK", "note": "no open/go-to verb, no keyword"}
+{"utterance": "settings icon on dashboard", "expected": "FALLBACK", "note": "no verb"}
+{"utterance": "camera settings", "expected": "FALLBACK", "note": "not a bare camera launch, no settings keyword"}
+{"utterance": "change the wifi password", "expected": "FALLBACK", "note": "wifi keyword but no settings surface"}
+{"utterance": "open youtube please", "expected": "open_app", "note": "trailing please stripped, anchored open_app"}
+{"utterance": "launch spotify", "expected": "open_app", "note": "launch verb"}
+{"utterance": "start the calendar app", "expected": "open_app", "note": "with 'the' and app suffix"}
+{"utterance": "open gmail", "expected": "open_app", "note": "gmail"}
+{"utterance": "start the calculator app please", "expected": "open_app", "note": "start verb + politeness"}
+{"utterance": "open the books app", "expected": "open_app", "note": "generic app open"}
+{"utterance": "open maps direction", "expected": "open_app", "note": "open_app fuzzy launch, trailing captured (may fail honestly)"}
+{"utterance": "open chrome and give me the weather", "expected": "FALLBACK", "note": "compound guard fires on 'and'"}
+{"utterance": "check xbox", "expected": "FALLBACK", "note": "letter x word-boundary guard — no KNOWN_PACKAGES map (A5)"}
+{"utterance": "launch youtube then search", "expected": "FALLBACK", "note": "compound guard fires on 'then'"}
+{"utterance": "open entrance and then left", "expected": "FALLBACK", "note": "compound guard broader than intended — pinned limitation (A10)"}
+{"utterance": "open app and send message", "expected": "FALLBACK", "note": "compound guard on 'and'"}
+{"utterance": "open camera", "expected": "camera", "note": "camera direct intent positive"}
+{"utterance": "camera", "expected": "camera", "note": "bare camera word"}
+{"utterance": "open the camera", "expected": "camera", "note": "open the camera"}
+{"utterance": "open my camera app", "expected": "camera", "note": "camera app phrase"}
+{"utterance": "start camera", "expected": "camera", "note": "start camera"}
+{"utterance": "camera roll", "expected": "FALLBACK", "note": "no launch verb — gallery not capture"}
+{"utterance": "camera the document", "expected": "FALLBACK", "note": "verb-like camera misuse"}
+{"utterance": "camera off", "expected": "FALLBACK", "note": "not a capture launch"}
+{"utterance": "open the camera app and take a photo", "expected": "FALLBACK", "note": "compound guard on 'and'"}
+{"utterance": "camera angle please", "expected": "FALLBACK", "note": "no launch verb"}
+{"utterance": "turn on the flashlight", "expected": "flashlight", "note": "flashlight on (A1 logic)"}
+{"utterance": "turn off the torch", "expected": "flashlight", "note": "torch off"}
+{"utterance": "flashlight on", "expected": "flashlight", "note": "flashlight on suffix"}
+{"utterance": "torch off", "expected": "flashlight", "note": "torch off suffix"}
+{"utterance": "turn on torch", "expected": "flashlight", "note": "torch on"}
+{"utterance": "flashlight", "expected": "flashlight", "note": "bare flash toggle remembered state"}
+{"utterance": "turn off the lamps", "expected": "FALLBACK", "note": "'lamps' not a flashlight synonym"}
+{"utterance": "dim the flashlight slowly", "expected": "FALLBACK", "note": "graduated control not supported"}
+{"utterance": "check if the flashlight burns", "expected": "FALLBACK", "note": "diagnostic not a toggle"}
+{"utterance": "light source please", "expected": "FALLBACK", "note": "not a torch verb"}
+{"utterance": "turn on the lights", "expected": "FALLBACK", "note": "not a flashlight torch"}
+{"utterance": "send hi to Mom and Dad", "expected": "FALLBACK", "note": "compound guard over-broad pin (and)"}
+{"utterance": "order pop and check the tab", "expected": "FALLBACK", "note": "unrelated fallthrough"}
+{"utterance": "do something complicated and multi-step", "expected": "FALLBACK", "note": "generic compound fallthrough"}
