@@ -2301,6 +2301,17 @@ Golden-corpus unit coverage lives in `TaskParserGoldenCorpusTest`
 - [ ] [PENDING-DEVICE] run a few Tier-1 tasks + a fallback task → counters increment, hit
       rate reflects both.
 
+### T1.7 — Bounded execution + cancellation (P2 C5 / FIX 5 / FIX 9 / FIX 10)
+
+- [ ] [PENDING-DEVICE] start a skill that steps slowly (or a DirectTool targeting an absent
+      UI); wait >60 s → task ends with Failed("timed out") + ✗; lock released; next task
+      starts immediately (unit: `TaskOrchestratorTier1Test` hung-tool case with a shrunk bound).
+- [ ] [PENDING-DEVICE] run a multi-step skill, press Stop mid-run → no further steps
+      execute; `Cancelled` event; **no** AI-agent retry starts (unit: cancelled-skill case).
+- [ ] [PENDING-DEVICE] repeat_actions with `repeat_count` such that total steps > 2000 →
+      rejected up-front with "exceeds max" (unit: `RepeatActionsToolCapTest`).
+- Env-dependent cases BLOCKED, never product FAIL.
+
 ### QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
@@ -2323,6 +2334,25 @@ Format: `[date] [status] [test-id] description`
   Completed + ✓.
 
 **Status:** `[2026-08-28] [CI-GREEN] [FIX 7/FIX 8]` — full unit suite green (427 tests).
+
+### 2026-08-28 — Bounded execution + cancellation (P2 C5 / FIX 5 / FIX 9 / FIX 10)
+
+**Change:** ONE shared wall-clock helper (`agent/exec/BoundedExecution.runBounded`, 60s
+default, pure JVM) bounds every non-LLM execution path. Tier-1 DirectTool runs inside the
+bound (`TaskOrchestrator.directToolTimeoutMs`); a hung tool → `TaskEvent.Failed("…timed
+out…")` + "✗" + lock released, and the next task starts immediately. `SkillExecutor` checks
+the wall-clock bound AND a stop predicate BETWEEN steps → `SkillResult.timedOut` /
+`SkillResult.cancelled` (distinct from failure). A cancelled skill emits
+`TaskEvent.Cancelled` and never respawns the agent loop. `TaskBudget` stays in
+`runAgentLoop` only (non-LLM paths can't change its value); `RepeatActionsTool.MAX_TOTAL_STEPS`
+cap pinned by `RepeatActionsToolCapTest`. Spec §13.
+
+**Tests:** `BoundedExecutionTest` (3), `SkillExecutorTest` +3 (cancel between steps / normal /
+timeout), `TaskOrchestratorTier1Test` +2 (hung tool → Failed+timeout+lock released+next task
+starts; cancelled skill → Cancelled, no fallback) + C3 `tryAcquire` exclusivity pin,
+`RepeatActionsToolCapTest` (2). Full suite: 446 tests, 0 failures; preflight + lintDebug green.
+
+**Status:** `[2026-08-28] [CI-GREEN] [C5/FIX5/FIX9/FIX10]`
 
 ### 2026-08-28 — Tier-1 global blocklist gate (P2 FIX 11a)
 

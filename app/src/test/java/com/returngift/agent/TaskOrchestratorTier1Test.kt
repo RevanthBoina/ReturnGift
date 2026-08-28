@@ -40,6 +40,7 @@ class TaskOrchestratorTier1Test {
     private class FakeRouter(
         private val launchResult: () -> Boolean = { true },
         private val toolResult: () -> ToolResult = { ToolResult.success("") },
+        private val toolHook: ((String, Map<String, Any>) -> ToolResult)? = null,
     ) : PipelineRouter(org.mockito.Mockito.mock(Context::class.java)) {
 
         val launched = CopyOnWriteArrayList<Intent>()
@@ -48,6 +49,7 @@ class TaskOrchestratorTier1Test {
         override fun route(task: String): Route {
             return when (task) {
                 "stub" -> Route.DirectIntent(Intent(Intent.ACTION_VIEW), "stub intent")
+                "skill" -> Route.Skill("cancellable_skill", mapOf(), "run a skill")
                 else -> Route.DirectTool("stub_tool", mapOf(), "stub tool")
             }
         }
@@ -59,6 +61,8 @@ class TaskOrchestratorTier1Test {
 
         override fun executeTool(toolName: String, params: Map<String, Any>): ToolResult {
             executedTool.add(toolName)
+            val hook = toolHook
+            if (hook != null) return hook(toolName, params)
             return toolResult()
         }
     }
@@ -164,5 +168,131 @@ class TaskOrchestratorTier1Test {
         assertEquals(0, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
         assertTrue(channelMessages.any { it.startsWith("✓") })
         assertFalse(orchestrator.isTaskRunning())
+    }
+
+    // ── FIX 10: a hung Tier-1 tool cannot lock the app ───────────────────────────
+    @Test
+    fun `hung tier-1 tool times out, emits Failed, and releases the lock for the next task`() {
+        orchestrator.directToolTimeoutMs = 300
+        val hungLatch = CountDownLatch(1)
+        router = FakeRouter(
+            toolHook = { _, _ ->
+                hungLatch.countDown() // signal the tool "started" (blocking)
+                Thread.sleep(30_000)  // never returns
+                ToolResult.success("never")
+            }
+        )
+        orchestrator.routerForTesting = router
+        val latch = CountDownLatch(1)
+        orchestrator.taskEventCallback = { event ->
+            terminalEvents.add(event)
+            if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+        }
+
+        assertEquals(0, router.executedTool.size)
+        orchestrator.startNewTask(Channel.LOCAL, "hang", "m1")
+        assertTrue(hungLatch.await(3, TimeUnit.SECONDS))
+        // the tool actually started executing (blocked)
+        assertEquals(1, router.executedTool.size)
+        val delivered = latch.await(5, TimeUnit.SECONDS)
+        assertTrue("no terminal event; events=$terminalEvents msgs=$channelMessages", delivered)
+        assertTrue("task not finished; floating=$floatingStates", awaitFinished())
+
+        assertTrue("expected Failed(timeout), got $terminalEvents",
+            terminalEvents.filterIsInstance<TaskEvent.Failed>().any { it.error.contains("timed out") })
+        assertEquals(0, terminalEvents.filterIsInstance<TaskEvent.Completed>().size)
+        assertTrue("expected ✗ message; msgs=$channelMessages",
+            channelMessages.any { it.startsWith("✗") && it.contains("timed out") })
+        // lock released even though the underlying tool thread is still stuck
+        assertFalse(orchestrator.isTaskRunning())
+
+        // a second task starts immediately afterwards (not rejected by the hang): its
+        // tool call reaches a fresh router instead of a "Another task is still running" error.
+        val fresh = FakeRouter()
+        orchestrator.routerForTesting = fresh
+        terminalEvents.clear()
+        val secondLatch = CountDownLatch(1)
+        orchestrator.taskEventCallback = { event ->
+            terminalEvents.add(event)
+            if (event is TaskEvent.Failed || event is TaskEvent.Completed) secondLatch.countDown()
+        }
+        orchestrator.startNewTask(Channel.LOCAL, "stub_x", "m2")
+        assertTrue("second task not started; events=$terminalEvents", secondLatch.await(5, TimeUnit.SECONDS))
+        assertTrue("second task not finished", awaitFinished())
+        assertEquals("expected exactly one tool execution on the fresh router",
+            1, fresh.executedTool.size)
+        assertTrue("second task should not be a 'Another task is still running' rejection: $terminalEvents",
+            terminalEvents.none { it is TaskEvent.Failed && it.error.contains("Another task") })
+    }
+
+    // ── FIX 9: a cancelled skill must not respawn the agent loop ────────────────
+    @Test
+    fun `cancelled skill emits Cancelled and does not fall back to the agent loop`() {
+        // Inject a SkillExecutor whose execute() returns a cancellation-shaped result —
+        // the orchestrator must emit TaskEvent.Cancelled, never fall back to the agent
+        // loop (which would re-route through startNewTask on an already-released session).
+        val fakeSkillExecutor = object : com.returngift.agent.agent.skill.SkillExecutor() {
+            override fun execute(
+                skill: com.returngift.agent.agent.skill.Skill,
+                params: Map<String, String>,
+                taskText: String,
+                routeUsed: String,
+                onProgress: ((Int, Int, String) -> Unit)?,
+                stopRequested: (() -> Boolean)?,
+                wallClockMs: Long
+            ): com.returngift.agent.agent.skill.SkillResult {
+                return com.returngift.agent.agent.skill.SkillResult(
+                    success = false,
+                    stepsUsed = 1,
+                    message = "cancelled",
+                    cancelled = true
+                )
+            }
+        }
+        orchestrator.skillExecutorForTesting = fakeSkillExecutor
+
+        val latch = CountDownLatch(1)
+        orchestrator.taskEventCallback = { event ->
+            terminalEvents.add(event)
+            if (event is TaskEvent.Cancelled || event is TaskEvent.Completed || event is TaskEvent.Failed) latch.countDown()
+        }
+
+        // A real SkillRegistry lookup is needed for route "skill"; SkillRegistry may not
+        // contain "cancellable_skill", so the branch would log "not found, falling through".
+        // To reach the executor branch the skill must exist: register it directly.
+        val registrySkill = com.returngift.agent.agent.skill.Skill(
+            id = "cancellable_skill",
+            name = "cancellable skill",
+            description = "test",
+            category = com.returngift.agent.agent.skill.SkillCategory.GENERAL,
+            steps = emptyList(),
+            fallbackGoal = "agent loop goal"
+        )
+        com.returngift.agent.agent.skill.SkillRegistry.register(registrySkill)
+
+        orchestrator.startNewTask(Channel.LOCAL, "skill", "m1")
+        assertTrue("no terminal event; events=$terminalEvents", latch.await(5, TimeUnit.SECONDS))
+        assertTrue("task not finished", awaitFinished())
+
+        assertTrue(
+            "expected a Cancelled event, got $terminalEvents",
+            terminalEvents.any { it is TaskEvent.Cancelled }
+        )
+        assertEquals(0, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
+        // no agent-loop fallback started: the lock was released exactly once and no
+        // channel message announces an AI retry.
+        assertFalse(orchestrator.isTaskRunning())
+        assertFalse(channelMessages.any { it.contains("Retrying with AI agent") })
+        assertEquals(1, finishedCount)
+    }
+
+    // ── C3 invariant: tryAcquire is exclusive while a session is running ─────────
+    @Test
+    fun `tryAcquire returns false while a session is running`() {
+        assertTrue(orchestrator.taskSessionStore.tryAcquire("m1", Channel.LOCAL))
+        assertTrue(orchestrator.taskSessionStore.isTaskRunning())
+        assertFalse(orchestrator.taskSessionStore.tryAcquire("m2", Channel.LOCAL))
+        orchestrator.taskSessionStore.release()
+        assertTrue(orchestrator.taskSessionStore.tryAcquire("m3", Channel.LOCAL))
     }
 }

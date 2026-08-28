@@ -214,9 +214,40 @@ pre-loop classifier is the deterministic `agent/exec/TaskIntentClassifier`; Task
 never wired and its LLM-classification role is out of scope for the Tier-1 deterministic layer.
 (Future LLM pre-classification is a separate routing decision, not this work.)
 
-## 13. Revision history
+## 13. Bounded execution & cancellation (C5 / FIX 5 / FIX 9 / FIX 10)
+
+Every non-LLM execution path must be bounded so one hung run cannot wedge the session lock
+("Another task is still running" forever).
+
+**Shared helper:** `agent/exec/BoundedExecution.runBounded(wallClockMs) { body }` — the ONE
+wall-clock wrapper. It runs `body` on a daemon worker and returns `Completed / TimedOut /
+Failed`. On `TimedOut` the future is cancelled and the caller abandons the invocation (the
+stuck worker keeps running to completion in the background but no longer can block the task
+pipeline). Pure JVM, unit-tested.
+
+**Tier-1 DirectTool** (FIX 10) wraps `PipelineRouter.executeTool` in `runBounded` with a
+60 s default (`TaskOrchestrator.directToolTimeoutMs`, test-seam shrinkable). A timeout emits
+`TaskEvent.Failed("Tier-1 tool timed out after …ms")`, the "✗" channel message, and releases
+the lock via the normal `finally` — so every subsequent task can start again.
+
+**SkillExecutor** (C5 / FIX 5) bounds at STEP boundaries only — never mid-step:
+- wall-clock bound (default 60 s, injectable) checked before each step → `SkillResult.timedOut`
+- stop predicate (FIX 9) checked before each step → `SkillResult.cancelled`
+`TaskBudget` stays EXACTLY in `DefaultAgentService.runAgentLoop` (once per LLM round) — it
+cannot change value inside `SkillExecutor`/`RepeatActionsTool`, which make no LLM calls.
+
+**Cancellation contract (FIX 9):** `cancelCurrentTask()` sets the session's `stopRequested`
+flag (via `markStopping`); skill steps and the DirectTool pre-execution check read that flag.
+A **cancelled** skill emits `TaskEvent.Cancelled` and **must NOT fall back to the agent loop**
+(no respawned AI run). `RepeatActionsTool`'s pre-existing `MAX_TOTAL_STEPS` cap is pinned by a
+test rather than re-deriving a token budget.
+
+## 14. Revision history
 
 - 2026-08-28 (P3.1): normalization/anchor/number unification, English-only strip, golden corpus.
 - 2026-08-28 (P3.2): safety gates on Tier-1 DirectTool; §10.
 - 2026-08-28 (P3.7): TaskShortcuts deleted; disposal recorded in §11.
 - 2026-08-28 (P3.8): TaskClassifier deleted; disposal recorded in §12.
+- 2026-08-28 (P2 C5/FIX5/FIX9/FIX10): shared `BoundedExecution` + skill step-bound checks +
+  direct-tool wall-clock bound + skill cancellation contract; §13.
+- 2026-08-28 (P2 FIX11a): global blocklist gate on DirectTool; §10.

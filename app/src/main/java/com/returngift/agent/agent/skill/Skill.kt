@@ -54,6 +54,13 @@ data class SkillParameter(
 
 /**
  * Result of a skill execution.
+ *
+ * @property success        true when every non-optional step succeeded
+ * @property cancelled      true when execution was stopped by the caller (stop predicate,
+ *                          FIX 9) — distinct from failure so the orchestrator never falls
+ *                          back to the agent loop for a cancelled skill
+ * @property timedOut       true when the wall-clock bound was exceeded (C5/FIX 5) — again
+ *                          distinct from failure
  */
 data class SkillResult(
     val success: Boolean,
@@ -62,5 +69,7 @@ data class SkillResult(
     val fallbackUsed: Boolean = false,
     val message: String = "",
     val errorMessage: String? = null,
-    val telemetryData: Map<String, Any> = emptyMap()
+    val telemetryData: Map<String, Any> = emptyMap(),
+    val cancelled: Boolean = false,
+    val timedOut: Boolean = false
 )

@@ -314,4 +314,74 @@ class SkillExecutorTest {
         
         assertTrue(result.stepsUsed >= 1)
     }
+
+    // ==================== FIX 9: cancellation ====================
+
+    @Test
+    fun `stop requested between steps stops at the next step boundary without running further steps`() {
+        val progressDescriptions = mutableListOf<String>()
+        var stopCalls = 0
+        val skill = createSkill(
+            id = "cancellable_skill",
+            steps = listOf(
+                createStep("wait", "First", optional = true),
+                createStep("wait", "Second", optional = true),
+                createStep("wait", "Third", optional = true)
+            )
+        )
+
+        val result = executor.execute(
+            skill = skill,
+            params = emptyMap(),
+            stopRequested = {
+                stopCalls++
+                stopCalls > 1
+            },
+            onProgress = { _, _, desc -> progressDescriptions.add(desc) }
+        )
+
+        assertTrue(result.cancelled)
+        assertEquals("First", progressDescriptions[0])
+        // Cancellation is checked BETWEEN steps, so the second step's progress is never
+        // reported and no further steps execute.
+        assertEquals(1, progressDescriptions.size)
+    }
+
+    @Test
+    fun `stop never requested so skill completes normally`() {
+        val skill = createSkill(
+            id = "finishes_before_stop",
+            steps = listOf(createStep("wait"))
+        )
+        val result = executor.execute(
+            skill = skill,
+            params = emptyMap(),
+            stopRequested = { false }
+        )
+        // The wait step has no params so it fails under test; the point is it is NOT
+        // reported as cancelled just because a stop predicate was passed.
+        assertFalse(result.cancelled)
+        assertFalse(result.timedOut)
+    }
+
+    // ==================== C5 / FIX 5: wall-clock bound ====================
+
+    @Test
+    fun `skill exceeding wall clock stops at the next step boundary`() {
+        val progressDescriptions = mutableListOf<String>()
+        val skill = createSkill(
+            id = "slow_skill",
+            steps = List(10) { createStep("wait", "Step $it", optional = true) }
+        )
+
+        val result = executor.execute(
+            skill = skill,
+            params = emptyMap(),
+            wallClockMs = 0, // `>=` makes a 0 bound trip immediately at step 1
+            onProgress = { _, _, desc -> progressDescriptions.add(desc) }
+        )
+
+        assertTrue(result.timedOut)
+        assertEquals(0, progressDescriptions.size)
+    }
 }

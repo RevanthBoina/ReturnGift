@@ -4,6 +4,7 @@
 package com.returngift.agent.agent.skill
 
 import com.returngift.agent.agent.SafetyInterceptor
+import com.returngift.agent.agent.exec.BoundedExecution
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.utils.XLog
 
@@ -21,7 +22,7 @@ import com.returngift.agent.utils.XLog
  * - Server-side deterministic execution pattern
  * - Hardcoded step sequence pattern
  */
-class SkillExecutor {
+open class SkillExecutor {
 
     /**
      * Execute a skill with resolved parameters.
@@ -31,14 +32,21 @@ class SkillExecutor {
      * @param taskText the original task text for telemetry
      * @param routeUsed the route ID that was used for this skill
      * @param onProgress callback for each step progress
-     * @return SkillResult indicating success or failure
+     * @param stopRequested called BETWEEN steps (never mid-step) — when it returns true the
+     *        skill is abandoned and a cancellation-shaped result ([SkillResult.cancelled])
+     *        is returned, distinct from failure (FIX 9)
+     * @param wallClockMs wall-clock bound (C5/FIX 5) checked between steps; exceeding it
+     *        returns a [SkillResult.timedOut] result — the loop never runs open-ended
+     * @return SkillResult indicating success, failure, cancellation, or timeout
      */
-    fun execute(
+    open fun execute(
         skill: Skill,
         params: Map<String, String>,
         taskText: String = "",
         routeUsed: String = "default",
-        onProgress: ((step: Int, total: Int, description: String) -> Unit)? = null
+        onProgress: ((step: Int, total: Int, description: String) -> Unit)? = null,
+        stopRequested: (() -> Boolean)? = null,
+        wallClockMs: Long = BoundedExecution.DEFAULT_WALL_CLOCK_MS
     ): SkillResult {
         val startTime = System.currentTimeMillis()
         
@@ -56,6 +64,46 @@ class SkillExecutor {
         var lastError: String? = null
 
         for ((index, step) in skill.steps.withIndex()) {
+            // FIX 9: cancellation is evaluated BETWEEN steps, never mid-step. A cancelled
+            // skill returns a cancellation-shaped result; the caller must NOT fall back
+            // to the agent loop for it.
+            if (stopRequested?.invoke() == true) {
+                XLog.i(TAG, "Skill ${skill.id} cancelled by stop request after step $index")
+                SkillTelemetry.emitSkillComplete(
+                    skillId = skill.id,
+                    outcome = SkillTelemetry.Outcome.INTERRUPTED,
+                    stepsUsed = index,
+                    confirmationGiven = confirmationGiven
+                )
+                return SkillResult(
+                    success = false,
+                    stepsUsed = index,
+                    message = "Skill '${skill.name}' cancelled.",
+                    cancelled = true
+                )
+            }
+
+            // C5/FIX 5: wall-clock bound checked between steps; stop at the next boundary.
+            // `>=` so a 0ms bound always trips (deterministic for tests and for callers
+            // that want an immediate no-op).
+            if (System.currentTimeMillis() - startTime >= wallClockMs) {
+                XLog.w(TAG, "Skill ${skill.id} exceeded wall-clock bound (${wallClockMs}ms) at step $index")
+                SkillTelemetry.emitSkillComplete(
+                    skillId = skill.id,
+                    outcome = SkillTelemetry.Outcome.TIMEOUT,
+                    stepsUsed = index,
+                    confirmationGiven = confirmationGiven,
+                    errorMessage = "wall-clock bound exceeded"
+                )
+                return SkillResult(
+                    success = false,
+                    stepsUsed = index,
+                    message = "Skill '${skill.name}' timed out after ${wallClockMs}ms.",
+                    errorMessage = "wall-clock bound exceeded",
+                    timedOut = true
+                )
+            }
+
             stepsUsed = index + 1
             val stepNum = index + 1
             onProgress?.invoke(stepNum, totalSteps, step.description)

@@ -8,6 +8,7 @@ import com.returngift.agent.agent.AgentConfig
 import com.returngift.agent.agent.AgentService
 import com.returngift.agent.agent.AgentServiceFactory
 import com.returngift.agent.agent.PipelineRouter
+import com.returngift.agent.agent.exec.BoundedExecution
 import com.returngift.agent.agent.skill.SkillExecutor
 import com.returngift.agent.agent.skill.SkillRegistry
 import com.returngift.agent.channel.Channel
@@ -65,6 +66,12 @@ class TaskOrchestrator(
     // assert on the typed events and channel messages without Android singletons.
     internal var channelMessageSink: ((Channel, String, String) -> Unit)? = null
     internal var floatingStateSink: ((Boolean) -> Unit)? = null
+
+    // FIX 10: wall-clock bound for Tier-1 DirectTool execution (default 60s, shared with the
+    // bounded-execution helper). Tests shrink this to prove a hung tool terminates + releases
+    // the session lock.
+    @Volatile
+    internal var directToolTimeoutMs: Long = BoundedExecution.DEFAULT_WALL_CLOCK_MS
 
     private fun sendChannelMessage(channel: Channel, content: String, messageID: String) {
         val sink = channelMessageSink
@@ -212,27 +219,59 @@ class TaskOrchestrator(
                 Thread({
                     var success = false
                     var outcomeLog = "success"
+                    // FIX 9: a stop arriving while this thread is starting must suppress the
+                    // tool call (no per-tool mid-execution hooks; tools have their own
+                    // settle/timeout logic).
+                    if (taskSessionStore.snapshot().stopRequested) {
+                        XLog.i(TAG, "DirectTool ${route.toolName} suppressed by stop request before execution")
+                        taskEventCallback?.invoke(TaskEvent.Cancelled)
+                        sendChannelMessage(channel, "Task cancelled", messageID)
+                        releaseTask()
+                        ForegroundService.resetToIdle(appContext)
+                        onTaskFinished()
+                        return@Thread
+                    }
                     try {
-                        val toolResult = pipelineRouter.executeTool(route.toolName, route.params)
-                        if (!toolResult.isSuccess) {
-                            val error = toolResult.error ?: "Unknown error"
-                            // FIX 8: a failure is a typed Failed event, never a Completed carrying
-                            // failure text — the UI pattern-matches Completed as success.
-                            XLog.w(TAG, "Tier 1 tool failed: $error")
-                            taskEventCallback?.invoke(TaskEvent.Failed(error))
-                            sendChannelMessage(channel, "✗ ${route.description}: $error", messageID)
-                            outcomeLog = "Failed: $error"
-                        } else {
-                            success = true
-                            taskEventCallback?.invoke(TaskEvent.Completed(route.description))
-                            sendChannelMessage(channel, "✓ ${route.description}", messageID)
+                        // FIX 10: a hung tool must not hold the session lock. The invocation is
+                        // bounded by the shared wall-clock guard; on timeout the future is
+                        // cancelled and the abandonment is reported as a typed Failed event.
+                        val bounded = BoundedExecution.runBounded(
+                            wallClockMs = directToolTimeoutMs,
+                        ) {
+                            pipelineRouter.executeTool(route.toolName, route.params)
                         }
-                    } catch (e: Exception) {
-                        val message = e.message ?: "Unknown error"
-                        XLog.e(TAG, "Tier 1 tool crashed: ${route.toolName}", e)
-                        taskEventCallback?.invoke(TaskEvent.Failed(message))
-                        sendChannelMessage(channel, "✗ ${route.description}: $message", messageID)
-                        outcomeLog = "Failed: $message"
+                        when (bounded) {
+                            is BoundedExecution.Outcome.TimedOut -> {
+                                val error = "Tier-1 tool timed out after ${directToolTimeoutMs}ms"
+                                XLog.w(TAG, error)
+                                taskEventCallback?.invoke(TaskEvent.Failed(error))
+                                sendChannelMessage(channel, "✗ ${route.description}: $error", messageID)
+                                outcomeLog = "Failed: $error"
+                            }
+                            is BoundedExecution.Outcome.Failed -> {
+                                val message = bounded.error.message ?: "Unknown error"
+                                XLog.e(TAG, "Tier 1 tool crashed: ${route.toolName}", bounded.error)
+                                taskEventCallback?.invoke(TaskEvent.Failed(message))
+                                sendChannelMessage(channel, "✗ ${route.description}: $message", messageID)
+                                outcomeLog = "Failed: $message"
+                            }
+                            is BoundedExecution.Outcome.Completed -> {
+                                val toolResult = bounded.value
+                                if (!toolResult.isSuccess) {
+                                    val error = toolResult.error ?: "Unknown error"
+                                    // FIX 8: a failure is a typed Failed event, never a Completed carrying
+                                    // failure text — the UI pattern-matches Completed as success.
+                                    XLog.w(TAG, "Tier 1 tool failed: $error")
+                                    taskEventCallback?.invoke(TaskEvent.Failed(error))
+                                    sendChannelMessage(channel, "✗ ${route.description}: $error", messageID)
+                                    outcomeLog = "Failed: $error"
+                                } else {
+                                    success = true
+                                    taskEventCallback?.invoke(TaskEvent.Completed(route.description))
+                                    sendChannelMessage(channel, "✓ ${route.description}", messageID)
+                                }
+                            }
+                        }
                     } finally {
                         releaseTask()
                         ForegroundService.resetToIdle(appContext)
@@ -257,10 +296,19 @@ class TaskOrchestrator(
                         FloatingCircleManager.ensureShowing()
                         FloatingCircleManager.showTaskNotify(task, channel)
                         Thread({
-                            val skillResult = skillExecutor.execute(skill, route.params) { step, total, desc ->
-                                taskEventCallback?.invoke(TaskEvent.Progress(step, "Step $step/$total: $desc"))
-                                ForegroundService.updateTaskStatus(appContext, desc)
-                            }
+                            val skillResult = skillExecutor.execute(
+                                skill = skill,
+                                params = route.params,
+                                taskText = task,
+                                routeUsed = "pipeline-tier2",
+                                // FIX 9: cancellation is observed between steps via the
+                                // session's stopRequested flag (set by cancelCurrentTask).
+                                stopRequested = { taskSessionStore.snapshot().stopRequested },
+                                onProgress = { step, total, desc ->
+                                    taskEventCallback?.invoke(TaskEvent.Progress(step, "Step $step/$total: $desc"))
+                                    ForegroundService.updateTaskStatus(appContext, desc)
+                                }
+                            )
                             if (skillResult.success) {
                                 ChannelManager.sendMessage(channel, skillResult.message, messageID)
                                 taskEventCallback?.invoke(TaskEvent.Completed(skillResult.message))
@@ -268,9 +316,17 @@ class TaskOrchestrator(
                                 FloatingCircleManager.setSuccessState()
                                 ForegroundService.resetToIdle(appContext)
                                 onTaskFinished()
+                            } else if (skillResult.cancelled) {
+                                // FIX 9: a cancelled skill must NOT respawn the agent loop.
+                                XLog.i(TAG, "Skill ${skill.id} cancelled, not falling back to agent loop")
+                                taskEventCallback?.invoke(TaskEvent.Cancelled)
+                                sendChannelMessage(channel, "Task cancelled", messageID)
+                                releaseTask()
+                                ForegroundService.resetToIdle(appContext)
+                                onTaskFinished()
                             } else {
                                 val fallbackGoal = skill.fallbackGoal
-                                    .let { g -> route.params.entries.fold(g) { acc, (k, v) -> acc.replace("{$k}", v) } }
+                                    .let { v -> route.params.entries.fold(v) { acc, (k, v2) -> acc.replace("{$k}", v2) } }
                                 XLog.i(TAG, "Skill ${skill.id} failed, falling back to agent loop: $fallbackGoal")
                                 taskEventCallback?.invoke(TaskEvent.Progress(0, "Retrying with AI agent"))
                                 startNewTask(channel, fallbackGoal, messageID, isFallback = true)
@@ -289,15 +345,29 @@ class TaskOrchestrator(
                     FloatingCircleManager.ensureShowing()
                     FloatingCircleManager.showTaskNotify(task, channel)
                     Thread({
-                        val skillResult = skillExecutor.execute(skill, emptyMap()) { step, total, desc ->
-                            taskEventCallback?.invoke(TaskEvent.Progress(step, "Step $step/$total: $desc"))
-                            ForegroundService.updateTaskStatus(appContext, desc)
-                        }
+                        val skillResult = skillExecutor.execute(
+                            skill = skill,
+                            params = emptyMap(),
+                            taskText = task,
+                            routeUsed = "pipeline-tier2-redirect",
+                            stopRequested = { taskSessionStore.snapshot().stopRequested },
+                            onProgress = { step, total, desc ->
+                                taskEventCallback?.invoke(TaskEvent.Progress(step, "Step $step/$total: $desc"))
+                                ForegroundService.updateTaskStatus(appContext, desc)
+                            }
+                        )
                         if (skillResult.success) {
                             ChannelManager.sendMessage(channel, skillResult.message, messageID)
                             taskEventCallback?.invoke(TaskEvent.Completed(skillResult.message))
                             releaseTask()
                             FloatingCircleManager.setSuccessState()
+                            ForegroundService.resetToIdle(appContext)
+                            onTaskFinished()
+                        } else if (skillResult.cancelled) {
+                            XLog.i(TAG, "Redirected skill ${skill.id} cancelled, not falling back to agent loop")
+                            taskEventCallback?.invoke(TaskEvent.Cancelled)
+                            sendChannelMessage(channel, "Task cancelled", messageID)
+                            releaseTask()
                             ForegroundService.resetToIdle(appContext)
                             onTaskFinished()
                         } else {
