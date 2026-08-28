@@ -36,25 +36,45 @@ object Tier1Telemetry {
     const val KEY_HIT_PREFIX = "tier1_hit_"
     const val KEY_FP_PREFIX = "tier1_fp_"
 
+    /** Test seam: observes every counter key. KV writes are a no-op when KV is unavailable. */
+    internal var counterHook: ((String) -> Unit)? = null
+
+    @Volatile private var lastHitIntent: String? = null
+    @Volatile private var lastHitAtMs: Long = 0L
+
     /** Record a Tier-1 intent hit and the running total. */
     fun recordHit(intent: String) {
-        if (!KVUtils.isInitialized) return // no-op when KV unavailable (e.g. unit tests)
-        KVUtils.putInt(KEY_TOTAL, KVUtils.getInt(KEY_TOTAL) + 1)
-        KVUtils.putInt("$KEY_HIT_PREFIX$intent", KVUtils.getInt("$KEY_HIT_PREFIX$intent") + 1)
+        lastHitIntent = intent
+        lastHitAtMs = System.currentTimeMillis()
+        increment(KEY_TOTAL)
+        increment("$KEY_HIT_PREFIX$intent")
         XLog.d(TAG, "tier1 hit: $intent")
     }
 
     /** Record a Tier-1 miss (task fell through to skills/agent loop). */
     fun recordFallback() {
-        if (!KVUtils.isInitialized) return
-        KVUtils.putInt(KEY_TOTAL, KVUtils.getInt(KEY_TOTAL) + 1)
-        KVUtils.putInt(KEY_FALLBACK_TIER3, KVUtils.getInt(KEY_FALLBACK_TIER3) + 1)
+        increment(KEY_TOTAL)
+        increment(KEY_FALLBACK_TIER3)
     }
 
     /** Record a false-positive proxy: a fired Tier-1 action was undone/corrected quickly. */
     fun recordFalsePositive(intent: String) {
-        if (!KVUtils.isInitialized) return
-        KVUtils.putInt("$KEY_FP_PREFIX$intent", KVUtils.getInt("$KEY_FP_PREFIX$intent") + 1)
+        increment("$KEY_FP_PREFIX$intent")
         XLog.d(TAG, "tier1 FP proxy: $intent")
+    }
+
+    /**
+     * The last Tier-1 intent fired within [maxAgeMs] (in-memory; the recency guard for the
+     * false-positive proxy producers). Returns null when nothing recent is knowable.
+     */
+    fun lastFiredIntent(maxAgeMs: Long = 30_000L): String? {
+        val intent = lastHitIntent ?: return null
+        return if (System.currentTimeMillis() - lastHitAtMs <= maxAgeMs) intent else null
+    }
+
+    private fun increment(key: String) {
+        counterHook?.invoke(key)
+        if (!KVUtils.isInitialized) return // no-op when KV unavailable (e.g. unit tests)
+        KVUtils.putInt(key, KVUtils.getInt(key) + 1)
     }
 }

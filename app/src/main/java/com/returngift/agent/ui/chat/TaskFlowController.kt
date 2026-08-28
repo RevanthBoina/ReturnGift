@@ -165,6 +165,11 @@ class TaskFlowController(
         // task — acknowledge the mismatch so the user knows what just happened.
         if (ClarificationManager.resolvedRecently()) {
             addSystem("ℹ️ That question was already closed (timed out or cancelled) — your message was sent as a new task instead.")
+            // FP proxy (spec §8): a fired Tier-1 action was corrected within the 30 s
+            // resolved-recently window. Skipped when no Tier-1 intent is knowable.
+            com.returngift.agent.agent.Tier1Telemetry.lastFiredIntent()?.let { intent ->
+                com.returngift.agent.agent.Tier1Telemetry.recordFalsePositive(intent)
+            }
         }
 
         // NOTE: the personal-content consent gate lives INSIDE the loop now

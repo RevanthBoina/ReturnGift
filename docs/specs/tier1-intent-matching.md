@@ -163,6 +163,12 @@ never a Tier-1 app-level confirmation.
 (`assets/web/debug.html`). Intent names are a fixed closed vocabulary — no raw utterance
 text is ever logged.
 
+`tier1_fp_<intent>` now has two producers (A3): (a) a declined/timed-out D3 pre-send
+confirm for `send_message` in the DirectTool branch of `TaskOrchestrator`, and (b) the
+30 s `ClarificationManager.resolvedRecently()` funnel in `TaskFlowController`, which
+counts the correction against the last Tier-1 intent fired within the window
+(`Tier1Telemetry.lastFiredIntent`, in-memory; skips when none is knowable).
+
 ## 9. How to add a new intent
 
 Checklist (each step in its own commit):

@@ -8,6 +8,7 @@ import com.returngift.agent.agent.AgentConfig
 import com.returngift.agent.agent.AgentService
 import com.returngift.agent.agent.AgentServiceFactory
 import com.returngift.agent.agent.PipelineRouter
+import com.returngift.agent.agent.Tier1Telemetry
 import com.returngift.agent.agent.clarify.ClarificationManager
 import com.returngift.agent.agent.exec.BoundedExecution
 import com.returngift.agent.agent.skill.SkillExecutor
@@ -285,6 +286,8 @@ class TaskOrchestrator(
                         // inside the bound so a stuck confirmation cannot hold the session lock.
                         if (route.toolName == "send_message" && !confirmSendMessage()) {
                             XLog.i(TAG, "Tier-1 send_message declined or timed out (5s auto-cancel) — not sending")
+                            // FP proxy (spec §8): a fired Tier-1 action corrected before execution.
+                            Tier1Telemetry.recordFalsePositive("send_message")
                             ToolResult.error("Send cancelled")
                         } else {
                             pipelineRouter.executeTool(route.toolName, route.params)

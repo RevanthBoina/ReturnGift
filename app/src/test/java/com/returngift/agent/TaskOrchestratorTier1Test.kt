@@ -375,6 +375,37 @@ class TaskOrchestratorTier1Test {
     }
 
     @Test
+    fun `send_message declined confirm increments tier1_fp counter`() {
+        // A3: a declined/timed-out D3 confirm is the FP proxy's producer (a) — the
+        // counterHook seam observes counter keys without an initialized MMKV store.
+        val counters = CopyOnWriteArrayList<String>()
+        com.returngift.agent.agent.Tier1Telemetry.counterHook = { counters.add(it) }
+        try {
+            router = FakeRouter()
+            orchestrator.routerForTesting = router
+            orchestrator.sendMessageConfirm = { false } // user cancelled / 5s auto-cancel
+
+            val latch = CountDownLatch(1)
+            orchestrator.taskEventCallback = { event ->
+                terminalEvents.add(event)
+                if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+            }
+            orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
+            assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
+            assertTrue("task not finished", awaitFinished())
+
+            assertEquals(0, router.executedTool.size)
+            assertTrue(
+                "expected tier1_fp_send_message among counters, got $counters",
+                counters.contains("tier1_fp_send_message"),
+            )
+            assertFalse(orchestrator.isTaskRunning())
+        } finally {
+            com.returngift.agent.agent.Tier1Telemetry.counterHook = null
+        }
+    }
+
+    @Test
     fun `send_message confirmed executes and emits Completed`() {
         router = FakeRouter(toolResult = { ToolResult.success("Written: ok") })
         orchestrator.routerForTesting = router
