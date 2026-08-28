@@ -2305,7 +2305,21 @@ Golden-corpus unit coverage lives in `TaskParserGoldenCorpusTest`
 
 Format: `[date] [status] [test-id] description`
 
-### 2026-08-28 — T1 Tier-1 hardening batch (P3.1 + P3.2/A4 + Phase 4)
+### 2026-08-28 — T1 dead-code disposal (P3.7 TaskShortcuts + P3.8 TaskClassifier)
+
+**Change:** four-signal gate (literal grep kt/java/xml/kts + manifest + docs + fixtures)
+confirmed zero callers for both. Deleted:
+- `agent/agent/TaskShortcuts.kt` — behaviors already ported to live Tier 1 (camera → matchCamera
+  direct intent, torch → `FlashlightTool` registered, settings/back/home/screenshot → live
+  matchers incl. revived `press back`/`press home`). 34-keyword KNOWN_PACKAGES map NOT revived
+  (A5 one-letter-key hazard); corpus pins "send text to Axel"/"check xbox" FALLBACK.
+- `agent/agent/TaskClassifier.kt` (A2) — orphan LLM classifier, never wired; live pre-loop
+  classifier is deterministic `agent/exec/TaskIntentClassifier`.
+
+**Status:** `[2026-08-28] [CI-GREEN] [P3.7/P3.8]` — unit suite + preflight green; deletion
+covered by corpus (parser behavior unchanged).
+
+### 2026-08-28 — T1 Tier-1 hardening sweep (P3.1 + P3.2/A4 + Phase 4)
 
 **Change:**
 - `TaskParser`: unified single `normalize()` (trim + lowercase); start-anchored call/sms with

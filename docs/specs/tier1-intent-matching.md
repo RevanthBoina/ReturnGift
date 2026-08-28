@@ -201,8 +201,17 @@ substring hazard (`x` → Twitter) made word-boundary matching the only safe opt
 live `open_app` pattern + `OpenAppTool.resolveAppNameStatic` fuzzy launch already cover app
 opens. "send text to Axel" / "check xbox" are pinned as FALLBACK in the corpus.
 
-## 12. Revision history
+## 12. TaskClassifier disposal (A2)
+
+The orphan LLM `TaskClassifier` (object, zero callers; exposed only
+`buildClassifierPrompt` + `parseResponse`) is **deleted** per the four-signal gate. The live
+pre-loop classifier is the deterministic `agent/exec/TaskIntentClassifier`; TaskClassifier was
+never wired and its LLM-classification role is out of scope for the Tier-1 deterministic layer.
+(Future LLM pre-classification is a separate routing decision, not this work.)
+
+## 13. Revision history
 
 - 2026-08-28 (P3.1): normalization/anchor/number unification, English-only strip, golden corpus.
-- 2026-08-28 (P3.2/A4): safety gates on Tier-1 DirectTool; this §10.
+- 2026-08-28 (P3.2): safety gates on Tier-1 DirectTool; §10.
 - 2026-08-28 (P3.7): TaskShortcuts deleted; disposal recorded in §11.
+- 2026-08-28 (P3.8): TaskClassifier deleted; disposal recorded in §12.
