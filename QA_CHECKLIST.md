@@ -2305,6 +2305,25 @@ Golden-corpus unit coverage lives in `TaskParserGoldenCorpusTest`
 
 Format: `[date] [status] [test-id] description`
 
+### 2026-08-28 — Tier-1 orchestration corrections (P2: FIX 7 + FIX 8)
+
+**Change:**
+- FIX 7: `PipelineRouter.executeIntent` returns `Boolean` (true = launch accepted, false =
+  threw e.g. `ActivityNotFoundException`). `TaskOrchestrator` DirectIntent branch now emits
+  `TaskEvent.Failed` + `✗` channel message + error floating state + terminal cleanup on a
+  false return (previously it unconditionally reported `Completed`/"✓" — silent false success).
+- FIX 8: Tier-1 DirectTool failure emits a typed `TaskEvent.Failed(error)`, never
+  `TaskEvent.Completed("Failed: …")` — the string-prefix anti-pattern `TaskEvent` removed.
+  Verified no UI branch string-parses "Failed:" out of `Completed`.
+- Testability: `TaskOrchestrator` gained injectable seams (`routerForTesting`,
+  `skillExecutorForTesting`, `appContext`, `channelMessageSink`, `floatingStateSink`);
+  `PipelineRouter` made `open` for fake subclassing.
+- Tests: `TaskOrchestratorTier1Test` (4 tests, Robolectric @sdk=28) proving an intent launch
+  failure → Failed + ✗ + lock released; failed tool → Failed not Completed; success paths →
+  Completed + ✓.
+
+**Status:** `[2026-08-28] [CI-GREEN] [FIX 7/FIX 8]` — full unit suite green (427 tests).
+
 ### 2026-08-28 — T1 dead-code disposal (P3.7 TaskShortcuts + P3.8 TaskClassifier)
 
 **Change:** four-signal gate (literal grep kt/java/xml/kts + manifest + docs + fixtures)

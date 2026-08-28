@@ -20,7 +20,9 @@ import com.returngift.agent.tool.impl.OpenAppTool
  *
  * 3-tier routing: deterministic → skill → agent loop.
  */
-class PipelineRouter(private val context: Context) {
+// open for test subclassing (TaskOrchestrator tests inject a fake router via
+// TaskOrchestrator.routerForTesting to exercise the Tier-1 terminal paths).
+open class PipelineRouter(private val context: Context) {
 
     sealed class Route {
         /** Tier 1: Execute Android intent directly */
@@ -47,7 +49,7 @@ class PipelineRouter(private val context: Context) {
         data class Redirect(val targetSkillId: String, val reason: String) : Route()
     }
 
-    fun route(task: String): Route {
+    open fun route(task: String): Route {
         // Compound tasks (containing "and", "then", "after") should go to agent loop,
         // not be partially handled by Tier 1 deterministic matching. Shared guard lives
         // in TaskParser.isCompound so the golden-corpus test and the router can't diverge.
@@ -118,14 +120,20 @@ class PipelineRouter(private val context: Context) {
 
     /**
      * Execute a Tier 1 direct intent.
+     *
+     * @return true when the activity launch was accepted; false when it threw (e.g.
+     *   ActivityNotFoundException — no handler for the action). The caller must not report
+     *   success on a false return (FIX 7): a launch that never happened is a failed task.
      */
-    fun executeIntent(intent: Intent) {
-        try {
+    open fun executeIntent(intent: Intent): Boolean {
+        return try {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
             XLog.i(TAG, "Executed intent: ${intent.action}")
+            true
         } catch (e: Exception) {
             XLog.e(TAG, "Failed to execute intent: ${intent.action}", e)
+            false
         }
     }
 
@@ -141,7 +149,7 @@ class PipelineRouter(private val context: Context) {
      * compose, settings, browser) — never a third-party app — so the per-app allow-list does
      * not apply to them; see docs/specs/tier1-intent-matching.md.
      */
-    fun executeTool(toolName: String, params: Map<String, Any>): ToolResult {
+    open fun executeTool(toolName: String, params: Map<String, Any>): ToolResult {
         val allowListBlock = allowListBlock(toolName, params)
         if (allowListBlock != null) {
             XLog.w(TAG, "Tier-1 tool '$toolName' blocked by allow-list: $allowListBlock")
