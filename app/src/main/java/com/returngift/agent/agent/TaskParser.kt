@@ -320,20 +320,25 @@ object TaskParser {
     }
 
     // ——— flashlight / torch ———
-    private val FLASHLIGHT_ON = Regex("turn\\s+on|\\bon\\b", RegexOption.IGNORE_CASE)
-    private val FLASHLIGHT_OFF = Regex("turn\\s+off|\\boff\\b", RegexOption.IGNORE_CASE)
+    // A1: adjacency-anchored on/off only. The previous bare `\bon\b` alternative turned the
+    // torch ON for ANY sentence containing flashlight/torch plus the word "on"
+    // ("find the flashlight on the desk"). The "is" form is descriptive, not a command —
+    // "flashlight is off" never routes.
+    private val FLASHLIGHT_SUFFIX = Regex("(?:flashlight|torch)\\s+(on|off)\\s*$", RegexOption.IGNORE_CASE)
+    private val FLASHLIGHT_VERB = Regex("(?:turn|switch)\\s+(on|off)\\s+(?:the\\s+)?(?:flashlight|torch)\\b", RegexOption.IGNORE_CASE)
+    private val FLASHLIGHT_PREFIX = Regex("(on|off)\\s+(?:the\\s+)?(?:flashlight|torch)\\b", RegexOption.IGNORE_CASE)
 
     private fun matchFlashlight(normalized: String): ParseResult? {
         val hasFlash = normalized.contains("flashlight") || normalized.contains("torch")
         if (!hasFlash) return null
         val bare = normalized == "flashlight" || normalized == "torch"
+        val state = FLASHLIGHT_SUFFIX.find(normalized)?.groupValues?.get(1)
+            ?: FLASHLIGHT_VERB.find(normalized)?.groupValues?.get(1)
+            ?: FLASHLIGHT_PREFIX.find(normalized)?.groupValues?.get(1)
         return when {
-            FLASHLIGHT_ON.containsMatchIn(normalized) ->
-                flashlightResult(on = true)
-            FLASHLIGHT_OFF.containsMatchIn(normalized) ->
-                flashlightResult(on = false)
+            state != null -> flashlightResult(on = state.equals("on", ignoreCase = true))
             bare -> flashlightResult(on = null) // toggle with remembered state
-            else -> null // e.g. "dim the flashlight" / "check the flashlight" — not a toggle
+            else -> null // e.g. "dim the flashlight" / "flashlight is off" — not a toggle
         }
     }
 

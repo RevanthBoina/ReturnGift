@@ -148,3 +148,7 @@
 {"utterance": "send the OTP to mom on WhatsApp", "expected": "send_message", "note": "routes to send_message; execution blocked by global blocklist gate (FIX 11a)"}
 {"utterance": "text cvv 123 to the bank on Telegram", "expected": "send_message", "note": "routes to send_message; execution blocked by global blocklist gate (FIX 11a)"}
 {"utterance": "run the diagnostics skill", "expected": "FALLBACK", "note": "composite skill routing is out of Tier-1 scope (D1); FIX 9/10 execution bounds apply at tier-2"}
+{"utterance": "find the flashlight on the desk", "expected": "FALLBACK", "note": "A1 adjacency — 'on the desk' is a location, not a toggle"}
+{"utterance": "leave the torch on the charger", "expected": "FALLBACK", "note": "A1 adjacency — no end-anchored on/off or adjacent verb"}
+{"utterance": "turn the flashlight on", "expected": "flashlight", "note": "A1 end-anchored suffix still routes"}
+{"utterance": "flashlight is off", "expected": "FALLBACK", "note": "A1 descriptive 'is' form is not a command — ruling 2026-08-28"}

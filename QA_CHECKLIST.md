@@ -2266,6 +2266,9 @@ Golden-corpus unit coverage lives in `TaskParserGoldenCorpusTest`
 - [ ] [PENDING-DEVICE] `"turn off the torch"` → torch LED off.
 - [ ] [PENDING-DEVICE] bare `"flashlight"` → toggles (on→off→on) on subsequent invocations.
 - [ ] [PENDING-DEVICE] device with no flash → honest "This device has no flashlight." error.
+- [ ] [PENDING-DEVICE] `"find the flashlight on the desk"` → torch LED unchanged (A1
+      adjacency; falls back to the agent loop). Same for `"leave the torch on the charger"`.
+- [ ] [PENDING-DEVICE] `"turn the flashlight on"` → torch LED on (end-anchored suffix).
 
 ### T1.3 — back/home phrasing variants (revived)
 
