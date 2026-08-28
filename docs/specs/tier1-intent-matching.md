@@ -277,3 +277,5 @@ test/simple-callers; all orchestrator terminal paths use the CAS release.
 - 2026-08-28 (P2 FIX11a): global blocklist gate on DirectTool; §10.
 - 2026-08-28 (P2 FIX12): idempotent terminal cleanup via `releaseIfMatches` CAS; §13a.
 - 2026-08-28 (P2 D3): Tier-1 send_message pre-send confirmation (5s auto-cancel); §7.
+- 2026-08-28 (P2 C6): chat-handoff source tagging (`ChatMessage.Source`, read-back defaults,
+  `[untrusted]` delimiter); see `CloudContextHandoffFormatter`.

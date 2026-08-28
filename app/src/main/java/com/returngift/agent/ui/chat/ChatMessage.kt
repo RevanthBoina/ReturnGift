@@ -17,9 +17,20 @@ data class ChatMessage(
     val artifactPath: String? = null,
     /** MIME type of [artifactPath] (KBManager.mimeOf) — drives preview + open intent. */
     val artifactMime: String? = null,
+    /**
+     * Content origin, kept distinct from [Role] so externally-sourced content (web-fetch
+     * results, vault-research snippets) is visibly attributed as untrusted when the
+     * transcript is handed to a cloud task. Null = legacy/unset: the read-back default is
+     * inferred from [Role] (USER→USER, ASSISTANT→MODEL, SYSTEM→SYSTEM_NOTICE,
+     * TOOL_GROUP→TOOL_RESULT) — see [CloudContextHandoffFormatter].
+     */
+    val source: Source? = null,
     val id: String = java.util.UUID.randomUUID().toString(),
 ) {
     enum class Role { USER, ASSISTANT, SYSTEM, TOOL_GROUP }
+
+    /** Content origin. [UNTRUSTED] marks externally-sourced data, never user/model-authored. */
+    enum class Source { USER, MODEL, SYSTEM_NOTICE, TOOL_RESULT, UNTRUSTED }
 }
 
 @Immutable

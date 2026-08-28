@@ -2403,6 +2403,20 @@ JVM tests). Spec §7.
 
 **Status:** `[2026-08-28] [CI-GREEN] [D3]`
 
+### 2026-08-28 — Chat-handoff source tagging (P2 C6)
+
+**Change:** `ChatMessage` gains a `Source` field (USER / MODEL / SYSTEM_NOTICE / TOOL_RESULT /
+UNTRUSTED), kept distinct from `Role`. Legacy rows with no explicit source are read back by
+role: USER→USER (never MODEL), ASSISTANT→MODEL, SYSTEM→SYSTEM_NOTICE, TOOL_GROUP→TOOL_RESULT.
+`CloudContextHandoffFormatter` renders externally-sourced content (web-fetch / vault research)
+inside a visible `[untrusted]` delimiter so it can never be confused with a user instruction in
+the cloud handoff; raw SYSTEM notices and tool-step rows stay excluded.
+
+**Tests:** `CloudContextHandoffFormatterTest` +2 (read-back defaults; untrusted delimiter).
+Full suite: 455 tests, 0 failures; preflight + lintDebug green.
+
+**Status:** `[2026-08-28] [CI-GREEN] [C6]`
+
 ### 2026-08-28 — Tier-1 global blocklist gate (P2 FIX 11a)
 
 **Change:** `SafetyInterceptor.checkGlobalBlocklist` (pure, JVM-testable) applies the
