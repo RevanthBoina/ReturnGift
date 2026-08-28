@@ -256,7 +256,6 @@ class TaskOrchestrator(
                 XLog.i(TAG, "Pipeline Tier 1: DirectTool — ${route.toolName}")
                 Thread({
                     var success = false
-                    var outcomeLog = "success"
                     // FIX 9: a stop arriving while this thread is starting must suppress the
                     // tool call (no per-tool mid-execution hooks; tools have their own
                     // settle/timeout logic).
@@ -329,7 +328,6 @@ class TaskOrchestrator(
                         setErrorFloatingState()
                         onTaskFinished()
                     }
-                    if (outcomeError != null) outcomeLog = "Failed: $outcomeError"
                 }, "direct-tool-${route.toolName}").start()
                 return
             }
