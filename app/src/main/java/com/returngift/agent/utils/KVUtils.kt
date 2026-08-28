@@ -31,6 +31,9 @@ object KVUtils {
 
     private lateinit var mmkv: MMKV
 
+    /** True once [init] has been called. Lets callers no-op gracefully in unit tests. */
+    val isInitialized: Boolean get() = ::mmkv.isInitialized
+
     private const val DEFAULT_INT = 0
     private const val DEFAULT_LONG = 0L
     private const val DEFAULT_BOOL = false

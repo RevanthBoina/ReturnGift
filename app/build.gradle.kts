@@ -159,6 +159,17 @@ android {
     }
 }
 
+// Tier-1 golden corpus lives at repo-root fixtures/ and is read by the JVM golden-corpus
+// test under testDebugUnitTest. Expose it as a test-resources root so the file lands on the
+// unit-test classpath independent of the launch CWD.
+android {
+    sourceSets {
+        getByName("test") {
+            resources.srcDir(file("../fixtures"))
+        }
+    }
+}
+
 // L3 fix: previously, a missing local.properties / env signing config silently produced
 // an unsigned (or misconfigured) release build with no warning until Play Store rejection
 // or a signature mismatch on update. Fail fast and explicitly instead, but only when a

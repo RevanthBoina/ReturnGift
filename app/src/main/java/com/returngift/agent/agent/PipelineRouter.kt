@@ -46,17 +46,12 @@ class PipelineRouter(private val context: Context) {
         data class Redirect(val targetSkillId: String, val reason: String) : Route()
     }
 
-    /**
-     * Route a user task through the 3-tier pipeline.
-     *
-     * @param task user's task text
-     * @return the routing decision
-     */
     fun route(task: String): Route {
         // Compound tasks (containing "and", "then", "after") should go to agent loop,
-        // not be partially handled by Tier 1 deterministic matching.
-        val lower = task.lowercase()
-        if (lower.contains(" and ") || lower.contains(" then ") || lower.contains(" after ")) {
+        // not be partially handled by Tier 1 deterministic matching. Shared guard lives
+        // in TaskParser.isCompound so the golden-corpus test and the router can't diverge.
+        if (TaskParser.isCompound(task)) {
+            Tier1Telemetry.recordFallback()
             XLog.i(TAG, "Compound task detected, skipping Tier 1: $task")
             return Route.AgentLoop(task)
         }
@@ -64,6 +59,7 @@ class PipelineRouter(private val context: Context) {
         // Tier 1: Deterministic regex matching
         val parseResult = TaskParser.parse(task)
         if (parseResult != null) {
+            Tier1Telemetry.recordHit(parseResult.action)
             XLog.i(TAG, "Tier 1 match: ${parseResult.action} → ${parseResult.description}")
 
             // Intent-based action (call, alarm, settings, URL)
@@ -100,6 +96,7 @@ class PipelineRouter(private val context: Context) {
                     }
                 }
                 XLog.i(TAG, "Skill ${matchResult.skill.id} match below threshold, falling through to agent loop: $reason")
+                Tier1Telemetry.recordFallback()
                 return Route.AgentLoop(task)
             }
             
@@ -113,6 +110,7 @@ class PipelineRouter(private val context: Context) {
         }
 
         // No deterministic match → Tier 3 agent loop
+        Tier1Telemetry.recordFallback()
         XLog.i(TAG, "No deterministic match, falling through to agent loop: $task")
         return Route.AgentLoop(task)
     }
