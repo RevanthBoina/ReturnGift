@@ -187,7 +187,22 @@ browser. The per-app allow-list governs acting *inside* a third-party messaging 
 (`send_message`); system pickers are the OS's own intent surface and are not a 3rd-party app to
 allow-list. This is the same distinction A4 draws and is pinned by the QA T1.5 cases.
 
-## 11. Revision history
+## 11. TaskShortcuts disposal (C1)
+
+The dead `TaskShortcuts` object (zero callers) is **deleted** per the four-signal gate after
+its live-value behaviors were ported into Tier 1:
+- `openCamera` → `matchCamera` (DirectIntent `MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA`)
+- `setTorch` → `FlashlightTool` (registered; parser emits `toolName="flashlight"`)
+- settings / back / home / screenshot → respective live matchers (incl. the revived
+  `press back` / `press home` phrasings and `go to settings`)
+
+The 34-keyword `KNOWN_PACKAGES` map is **NOT revived** (A5 / C1): its one-letter-key
+substring hazard (`x` → Twitter) made word-boundary matching the only safe option, and the
+live `open_app` pattern + `OpenAppTool.resolveAppNameStatic` fuzzy launch already cover app
+opens. "send text to Axel" / "check xbox" are pinned as FALLBACK in the corpus.
+
+## 12. Revision history
 
 - 2026-08-28 (P3.1): normalization/anchor/number unification, English-only strip, golden corpus.
 - 2026-08-28 (P3.2/A4): safety gates on Tier-1 DirectTool; this §10.
+- 2026-08-28 (P3.7): TaskShortcuts deleted; disposal recorded in §11.

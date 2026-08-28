@@ -14,8 +14,8 @@ import com.returngift.agent.utils.XLog
 /**
  * Tier-1 flashlight control. Toggles the device torch via [CameraManager.setTorchMode].
  *
- * Ported from the (now-deleted) TaskShortcuts.setTorch / openCamera block, but as a live
- * tool so the deterministic Tier-1 layer has a registered execution target. Params:
+ * Carries the torch-toggle behavior formerly in the dead TaskShortcuts.setTorch block, now
+ * as a live tool so the deterministic Tier-1 layer has a registered execution target. Params:
  *   - "on": true|false to force state; omitted/absent → toggle (remembered internal state).
  *
  * Failure modes (no camera with a flash, CameraAccessException) surface as an honest
