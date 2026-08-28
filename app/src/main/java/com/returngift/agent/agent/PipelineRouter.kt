@@ -9,6 +9,7 @@ import com.returngift.agent.agent.skill.SkillRegistry
 import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.utils.XLog
+import com.returngift.agent.tool.impl.OpenAppTool
 
 /**
  * 3-Tier Pipeline Router.
@@ -130,11 +131,69 @@ class PipelineRouter(private val context: Context) {
 
     /**
      * Execute a Tier 1 direct tool call.
+     *
+     * A4/FIX 11: Tier 1 never enters the agent loop, so the per-app allow-list gate
+     * (AllowListToolGate / AppAllowListGuard) would otherwise be bypassed. The global
+     * blocklist + payment gates are already covered here because ToolRegistry.executeTool()
+     * runs SafetyInterceptor.check() unconditionally before every call; what Tier 1 was
+     * missing is the per-app allow-list enforcement for tools that act inside a third-party
+     * app (send_message's target app). DirectIntent paths target system UIs (dialer, SMS
+     * compose, settings, browser) — never a third-party app — so the per-app allow-list does
+     * not apply to them; see docs/specs/tier1-intent-matching.md.
      */
     fun executeTool(toolName: String, params: Map<String, Any>): ToolResult {
+        val allowListBlock = allowListBlock(toolName, params)
+        if (allowListBlock != null) {
+            XLog.w(TAG, "Tier-1 tool '$toolName' blocked by allow-list: $allowListBlock")
+            return ToolResult.error(allowListBlock)
+        }
         val result = ToolRegistry.getInstance().executeTool(toolName, params)
         XLog.i(TAG, "Executed tool: $toolName → ${if (result.isSuccess) "success" else result.error}")
         return result
+    }
+
+    /**
+     * Enforce the per-app allow-list for Tier-1 tools that target a specific third-party app.
+     * Currently only send_message resolves a target app (its [params] "app" is canonicalized
+     * by the parser). A disallowed app → non-null block message; Allowed and FirstTime
+     * (default-ON) proceed. pw: matches the semantics of AllowListToolGate.check in the
+     * agent loop (FirstTime is recorded and passes by default).
+     */
+    private fun allowListBlock(toolName: String, params: Map<String, Any>): String? {
+        if (toolName != "send_message") return null
+        // resolve the target package once; the injected check makes this pure-JVM testable.
+        return allowListBlockError(
+            app = params["app"]?.toString().orEmpty(),
+            ownPackage = context.packageName,
+            check = { pkg -> AppAllowListGuard.checkAndRecord(context, pkg) },
+        )
+    }
+
+    /**
+     * Pure decision half of the allow-list gate, separated so it is unit-testable without
+     * Android. Resolves [app] to a package (falling back to the raw name when uninstalled),
+     * skips the agent's own package, and maps [check]'s results to a block message.
+     *
+     * @param app        target app name exactly as the parser emitted it (["app"] param)
+     * @param ownPackage the agent's own package, exempt from the allow-list
+     * @param check      maps a package to its allow-list verdict
+     */
+    internal fun allowListBlockError(
+        app: String,
+        ownPackage: String,
+        check: (String) -> AppAllowListGuard.CheckResult,
+    ): String? {
+        val trimmed = app.trim().takeIf { it.isNotBlank() } ?: return null
+        val pkg = OpenAppTool.resolveAppNameStatic(trimmed) ?: trimmed
+        if (pkg == ownPackage) return null
+        return when (val r = check(pkg)) {
+            is AppAllowListGuard.CheckResult.Allowed -> null
+            is AppAllowListGuard.CheckResult.FirstTime -> null
+            is AppAllowListGuard.CheckResult.Blocked -> {
+                "Action blocked: the agent is not allowed to act in \"${r.label}\". " +
+                    "Enable it in Settings → App Permissions to allow this."
+            }
+        }
     }
 
     companion object {

@@ -50,6 +50,12 @@
   <button class="quick-btn" onclick="quickExec('get_installed_apps')">App List</button>
 </div>
 
+<div class="panel" id="telemetryPanel">
+  <div class="panel-title">Tier-1 Telemetry (aggregate only)</div>
+  <div class="panel-desc">On-device counters. No utterance text is stored.</div>
+  <pre id="telemetryBody" style="white-space:pre-wrap;">Loading…</pre>
+</div>
+
 <div class="tool-list" id="toolList">Loading tools...</div>
 
 <div class="panel" id="toolPanel" style="display:none">
@@ -224,7 +230,33 @@ function showResult(data, elapsed) {
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+async function loadTelemetry() {
+  try {
+    const res = await fetch('/api/debug/telemetry');
+    const json = await res.json();
+    if (json.code === 0) {
+      const d = json.data;
+      const hits = Object.entries(d.hits || {}).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+      const fp = Object.entries(d.false_positives || {}).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+      const total = d.tier1_total || 0;
+      const fallback = d.tier3_fallback_total || 0;
+      const hitRate = total > 0 ? ((total - fallback) / total * 100).toFixed(1) : '0.0';
+      document.getElementById('telemetryBody').textContent =
+        `tier1_total: ${total}\n` +
+        `tier3_fallback_total: ${fallback}\n` +
+        `hit rate: ${hitRate}%\n\n` +
+        `hits:\n${hits}\n\n` +
+        `false positives (30s undo proxy):\n${fp}`;
+    } else {
+      document.getElementById('telemetryBody').textContent = 'No telemetry available';
+    }
+  } catch (e) {
+    document.getElementById('telemetryBody').textContent = 'Failed to load: ' + e.message;
+  }
+}
+
 loadTools();
+loadTelemetry();
 </script>
 </body>
 </html>

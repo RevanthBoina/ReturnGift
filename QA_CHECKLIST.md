@@ -2247,9 +2247,82 @@ content read, so the SAME UI works in preview mode too.
 
 ---
 
-## QA Debug Changelog
+## T1 — Tier-1 Deterministic Intent Layer (2026-08-28)
+
+Tier-1 = the zero-LLM path: `PipelineRouter.route()` → `TaskParser.parse()` →
+`Route.DirectIntent` / `Route.DirectTool` → (no match) Tier-2 skills → Tier-3 agent loop.
+Golden-corpus unit coverage lives in `TaskParserGoldenCorpusTest`
+(`fixtures/tier1_golden_utterances.jsonl`, runs in `testDebugUnitTest` on every PR).
+
+### T1.1 — camera intent (open camera / camera)
+
+- [ ] [PENDING-DEVICE] `adb shell am broadcast -a com.returngift.DEBUG_TASK --es task "open camera"` → the
+      camera app opens (or a system picker when none installed). No agent-loop tokens consumed.
+- [ ] [PENDING-DEVICE] bare `"camera"` routes to Tier 1 (assert distinct from a skill hit).
+
+### T1.2 — flashlight intent (flashlight / torch, tier-1 live tool)
+
+- [ ] [PENDING-DEVICE] `"turn on the flashlight"` → torch LED on (verify visually / camera).
+- [ ] [PENDING-DEVICE] `"turn off the torch"` → torch LED off.
+- [ ] [PENDING-DEVICE] bare `"flashlight"` → toggles (on→off→on) on subsequent invocations.
+- [ ] [PENDING-DEVICE] device with no flash → honest "This device has no flashlight." error.
+
+### T1.3 — back/home phrasing variants (revived)
+
+- [ ] [PENDING-DEVICE] `"press back"` → Back pressed, previous screen shown.
+- [ ] [PENDING-DEVICE] `"press home"` → home screen shown.
+- [ ] [PENDING-DEVICE] `"go back"` / `"go home"` still route (no regression).
+
+### T1.4 — send_message pre-send confirmation (D3, 5 s auto-cancel)
+
+- [ ] [PENDING-DEVICE] send_message to ALWAYS-ALLOWED app (e.g. SMS/WhatsApp after
+      allow-list grant): a confirm chip/card appears; tapping it sends the message.
+- [ ] [PENDING-DEVICE] do nothing for 5 s on the confirm card → message does NOT send;
+      task auto-cancels; lock released.
+- [ ] [PENDING-DEVICE] app in the allow-list BLOCKED list → `"Action blocked … enable it in
+      Settings → App Permissions"`, no message sent (T1.5). Env-dependent → BLOCKED if no
+      sample app/contact exists.
+- **Env-dependent cases BLOCKED**, never product FAIL (no sample contact/app on device).
+
+### T1.5 — Tier-1 DirectTool allow-list gate (A4 / FIX 11)
+
+- [ ] [PENDING-DEVICE] target app disallowed → send_message not executed; Failed event + ✗
+      message; lock released.
+- [ ] [PENDING-DEVICE] blocked phrase in task text → no execution (SafetyInterceptor in
+      ToolRegistry). (unit `PipelineRouterAllowListGateTest`)
+- [ ] [PENDING-DEVICE] DirectIntent paths (dialer / SMS compose / settings / browser) stay
+      exempt from the per-app allow-list (system UIs). Documented in spec §11.
+
+### T1.6 — Observability (Phase 4, on-device only)
+
+- [ ] [PENDING-DEVICE] open `https://<host>:<port>/debug.html` → "Tier-1 Telemetry" panel
+      shows `tier1_total`, `tier3_fallback_total`, hit rate, per-intent `hits`, and
+      `false positives (30s undo proxy)` counters. No utterance text anywhere.
+- [ ] [PENDING-DEVICE] run a few Tier-1 tasks + a fallback task → counters increment, hit
+      rate reflects both.
+
+### QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`
+
+### 2026-08-28 — T1 Tier-1 hardening batch (P3.1 + P3.2/A4 + Phase 4)
+
+**Change:**
+- `TaskParser`: unified single `normalize()` (trim + lowercase); start-anchored call/sms with
+  fixed filler set; 3–15 digit phone-eligibility rule; shared compound oracle; English-only
+  pattern strip (D2b); case-preserving send_message contact/message.
+- `tier1Intent()` semantic oracle + `TaskParserGoldenCorpus` (147-line golden corpus in
+  `fixtures/tier1_golden_utterances.jsonl`).
+- `Tier1Telemetry` KV counters (hit/fallback/FP proxy) + `/api/debug/telemetry` +
+  debug.html panel (aggregate only, no utterance text).
+- A4/FIX 11: `PipelineRouter.executeTool` now runs the per-app allow-list gate for
+  `send_message` (previously only the agent loop gated it); `allowListBlockError` is a
+  pure-JVM-testable seam; `PipelineRouterAllowListGateTest` (6 tests).
+- New `FlashlightTool` (CameraManager.setTorchMode, registered in ToolRegistry) so Tier-1
+  flashlight has a live execution target.
+
+**Status:** `[2026-08-28] [PENDING-DEVICE] [T1.x]` — CI gates compile/lint/unit tests green;
+device E2E pending.
 
 ### 2026-08-23 — PV.4 scoped "never refuse" for external AI (prompt-only)
 

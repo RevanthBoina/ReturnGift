@@ -57,6 +57,7 @@ object ToolRegistry {
         register(WebFetchTool())
         register(WebSearchTool())
         register(ImportDownloadTool())
+        register(FlashlightTool())
         // Knowledge Base tools — shared vault available in all modes
         register(KbWriteTool())
         register(KbReadTool())

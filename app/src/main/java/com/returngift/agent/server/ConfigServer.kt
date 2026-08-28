@@ -5,6 +5,7 @@ package com.returngift.agent.server
 
 import android.content.Context
 import com.returngift.agent.BuildConfig
+import com.returngift.agent.agent.Tier1Telemetry
 import com.returngift.agent.channel.ChannelManager
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.tool.ToolResult
@@ -51,6 +52,7 @@ class ConfigServer(
                 uri == "/api/llm" && method == Method.POST -> handlePostLlm(session)
                 uri == "/debug.html" && method == Method.GET && BuildConfig.DEBUG -> serveDebugHtml()
                 uri == "/api/debug/tools" && method == Method.GET && BuildConfig.DEBUG -> handleGetTools()
+                uri == "/api/debug/telemetry" && method == Method.GET && BuildConfig.DEBUG -> handleGetTelemetry()
                 uri == "/api/debug/execute" && method == Method.POST && BuildConfig.DEBUG -> handleExecuteTool(session)
                 uri == "/api/debug/screen-full" && method == Method.GET && BuildConfig.DEBUG -> handleGetScreenFull()
                 uri.startsWith("/api/debug/file") && method == Method.GET && BuildConfig.DEBUG -> handleServeFile(session)
@@ -255,6 +257,33 @@ class ConfigServer(
         val result = JsonObject().apply {
             addProperty("code", 0)
             add("data", arr)
+        }
+        return corsResponse(newFixedLengthResponse(Response.Status.OK, MIME_JSON, result.toString()))
+    }
+
+    /**
+     * Phase 4: aggregate Tier-1 telemetry for the debug page. Only fixed-vocabulary
+     * counters are exposed (intent names) — never raw utterance text, and nothing leaves
+     * the device (this endpoint is DEBUG-only and served over the local config server).
+     */
+    private fun handleGetTelemetry(): Response {
+        val data = JsonObject().apply {
+            addProperty("tier1_total", KVUtils.getInt(Tier1Telemetry.KEY_TOTAL))
+            addProperty("tier3_fallback_total", KVUtils.getInt(Tier1Telemetry.KEY_FALLBACK_TIER3))
+            val hits = JsonObject()
+            for (intent in Tier1Telemetry.intents) {
+                hits.addProperty(intent, KVUtils.getInt("${Tier1Telemetry.KEY_HIT_PREFIX}$intent"))
+            }
+            add("hits", hits)
+            val fp = JsonObject()
+            for (intent in Tier1Telemetry.intents) {
+                fp.addProperty(intent, KVUtils.getInt("${Tier1Telemetry.KEY_FP_PREFIX}$intent"))
+            }
+            add("false_positives", fp)
+        }
+        val result = JsonObject().apply {
+            addProperty("code", 0)
+            add("data", data)
         }
         return corsResponse(newFixedLengthResponse(Response.Status.OK, MIME_JSON, result.toString()))
     }

@@ -23,17 +23,24 @@ import com.returngift.agent.utils.XLog
 object Tier1Telemetry {
 
     private const val TAG = "Tier1Telemetry"
-    private const val PREFIX_HIT = "tier1_hit_"
+
+    /** Closed vocabulary of possible Tier-1 intent names (used for the debug surface). */
+    val intents = listOf(
+        "call", "send_message", "sms", "alarm", "timer", "screenshot",
+        "back", "home", "open_url", "open_settings", "open_app",
+        "camera", "flashlight"
+    )
+
     const val KEY_TOTAL = "tier1_total"
     const val KEY_FALLBACK_TIER3 = "tier3_fallback_total"
-    private const val KEY_FP = "tier1_fp_"
+    const val KEY_HIT_PREFIX = "tier1_hit_"
+    const val KEY_FP_PREFIX = "tier1_fp_"
 
     /** Record a Tier-1 intent hit and the running total. */
     fun recordHit(intent: String) {
         if (!KVUtils.isInitialized) return // no-op when KV unavailable (e.g. unit tests)
         KVUtils.putInt(KEY_TOTAL, KVUtils.getInt(KEY_TOTAL) + 1)
-        val hitKey = "$PREFIX_HIT$intent"
-        KVUtils.putInt(hitKey, KVUtils.getInt(hitKey) + 1)
+        KVUtils.putInt("$KEY_HIT_PREFIX$intent", KVUtils.getInt("$KEY_HIT_PREFIX$intent") + 1)
         XLog.d(TAG, "tier1 hit: $intent")
     }
 
@@ -47,8 +54,7 @@ object Tier1Telemetry {
     /** Record a false-positive proxy: a fired Tier-1 action was undone/corrected quickly. */
     fun recordFalsePositive(intent: String) {
         if (!KVUtils.isInitialized) return
-        val key = "$KEY_FP$intent"
-        KVUtils.putInt(key, KVUtils.getInt(key) + 1)
+        KVUtils.putInt("$KEY_FP_PREFIX$intent", KVUtils.getInt("$KEY_FP_PREFIX$intent") + 1)
         XLog.d(TAG, "tier1 FP proxy: $intent")
     }
 }

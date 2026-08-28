@@ -163,3 +163,31 @@ Checklist (each step in its own commit):
 5. `./gradlew testDebugUnitTest` green.
 6. Spec (this doc) updated (order + risk-tier table).
 7. QA_CHECKLIST.md section entry (E2E via DebugTaskReceiver).
+
+## 10. Safety gates on Tier-1 DirectTool (A4 / FIX 11)
+
+Tier 1 never enters the agent loop, so the gates that live there
+(`AllowListToolGate`, `SafetyInterceptor`, `PersonalContentConsentGuard`) are **not** applied
+during Tier-1 execution. The following real gates cover the Tier-1 DirectTool path instead:
+
+- **Global blocklist + payment gate:** `ToolRegistry.executeTool()` runs
+  `SafetyInterceptor.check()` unconditionally before every call, so a blocklisted phrase or a
+  payment/credential request in the task text is already rejected by Tier 1.
+- **Per-app allow-list:** `PipelineRouter.executeTool` now runs the per-app allow-list check
+  (`AppAllowListGuard.checkAndRecord`) for tools that target a specific third-party app —
+  currently `send_message` (its `app` param). `Allowed` and `FirstTime` (default-ON) proceed;
+  `Blocked` returns an error and no tool executes. The decision half is the pure-JVM-testable
+  `PipelineRouter.allowListBlockError` (pinned by `PipelineRouterAllowListGateTest`).
+- **Flashlight tool** (`FlashlightTool`, `CameraManager.setTorchMode`) is a live registered
+  tool; no flash → honest "This device has no flashlight." error (never a silent no-op).
+
+**Why DirectIntent paths are exempt from the per-app allow-list:** `DirectIntent` targets
+*system* UIs — the dialer (`ACTION_DIAL`), SMS compose (`ACTION_SENDTO`), settings, and the
+browser. The per-app allow-list governs acting *inside* a third-party messaging app
+(`send_message`); system pickers are the OS's own intent surface and are not a 3rd-party app to
+allow-list. This is the same distinction A4 draws and is pinned by the QA T1.5 cases.
+
+## 11. Revision history
+
+- 2026-08-28 (P3.1): normalization/anchor/number unification, English-only strip, golden corpus.
+- 2026-08-28 (P3.2/A4): safety gates on Tier-1 DirectTool; this §10.
