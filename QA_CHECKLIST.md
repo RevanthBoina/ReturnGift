@@ -2334,6 +2334,19 @@ Golden-corpus unit coverage lives in `TaskParserGoldenCorpusTest`
 - [ ] [PENDING-DEVICE] same task, tap **Cancel** → no message sent, Failed, lock released.
 - Env-dependent cases BLOCKED, never product FAIL.
 
+### T1.10 — UndoManager screen-staleness (C4)
+
+- [ ] [PENDING-DEVICE] tap something that opens a detail screen, then navigate manually
+      before the Undo snackbar times out, then tap Undo → reverse action does NOT run;
+      the callback reports "Can't undo — screen has changed".
+- [ ] [PENDING-DEVICE] same flow but stay on the screen → tap Undo → inverse action runs.
+- [ ] [PENDING-DEVICE] accessibility service stopped between registration and tap → check
+      skipped (log line), undo proceeds normally.
+- Unit: `UndoManagerScreenStalenessTest` — mutate the captured hash between registration
+      and execute; assert the inverse action is NOT executed and the honest failure is
+      surfaced via `onUndoFailed`. Visible changes invalidate by design; the undo window
+      is 5–8 s.
+
 ### QA Debug Changelog
 
 Format: `[date] [status] [test-id] description`

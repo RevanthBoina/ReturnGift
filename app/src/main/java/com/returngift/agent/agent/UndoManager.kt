@@ -3,7 +3,10 @@
 
 package com.returngift.agent.agent
 
+import com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer
+import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.tool.ToolRegistry
+import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.atomic.AtomicReference
 
@@ -81,7 +84,10 @@ object UndoManager {
         val reverseTool: String,
         val reverseParams: Map<String, Any>,
         val displayLabel: String,
-        val createdAt: Long = System.currentTimeMillis()
+        val createdAt: Long = System.currentTimeMillis(),
+        // C4: a cheap hash of the active screen hierarchy at registration. Visible changes
+        // invalidate by design; the undo window is 5–8 s (UNDO_WINDOW_MS).
+        val screenHashAtRecord: Long? = null,
     ) {
         val isExpired: Boolean
             get() = System.currentTimeMillis() - createdAt > UNDO_WINDOW_MS
@@ -93,10 +99,29 @@ object UndoManager {
     interface UndoListener {
         fun onUndoAvailable(undo: PendingUndo)
         fun onUndoExpired()
+        // C4: a stale-screen refusal is an honest failure, surfaced through the same path.
+        fun onUndoFailed(reason: String) {}
     }
 
     @Volatile
     var listener: UndoListener? = null
+
+    /** Test seams (same lazy pattern as TaskOrchestrator.sendMessageConfirm). */
+    internal var screenHashProvider: (() -> Long?)? = null
+    internal var toolExecutor: (String, Map<String, Any>) -> ToolResult =
+        { name, params -> ToolRegistry.getInstance().executeTool(name, params) }
+
+    private fun captureScreenHash(): Long? {
+        val provider = screenHashProvider
+        if (provider != null) return provider()
+        return try {
+            val root = ClawAccessibilityService.getInstance()?.rootInActiveWindow
+            if (root == null) null else ScreenTreeTokenOptimizer.computeHierarchyHash(root)
+        } catch (e: Exception) {
+            XLog.w(TAG, "screen hash unavailable, staleness check skipped", e)
+            null
+        }
+    }
 
     /**
      * Record a successful tool execution. If undoable, builds the reverse action
@@ -112,7 +137,8 @@ object UndoManager {
             originalParams = params,
             reverseTool    = reverseTool,
             reverseParams  = reverseParams,
-            displayLabel   = displayLabel
+            displayLabel   = displayLabel,
+            screenHashAtRecord = captureScreenHash(),
         )
         pending.set(undo)
         XLog.i(TAG, "Undo recorded: $toolName → $reverseTool $reverseParams")
@@ -131,8 +157,19 @@ object UndoManager {
             listener?.onUndoExpired()
             return false
         }
+        // C4: strict screen-hash comparison — a visible change since registration means
+        // the inverse action is no longer safe (e.g. Back would leave the wrong screen).
+        val nowHash = captureScreenHash()
+        if (undo.screenHashAtRecord != null && nowHash != null && nowHash != undo.screenHashAtRecord) {
+            XLog.i(TAG, "Undo not executed — screen changed since registration")
+            listener?.onUndoFailed("Can't undo — screen has changed")
+            return false
+        }
+        if (undo.screenHashAtRecord == null || nowHash == null) {
+            XLog.d(TAG, "screen staleness check skipped (hash unavailable on one side)")
+        }
         XLog.i(TAG, "Executing undo: ${undo.reverseTool} ${undo.reverseParams}")
-        val result = ToolRegistry.getInstance().executeTool(undo.reverseTool, undo.reverseParams)
+        val result = toolExecutor(undo.reverseTool, undo.reverseParams)
         XLog.i(TAG, "Undo result: success=${result.isSuccess} err=${result.error}")
         return result.isSuccess
     }
