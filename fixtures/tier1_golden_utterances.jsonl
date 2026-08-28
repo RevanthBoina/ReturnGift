@@ -152,3 +152,5 @@
 {"utterance": "leave the torch on the charger", "expected": "FALLBACK", "note": "A1 adjacency — no end-anchored on/off or adjacent verb"}
 {"utterance": "turn the flashlight on", "expected": "flashlight", "note": "A1 end-anchored suffix still routes"}
 {"utterance": "flashlight is off", "expected": "FALLBACK", "note": "A1 descriptive 'is' form is not a command — ruling 2026-08-28"}
+{"utterance": "please call 911", "expected": "FALLBACK", "note": "leading filler not tolerated — ruling 2026-08-28"}
+{"utterance": "can you call mom", "expected": "FALLBACK", "note": "leading filler not tolerated — ruling 2026-08-28"}

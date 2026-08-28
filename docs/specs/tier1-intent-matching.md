@@ -36,7 +36,7 @@ punctuation on captured groups is trimmed. Commas/semicolons inside a number or 
 |---|---|---|
 | `find()` (substring, prefix-tolerant) | Match may appear anywhere in the normalized string. | `open_url`, `send_message`, `alarm`, `timer`, `screenshot`, `flashlight`, `camera` — these intents tolerate leading filler ("please open …", "hey, could you …"). |
 | `$`-suffix-capture | Match may run to end; trailing literal text is swallowed into a captured group (loose suffix). | `open_app` (`open|launch|start …`) — trailing words are part of the app-name guess and captured, so a following verb still prevents anchoring. |
-| `^`-start anchor + fixed filler set | Verb must appear at the **start** (after politeness); only a small fixed set of fillers allowed between verb and number. | `call`, `sms` — see FIX 2. A non-start verb ("on whatsapp call mom") intentionally falls through to Tier 2/3. |
+| `^`-start anchor + fixed filler set | Verb must appear at the **start** (after politeness); only a small fixed set of fillers allowed between verb and number. | `call`, `sms` — see FIX 2. A non-start verb ("on whatsapp call mom") intentionally falls through to Tier 2/3. Leading filler ("please call 911", "can you call mom") is likewise NOT tolerated — the stricter behavior is pinned in the golden corpus (ruling 2026-08-28). |
 | exact match (post-normalization) | normalized string must equal one of a small closed set. | `back`, `home` — ultra-short commands; trailing context is a different intent. Politeness is stripped first so `go back please` still matches. |
 
 This replaces the inconsistent A8 state (`SEND_MESSAGE_PATTERN`/`OPEN_APP_PATTERN` were
