@@ -110,8 +110,20 @@
     <string name="menu_telegram">Telegram</string>
     <string name="menu_wechat">WeChat</string>
     <string name="menu_lan_config">LAN Config</string>
+    <string name="menu_lan_pairing">LAN Pairing</string>
     <string name="lan_config_stopped">Off</string>
     <string name="lan_config_no_wifi">Please connect to WiFi first</string>
+
+    <!-- LAN Pairing -->
+    <string name="lan_pairing_title">LAN Server Pairing</string>
+    <string name="lan_pairing_short_code">Short Code: %s</string>
+    <string name="lan_pairing_url">Server: %s</string>
+    <string name="lan_pairing_reset">Reset Token</string>
+    <string name="lan_pairing_reset_title">Reset Pairing Token?</string>
+    <string name="lan_pairing_reset_message">This will generate a new token and invalidate the current one. All paired devices will need to re-pair.</string>
+    <string name="lan_pairing_reset_done">Pairing token reset</string>
+    <string name="lan_pairing_no_token">No pairing token available</string>
+    <string name="lan_pairing_no_server">Server not running</string>
 
     <!-- Protocol -->
     <string name="protocol_agree_title">Privacy Guidelines</string>

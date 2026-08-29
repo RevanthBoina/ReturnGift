@@ -99,6 +99,8 @@ object ConfigServerManager {
         if (KVUtils.hasLlmConfig() && KVUtils.isConfigServerEnabled()) {
             start(context)
         }
+        // Generate a pairing token on first launch
+        ServerTokenStore.getToken() ?: ServerTokenStore.storeToken(ServerTokenStore.generateToken())
     }
 
     /**
