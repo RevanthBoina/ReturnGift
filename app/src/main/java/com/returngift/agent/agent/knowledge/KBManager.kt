@@ -4,6 +4,7 @@
 package com.returngift.agent.agent.knowledge
 
 import com.returngift.agent.ClawApplication
+import com.returngift.agent.agent.provenance.ProvenanceTag
 import com.returngift.agent.utils.XLog
 import java.io.File
 import java.text.SimpleDateFormat
@@ -212,6 +213,63 @@ object KBManager {
             .map { VaultFile(it.relativeTo(vault).path, it.name, it.length(), it.lastModified()) }
             .sortedByDescending { it.modified }
             .toList()
+    }
+
+    /**
+     * Read the frontmatter of a vault file (YAML between `---` markers).
+     * Returns an empty map if the file has no frontmatter or is not a .md file.
+     * Pure read — does not throw.
+     */
+    fun readFrontmatter(path: String): Map<String, String> {
+        return try {
+            val file = resolve(path)
+            if (!file.exists() || !file.name.endsWith(".md", ignoreCase = true)) return emptyMap()
+            val text = file.readText()
+            val out = mutableMapOf<String, String>()
+            if (!text.startsWith("---")) return out
+            val end = text.indexOf("\n---", startIndex = 3)
+            if (end < 0) return out
+            text.substring(3, end)
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && it.contains(":") }
+                .forEach { line ->
+                    val idx = line.indexOf(':')
+                    if (idx > 0) {
+                        val key = line.substring(0, idx).trim()
+                        val value = line.substring(idx + 1).trim()
+                        out[key] = value
+                    }
+                }
+            out
+        } catch (e: Exception) {
+            XLog.w(TAG, "readFrontmatter failed: $path (${e.message})")
+            emptyMap()
+        }
+    }
+
+    /**
+     * P3.3: Find vault files whose frontmatter `provenance` field matches the given origin.
+     * Used by `forgetApp` to find and remove vault artifacts tagged with a specific package.
+     */
+    fun vaultFilesForProvenance(origin: String): List<VaultFile> {
+        return try {
+            val vault = vaultDir()
+            if (!vault.exists()) return emptyList()
+            vault.walkTopDown()
+                .filter { it.isFile && it.name.endsWith(".md", ignoreCase = true) }
+                .mapNotNull { file ->
+                    val rel = file.relativeTo(vault).path
+                    val fm = readFrontmatter(rel)
+                    val prov = fm["provenance"] ?: ""
+                    if (prov.endsWith(":$origin") || prov.contains(origin)) rel else null
+                }
+                .map { rel -> VaultFile(rel, File(rel).name, 0L, 0L) }
+                .toList()
+        } catch (e: Exception) {
+            XLog.w(TAG, "vaultFilesForProvenance failed: $origin (${e.message})")
+            emptyList()
+        }
     }
 
     /** Absolute file for a vault-relative path — for FileProvider sharing/opening from the UI. */

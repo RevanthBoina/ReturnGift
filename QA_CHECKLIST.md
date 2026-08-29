@@ -3759,3 +3759,33 @@ P2.6 bounds the `ExecutionTracker` per-task write storm: events accumulate in me
 
 ### P2.6.4 — Unit tests (UNIT)
 - `./gradlew :app:testDebugUnitTest --tests '*ExecutionBudgetTest*' --tests '*PreActionJudgeTest*'`
+
+### P3.3 — Observation provenance (UNIT / ADB)
+- **ProvenanceTag round-trip**: `./gradlew :app:testDebugUnitTest --tests '*ProvenanceTagTest*'`
+  - **PASS**: 3 tests green - serialization/deserialization works for all Kind values (SCREEN, WEB, EXTERNAL_AI, USER, SYSTEM)
+- **PrivacyManager coordination**: `./gradlew :app:testDebugUnitTest --tests '*PrivacyManagerTest*'`
+  - **PASS**: test green - forgetApp returns correct result structure
+- **ExecutionTracker observation tagging**: Manual ADB verification
+  - **Act**: Perform a screen observation task (e.g. "describe what you see")
+  - **PASS**: logcat shows ExecutionTracker.recordObservation called with source=screen:<package>
+- **WebFetchTool web provenance**: Manual ADB verification  
+  - **Act**: Run a web_fetch task with save_to_vault=true to a known URL
+  - **PASS**: Created vault file has frontmatter with provenance=web:<hostname>
+- **ImportDownloadTool download provenance**: Manual ADB verification
+  - **Act**: Import a file via import_download tool
+  - **PASS**: ExecutionTracker records provenance observation for the download
+- **Vault UI provenance display**: Manual UI verification
+  - **Act**: Open a vault file that has provenance in frontmatter
+  - **PASS**: Vault file detail screen shows "Source: <provenance>" line
+- **Privacy dashboard observation counts**: Manual UI verification
+  - **Act**: Navigate to Settings → Privacy
+  - **PASS**: Top apps list shows observation counts per app with "Forget all data" buttons
+- **Forget app functionality**: Manual ADB + UI verification
+  - **Act**: Use Settings → Privacy → [app name] → Forget all data for an app with observations
+  - **PASS**: 
+    - ExecutionTracker observation rows for screen:<package> are deleted
+    - Vault files with provenance matching screen:<package> are deleted
+    - SelectorCache entries for package are invalidated
+    - AppSessionManager state for package is cleared
+    - Vault UI no longer shows the deleted files
+    - Privacy dashboard no longer shows the app in observation counts

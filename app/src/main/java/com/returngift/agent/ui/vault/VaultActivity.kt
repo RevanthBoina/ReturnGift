@@ -156,30 +156,37 @@ class VaultActivity : ComponentActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun VaultScreen(
-    colors: ReturnGiftColors,
-    onOpenFile: (KBManager.VaultFile) -> Unit,
-    onShareFile: (KBManager.VaultFile) -> Unit,
-    onDeleteFile: (KBManager.VaultFile) -> Boolean,
-    onBack: () -> Unit,
-) {
-    var refreshTick by remember { mutableStateOf(0) }
-    var selected by remember { mutableStateOf<KBManager.VaultFile?>(null) }
-    var pendingDelete by remember { mutableStateOf<KBManager.VaultFile?>(null) }
+    @Composable
+    private fun VaultScreen(
+        colors: ReturnGiftColors,
+        onOpenFile: (KBManager.VaultFile) -> Unit,
+        onShareFile: (KBManager.VaultFile) -> Unit,
+        onDeleteFile: (KBManager.VaultFile) -> Boolean,
+        onBack: () -> Unit,
+    ) {
+        var refreshTick by remember { mutableStateOf(0) }
+        var selected by remember { mutableStateOf<KBManager.VaultFile?>(null) }
+        var pendingDelete by remember { mutableStateOf<KBManager.VaultFile?>(null) }
+        var provenance by remember { mutableStateOf<String?>(null) }
 
-    val files by produceState<List<KBManager.VaultFile>>(initialValue = emptyList(), refreshTick) {
-        value = withContext(Dispatchers.IO) { KBManager.listAllFiles() }
-    }
-    // Text preview only — binary files render via Glide (images) or the actions row.
-    val content by produceState<String?>(initialValue = null, selected, refreshTick) {
-        val file = selected
-        value = if (file == null || !KBManager.isTextLike(file.path)) null else withContext(Dispatchers.IO) {
-            KBManager.read(file.path).getOrElse { "Couldn't read ${file.path}: ${it.message}" }
+        val files by produceState<List<KBManager.VaultFile>>(initialValue = emptyList(), refreshTick) {
+            value = withContext(Dispatchers.IO) { KBManager.listAllFiles() }
         }
-    }
+        // Text preview only — binary files render via Glide (images) or the actions row.
+        val content by produceState<String?>(initialValue = null, selected, refreshTick) {
+            val file = selected
+            value = if (file == null || !KBManager.isTextLike(file.path)) null else withContext(Dispatchers.IO) {
+                KBManager.read(file.path).getOrElse { "Couldn't read ${file.path}: ${it.message}" }
+            }
+        }
+        // P3.3: Read provenance when file selection changes
+        provenance by produceState<String?>(initialValue = null, selected) {
+            val file = selected
+            val prov = file?.let { KBManager.readFrontmatter(it.path)["provenance"] } ?: null
+            prov
+        }
 
-    BackHandler(enabled = selected != null) { selected = null }
+        BackHandler(enabled = selected != null) { selected = null }
 
     Scaffold(
         containerColor = colors.background,
@@ -224,6 +231,7 @@ private fun VaultScreen(
             VaultFileDetail(
                 file = current,
                 content = content,
+                provenance = provenance,
                 colors = colors,
                 onOpenFile = onOpenFile,
                 onShareFile = onShareFile,
@@ -321,6 +329,7 @@ private fun VaultFileList(
 private fun VaultFileDetail(
     file: KBManager.VaultFile,
     content: String?,
+    provenance: String?,
     colors: ReturnGiftColors,
     onOpenFile: (KBManager.VaultFile) -> Unit,
     onShareFile: (KBManager.VaultFile) -> Unit,
@@ -355,6 +364,16 @@ private fun VaultFileDetail(
                 Spacer(Modifier.width(4.dp))
                 Text("Delete", color = Color(0xFFF44336))
             }
+        }
+
+        // P3.3: Show provenance tag if present
+        provenance?.let { tag ->
+            Text(
+                text = "Source: $tag",
+                fontSize = 11.sp,
+                color = colors.textTertiary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
         }
         when {
             KBManager.isImage(file.path) -> {

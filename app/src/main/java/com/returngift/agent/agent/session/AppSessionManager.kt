@@ -135,4 +135,12 @@ object AppSessionManager {
     fun clearAll() {
         activeSessions.clear()
     }
+
+    /**
+     * P3.3: Forget all session state for a specific package.
+     */
+    fun forgetApp(packageName: String) {
+        activeSessions.remove(packageName)
+        XLog.d(TAG, "Forgot app session: $packageName")
+    }
 }
