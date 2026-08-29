@@ -681,7 +681,7 @@ class DefaultAgentService : AgentService {
                     val screenResult = screenTool.execute(emptyMap())
                     if (screenResult.isSuccess && !screenResult.data.isNullOrBlank()) {
                         // C5: use screen fingerprint instead of ad-hoc string hash
-                        val fp = a11ySvc?.getScreenFingerprint() ?: 0L
+                        val fp = prewarmService?.getScreenFingerprint() ?: 0L
                         screenReadGate.recordRead(fp)
                         XLog.i(TAG, "runAgentLoop: pre-warm screen attached (${screenResult.data!!.length} chars)")
                         ExecutionTracker.recordObservation(
