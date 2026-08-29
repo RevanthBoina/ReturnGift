@@ -1226,6 +1226,7 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                                 totalTokens,
                                 actualModelName
                             )
+                            ExecutionTracker.endRound(commit = false)
                             return
                         }
                         recoveryExecuted = interactionWatchdog.executeRecovery(
@@ -1273,10 +1274,11 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                 // System dialog blocking detected → notify user and stop task
                 if (!result.isSuccess && result.error == GetScreenInfoTool.SYSTEM_DIALOG_BLOCKED) {
                     XLog.w(TAG, "System dialog blocked, notifying user and stopping task")
-                    ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
-                    callback.onSystemDialogBlocked(iterations, totalTokens)
-                    return
-                }
+ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
+                     callback.onSystemDialogBlocked(iterations, totalTokens)
+                     ExecutionTracker.endRound(commit = false)
+                     return
+                 }
 
                 // finish tool → task complete
                 if (toolName == "finish" && result.isSuccess) {
