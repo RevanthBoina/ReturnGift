@@ -258,6 +258,20 @@ class TaskOrchestrator(
 
         // Tier 1: Deterministic routing
         val route = pipelineRouter.route(task)
+
+        // P1.1d: emit tier event right at the routing decision, adjacent to any Tier1Telemetry
+        // calls so the two never drift. Closed vocab: "tier1"/"tier2"/"tier3", route values are
+        // the specific action/tool name (tier1), skill id (tier2), or "agent-loop" (tier3).
+        val (tier, routeInfo) = when (route) {
+            is PipelineRouter.Route.DirectIntent -> "tier1" to (route.intent.action ?: route.description)
+            is PipelineRouter.Route.DirectTool -> "tier1" to route.toolName
+            is PipelineRouter.Route.Skill -> "tier2" to route.skillId
+            is PipelineRouter.Route.Redirect -> "tier2" to route.targetSkillId
+            is PipelineRouter.Route.AgentLoop -> "tier3" to "agent-loop"
+            is PipelineRouter.Route.Chat -> "tier2" to "chat"
+        }
+        com.returngift.agent.agent.tracker.ExecutionTracker.recordTier(messageID, tier, routeInfo)
+
         when (route) {
             is PipelineRouter.Route.DirectIntent -> {
                 XLog.i(TAG, "Pipeline Tier 1: DirectIntent — ${route.description}")
@@ -356,6 +370,8 @@ class TaskOrchestrator(
                                 }
                             )
                             if (skillResult.success) {
+                                // P1.1e: clear any parked checkpoint for this task on success
+                                com.returngift.agent.agent.checkpoint.TaskCheckpointStore.clearIfTaskMatches(task)
                                 terminal(messageID, ok = true, TaskEvent.Completed(skillResult.message), skillResult.message)
                             } else if (skillResult.cancelled) {
                                 // FIX 9: a cancelled skill must NOT respawn the agent loop.
@@ -373,6 +389,21 @@ class TaskOrchestrator(
                                     "✗ ${skill.name}: timed out",
                                 )
                             } else {
+                                // P1.1e: write a checkpoint for a killed skill so the RESUME card
+                                // can re-inject completed steps and the user can resume later.
+                                val doneDesc = skill.steps.take(skillResult.stepsUsed).joinToString("\n") {
+                                    "    done: ${it.description}"
+                                }
+                                val errorMsg = skillResult.errorMessage ?: "unknown failure"
+                                val checkpointSteps = if (doneDesc.isNotEmpty()) {
+                                    doneDesc.lines() + "FAILED at next step: $errorMsg"
+                                } else {
+                                    listOf("FAILED at next step: $errorMsg")
+                                }
+                                com.returngift.agent.agent.checkpoint.TaskCheckpointStore.write(
+                                    taskText = task,
+                                    steps = checkpointSteps,
+                                )
                                 val fallbackGoal = skill.fallbackGoal
                                     .let { v -> route.params.entries.fold(v) { acc, (k, v2) -> acc.replace("{$k}", v2) } }
                                 XLog.i(TAG, "Skill ${skill.id} failed, falling back to agent loop: $fallbackGoal")
@@ -380,10 +411,6 @@ class TaskOrchestrator(
                                 // C3: typed escalation — pass the completed steps and the
                                 // failure context via the existing agentPromptOverride seam
                                 // so the LLM does not re-execute steps that already ran.
-                                val doneDesc = skill.steps.take(skillResult.stepsUsed).joinToString("\n") {
-                                    "    done: ${it.description}"
-                                }
-                                val errorMsg = skillResult.errorMessage ?: "unknown failure"
                                 val override = buildString {
                                     append("GOAL: ").append(fallbackGoal).append('\n')
                                     append("RESUMING FROM SKILL '").append(skill.id)
@@ -420,20 +447,32 @@ class TaskOrchestrator(
                             }
                         )
                         if (skillResult.success) {
+                            // P1.1e: clear any parked checkpoint for this task on success
+                            com.returngift.agent.agent.checkpoint.TaskCheckpointStore.clearIfTaskMatches(task)
                             terminal(messageID, ok = true, TaskEvent.Completed(skillResult.message), skillResult.message)
                         } else if (skillResult.cancelled) {
                             XLog.i(TAG, "Redirected skill ${skill.id} cancelled, not falling back to agent loop")
                             terminal(messageID, ok = false, TaskEvent.Cancelled, "Task cancelled")
                         } else {
+                            // P1.1e: write a checkpoint for a killed redirected skill.
+                            val doneDesc = skill.steps.take(skillResult.stepsUsed).joinToString("\n") {
+                                "    done: ${it.description}"
+                            }
+                            val errorMsg = skillResult.errorMessage ?: "unknown failure"
+                            val checkpointSteps = if (doneDesc.isNotEmpty()) {
+                                doneDesc.lines() + "FAILED at next step: $errorMsg"
+                            } else {
+                                listOf("FAILED at next step: $errorMsg")
+                            }
+                            com.returngift.agent.agent.checkpoint.TaskCheckpointStore.write(
+                                taskText = task,
+                                steps = checkpointSteps,
+                            )
                             XLog.i(TAG, "Redirected skill ${skill.id} failed, falling back to agent loop")
                             // C3: typed escalation for redirected skill failures too
                             val fallbackGoal = skill.fallbackGoal
                                 .let { v -> route.params.entries.fold(v) { acc, (k, v2) -> acc.replace("{$k}", v2) } }
                             taskEventCallback?.invoke(TaskEvent.Progress(0, "Retrying with AI agent"))
-                            val doneDesc = skill.steps.take(skillResult.stepsUsed).joinToString("\n") {
-                                "    done: ${it.description}"
-                            }
-                            val errorMsg = skillResult.errorMessage ?: "unknown failure"
                             val override = buildString {
                                 append("GOAL: ").append(fallbackGoal).append('\n')
                                 append("RESUMING FROM SKILL '").append(skill.id)

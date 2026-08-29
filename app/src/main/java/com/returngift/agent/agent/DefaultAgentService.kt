@@ -20,7 +20,7 @@ import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.agent.InterruptDetector
 import com.returngift.agent.agent.AllowListToolGate
 import com.returngift.agent.agent.UndoManager
-import com.returngift.agent.utils.XLog
+import com.returngift.agent.agent.memory.LearnedProcedureStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dev.langchain4j.data.message.AiMessage
@@ -30,7 +30,6 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.data.message.UserMessage
 import dev.langchain4j.agent.tool.ToolExecutionRequest
 import com.returngift.agent.agent.memory.SharedKnowledgeStore
-import com.returngift.agent.agent.memory.LearnedProcedureStore
 import com.returngift.agent.agent.tracker.ExecutionTracker
 import com.returngift.agent.agent.session.AppSessionManager
 import com.returngift.agent.agent.loop.ObservationPolicy
@@ -694,7 +693,9 @@ class DefaultAgentService : AgentService {
                             screenHash = fp.toString(),
                             screenSummary = screenResult.data!!
                         )
-                        "$promptForModel\n\nCurrent screen:\n${screenResult.data}"
+                        // P1.2b: wrap observation content in untrusted delimiters so the model
+                        // knows observed content is data, not instructions (Rule 15).
+                        "$promptForModel\n\n[observed content — untrusted]\n${screenResult.data}\n[end observed content]"
                     } else promptForModel
                 } else promptForModel
             } catch (e: Exception) { promptForModel }
@@ -1058,9 +1059,23 @@ class DefaultAgentService : AgentService {
                             return
                         }
                     }
-                }
+}
+                 }
 
-                // Unified control loop: capture the state BEFORE the action so we can verify
+                 // P1.2c: Injection canary — one new checkpoint AFTER consent/allow-list,
+                 // BEFORE executeTool. One new counter: injection_canary.
+                 val canaryBlock = com.returngift.agent.agent.SafetyInterceptor.checkInjectionCanary(
+                     toolName, params, paramsText
+                 )
+                 canaryBlock?.let {
+                     XLog.w(TAG, "Injection canary blocked: $canaryBlock")
+                     callback.onToolResult(iterations, toolName, displayName, paramsText, ToolResult.error(canaryBlock))
+                     messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(ToolResult.error(canaryBlock))))
+                     messages.add(UserMessage.from(canaryBlock))
+                     continue
+                 }
+
+                 // Unified control loop: capture the state BEFORE the action so we can verify
                 // the action's effect afterwards (observe → resolve → act → verify → recover).
                 val a11ySvc = ClawAccessibilityService.getInstance()
                 val beforeState = if (a11ySvc != null && toolName in ACTION_TOOLS) {
@@ -1079,6 +1094,8 @@ class DefaultAgentService : AgentService {
                     execBudget.recordAction()?.let { breach ->
                         XLog.e(TAG, "Execution budget breach: ${breach.detail}")
                         ExecutionTracker.endTask(taskId, "BUDGET_EXCEEDED", iterations, totalTokens)
+                        // P1.3a: Record failure for learned procedure learning
+                        ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
                         callback.onComplete(
                             iterations,
                             "Task stopped: execution budget exceeded (${breach.detail}). " +
@@ -1143,8 +1160,10 @@ class DefaultAgentService : AgentService {
                         val budgetBreach = execBudget.recordRetry(stateKey)
                         if (budgetBreach?.violation == com.returngift.agent.agent.exec.ExecutionBudget.Violation.RETRY_BUDGET) {
                             XLog.e(TAG, "Watchdog recovery budget exhausted for state $stateKey (${recovery.strategy}) — stopping task")
-                            ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
-                            callback.onComplete(
+ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
+                        // P1.3a: Record failure for learned procedure learning
+                        ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
+                        callback.onComplete(
                                 iterations,
                                 "Task stopped: ${recovery.message} " +
                                     "Automatic recovery was already attempted " +
@@ -1275,31 +1294,59 @@ class DefaultAgentService : AgentService {
                         val screenAfter = screenTool?.execute(emptyMap())
                         if (screenAfter != null && screenAfter.isSuccess && !screenAfter.data.isNullOrBlank()) {
                             // C5: use screen fingerprint instead of ad-hoc string hash
-                            lastScreenHash = a11ySvc?.getScreenFingerprint() ?: 0L
-                            screenReadGate.recordRead(lastScreenHash)
-                            ExecutionTracker.recordObservation(
-                                taskId = taskId,
-                                stepIndex = iterations,
-                                screenHash = lastScreenHash.toString(),
-                                screenSummary = screenAfter.data!!
-                            )
-                            XLog.i(TAG, "Opt3: auto-attached screen after $toolName (${screenAfter.data!!.length} chars)")
-                            // Screen diff: extract text lines and compare with previous
-                            val currentTexts = screenAfter.data!!.lines()
-                                .map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-                            val added = currentTexts - previousScreenTexts
-                            val removed = previousScreenTexts - currentTexts
-                            previousScreenTexts = currentTexts
-                            lastScreenDiffCount = added.size + removed.size
-                            val diffSection = buildString {
-                                if (added.isNotEmpty()) append("\nNew on screen: ${added.take(10).joinToString(", ")}")
-                                if (removed.isNotEmpty()) append("\nGone from screen: ${removed.take(10).joinToString(", ")}")
+                            val screenFingerprint = a11ySvc?.getScreenFingerprint() ?: 0L
+                            // P2.1: delta observation — if fingerprint is stable and
+                            // at least one action already occurred since the last full
+                            // send, deliver a delta line instead of the full tree.
+                            val isUnchangedScreen = screenFingerprint == lastScreenHash && madeActionThisRound
+                            if (isUnchangedScreen) {
+                                val deltaMsg = "Screen unchanged since round $lastScreenDiffCount (fingerprint stable). " +
+                                    "Do not re-read; act, or finish with a partial summary."
+                                // P1.2b: wrap the observation in untrusted delimiters.
+                                val wrapped = "[observed content — untrusted]\n$deltaMsg\n[end observed content]"
+                                ExecutionTracker.recordObservation(
+                                    taskId = taskId,
+                                    stepIndex = iterations,
+                                    screenHash = lastScreenHash.toString(),
+                                    screenSummary = deltaMsg
+                                )
+                                XLog.i(TAG, "Opt3: delta observation — screen unchanged (fp=$lastScreenHash)")
+                                // Continue to build enriched data with delta message
+                                lastScreenHash = screenFingerprint
+                                val currentTexts = screenAfter.data!!.lines()
+                                    .map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                                previousScreenTexts = currentTexts
+                                lastScreenDiffCount = 0
+                                GSON.toJson(if (result.isSuccess) ToolResult.success(wrapped) else ToolResult.error(result.error ?: ""))
+                            } else {
+                                // Screen changed or first read — full tree with delimiters.
+                                lastScreenHash = screenFingerprint
+                                screenReadGate.recordRead(lastScreenHash)
+                                ExecutionTracker.recordObservation(
+                                    taskId = taskId,
+                                    stepIndex = iterations,
+                                    screenHash = lastScreenHash.toString(),
+                                    screenSummary = screenAfter.data!!
+                                )
+                                XLog.i(TAG, "Opt3: auto-attached screen after $toolName (${screenAfter.data!!.length} chars)")
+                                // Screen diff: extract text lines and compare with previous
+                                val currentTexts = screenAfter.data!!.lines()
+                                    .map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                                val added = currentTexts - previousScreenTexts
+                                val removed = previousScreenTexts - currentTexts
+                                previousScreenTexts = currentTexts
+                                lastScreenDiffCount = added.size + removed.size
+                                val diffSection = buildString {
+                                    if (added.isNotEmpty()) append("\nNew on screen: ${added.take(10).joinToString(", ")}")
+                                    if (removed.isNotEmpty()) append("\nGone from screen: ${removed.take(10).joinToString(", ")}")
+                                }
+                                // P1.2b: wrap the observation in untrusted delimiters.
+                                val fullObservation = "[observed content — untrusted]\n${screenAfter.data}\n[end observed content]"
+                                val enrichedData = "$fullObservation\n$diffSection"
+                                val enriched = if (result.isSuccess) ToolResult.success(enrichedData)
+                                               else ToolResult.error(result.error ?: "")
+                                GSON.toJson(enriched)
                             }
-                            val baseData = result.data ?: ""
-                            val enrichedData = "$baseData\n\nScreen after action:\n${screenAfter.data}$diffSection"
-                            val enriched = if (result.isSuccess) ToolResult.success(enrichedData)
-                                           else ToolResult.error(result.error ?: "")
-                            GSON.toJson(enriched)
                         } else {
                             XLog.w(TAG, "Opt3: get_screen_info failed after $toolName: ${screenAfter?.error}")
                             GSON.toJson(result)
@@ -1315,12 +1362,19 @@ class DefaultAgentService : AgentService {
                     }
                     if (toolName == "get_screen_info" && result.isSuccess && result.data != null) {
                         lastScreenHash = result.data.hashCode()
+                        // P1.2b: wrap explicit get_screen_info observation in untrusted delimiters.
+                        val wrappedData = "[observed content — untrusted]\n${result.data}\n[end observed content]"
+                        val wrappedResult = ToolResult.success(wrappedData)
+                        messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(wrappedResult)))
+                    } else {
+                        GSON.toJson(result)
                     }
-                    GSON.toJson(result)
                 }
 
                 // Add tool result to messages
-                messages.add(ToolExecutionResultMessage.from(toolRequest, combinedResultData))
+                if (!(toolName == "get_screen_info" && result.isSuccess && result.data != null)) {
+                    messages.add(ToolExecutionResultMessage.from(toolRequest, combinedResultData))
+                }
                 // Unified control loop: if the watchdog executed a recovery with a model hint,
                 // inject it so the model adapts its plan instead of repeating the ineffective action.
                 if (recovery != null && recovery.strategy != InteractionWatchdog.RecoveryStrategy.NONE
@@ -1342,6 +1396,8 @@ class DefaultAgentService : AgentService {
                         XLog.w(TAG, "StuckDetector AUTO_KILL at iteration $iterations: ${detection.signal.description}")
                         val status = tokenMonitor.getStatus()
                         ExecutionTracker.endTask(taskId, "AUTO_KILL", iterations, totalTokens)
+                        // P1.3a: Record failure for learned procedure learning
+                        ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
                         callback.onComplete(
                             iterations,
                             "Task stopped: agent was stuck (${detection.signal.description}). " +
@@ -1364,6 +1420,8 @@ class DefaultAgentService : AgentService {
                 ObserveStallGuard.Verdict.ABORT -> {
                     XLog.e(TAG, "ObserveStallGuard ABORT at iteration $iterations (observe-only stall)")
                     ExecutionTracker.endTask(taskId, "STALL_ABORT", iterations, totalTokens)
+                    // P1.3a: Record failure for learned procedure learning
+                    ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
                     val status = tokenMonitor.getStatus()
                     callback.onComplete(
                         iterations,

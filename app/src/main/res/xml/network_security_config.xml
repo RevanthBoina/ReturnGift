@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+    <!-- P1.5b: Default-deny cleartext. All channels are HTTPS. -->
+    <!-- Local LAN (ConfigServer pairing) is the only HTTP exception. -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    <!-- Allow cleartext for local network discovery (ConfigServer pairing protocol). -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">local</domain>
+        <domain includeSubdomains="true">lan</domain>
+        <domain includeSubdomains="true">internal</domain>
+    </domain-config>
 </network-security-config>

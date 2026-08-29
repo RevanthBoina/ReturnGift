@@ -8,6 +8,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.returngift.agent.ClawApplication
+import com.returngift.agent.agent.embedding.EmbeddingService
 import com.returngift.agent.agent.tracker.ExecutionTracker
 import com.returngift.agent.utils.XLog
 import org.json.JSONArray
@@ -140,6 +141,8 @@ object LearnedProcedureStore {
                 cv.put("avg_duration_ms", newAvg)
                 db.update(TABLE_PROCEDURES, cv, "id = ?", arrayOf(id))
                 XLog.i(TAG, "Updated learned procedure for '$normalizedPattern' (successCount=${currentSuccess + 1})")
+                // P1.3b: Re-index the procedure pattern in the embedding store.
+                EmbeddingService.indexProcedure(id, normalizedPattern)
             } else {
                 val newId = UUID.randomUUID().toString()
                 cv.put("id", newId)
@@ -149,6 +152,9 @@ object LearnedProcedureStore {
                 cv.put("created_at", System.currentTimeMillis())
                 db.insert(TABLE_PROCEDURES, null, cv)
                 XLog.i(TAG, "Learned new procedure for '$normalizedPattern' with ${steps.size} steps")
+                // P1.3b: Index the procedure pattern into the embedding store.
+                EmbeddingService.indexProcedure(newId, normalizedPattern)
+            }
             }
             cursor.close()
         } catch (e: Exception) {

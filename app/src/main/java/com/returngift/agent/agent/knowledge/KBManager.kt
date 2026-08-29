@@ -39,7 +39,13 @@ object KBManager {
     /** Resolve a caller-supplied relative path safely (no traversal). */
     private fun resolve(path: String): File {
         val clean = path.trimStart('/').replace("..", "")
-        return File(vaultDir(), clean)
+        val file = File(vaultDir(), clean)
+        val canonicalVault = vaultDir().canonicalFile
+        val canonicalFile = file.canonicalFile
+        if (!canonicalFile.path.startsWith(canonicalVault.path)) {
+            throw SecurityException("Path traversal attempt: $path")
+        }
+        return canonicalFile
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
