@@ -680,12 +680,14 @@ class DefaultAgentService : AgentService {
                 ) {
                     val screenResult = screenTool.execute(emptyMap())
                     if (screenResult.isSuccess && !screenResult.data.isNullOrBlank()) {
-                        screenReadGate.recordRead(screenResult.data!!.hashCode())
+                        // C5: use screen fingerprint instead of ad-hoc string hash
+                        val fp = a11ySvc?.getScreenFingerprint() ?: 0L
+                        screenReadGate.recordRead(fp)
                         XLog.i(TAG, "runAgentLoop: pre-warm screen attached (${screenResult.data!!.length} chars)")
                         ExecutionTracker.recordObservation(
                             taskId = taskId,
                             stepIndex = 0,
-                            screenHash = screenResult.data!!.hashCode().toString(),
+                            screenHash = fp.toString(),
                             screenSummary = screenResult.data!!
                         )
                         "$promptForModel\n\nCurrent screen:\n${screenResult.data}"
@@ -1064,7 +1066,9 @@ class DefaultAgentService : AgentService {
                 val actStartTime = System.currentTimeMillis()
                 var result = ToolRegistry.getInstance().executeTool(toolName, params)
                 if (toolName == "get_screen_info" && result.isSuccess && !result.data.isNullOrBlank()) {
-                    screenReadGate.recordRead(result.data!!.hashCode())
+                    // C5: use screen fingerprint instead of ad-hoc string hash
+                    val fp = a11ySvc?.getScreenFingerprint() ?: 0L
+                    screenReadGate.recordRead(fp)
                 }
                 if (toolName in ACTION_TOOLS) {
                     screenReadGate.recordAction()
@@ -1120,7 +1124,7 @@ class DefaultAgentService : AgentService {
                         toolName = toolName,
                         argsFingerprint = argsFp,
                         verification = verification,
-                        screenHash = (verification.afterSignature ?: "0").hashCode(),
+                        screenHash = verification.afterSignature?.toLongOrNull() ?: 0L,
                         expectedForeground = currentTargetPackage,
                         overlayPresent = overlay
                     )
@@ -1131,7 +1135,7 @@ class DefaultAgentService : AgentService {
                         // retriesPerState, reusing that very type). A stall on a NEW
                         // screen gets a fresh budget; a 3rd trigger on the SAME state
                         // STOPS and reports instead of restarting.
-                        val stateKey = "${(verification?.afterSignature ?: "0").hashCode()}@$currentTargetPackage"
+                        val stateKey = "${verification?.afterSignature?.toLongOrNull() ?: 0L}@$currentTargetPackage"
                         val budgetBreach = execBudget.recordRetry(stateKey)
                         if (budgetBreach?.violation == com.returngift.agent.agent.exec.ExecutionBudget.Violation.RETRY_BUDGET) {
                             XLog.e(TAG, "Watchdog recovery budget exhausted for state $stateKey (${recovery.strategy}) — stopping task")
@@ -1266,8 +1270,8 @@ class DefaultAgentService : AgentService {
                         val screenTool = ToolRegistry.getInstance().getTool("get_screen_info")
                         val screenAfter = screenTool?.execute(emptyMap())
                         if (screenAfter != null && screenAfter.isSuccess && !screenAfter.data.isNullOrBlank()) {
-                            // Update lastScreenHash for loop detection + gate accounting
-                            lastScreenHash = screenAfter.data!!.hashCode()
+                            // C5: use screen fingerprint instead of ad-hoc string hash
+                            lastScreenHash = a11ySvc?.getScreenFingerprint() ?: 0L
                             screenReadGate.recordRead(lastScreenHash)
                             ExecutionTracker.recordObservation(
                                 taskId = taskId,

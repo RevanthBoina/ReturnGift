@@ -4,8 +4,6 @@
 package com.returngift.agent.agent.exec
 
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -29,7 +27,17 @@ import java.util.concurrent.TimeoutException
  */
 object BoundedExecution {
 
-    const val DEFAULT_WALL_CLOCK_MS = 60_000L
+    companion object {
+        private const val TAG = "BoundedExecution"
+        const val DEFAULT_WALL_CLOCK_MS = 60_000L
+        private val executor: java.util.concurrent.ExecutorService =
+            // C2: single worker serializes abandoned work. A timed-out tool may finish its
+            // own bounded work — every tool settle wait already caps at 500ms
+            // (AdaptiveSettleController), so a stuck completion is bounded by ~500ms.
+            java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+                Thread(r).apply { isDaemon = true }
+            }
+    }
 
     sealed class Outcome<out T> {
         /** Body returned [value] before the deadline. */
@@ -40,10 +48,6 @@ object BoundedExecution {
 
         /** Body threw; [error] is the cause's message (or the throwable itself). */
         data class Failed(val error: Throwable) : Outcome<Nothing>()
-    }
-
-    private val executor: ExecutorService = Executors.newCachedThreadPool { r ->
-        Thread(r, "bounded-execution").apply { isDaemon = true }
     }
 
     /**

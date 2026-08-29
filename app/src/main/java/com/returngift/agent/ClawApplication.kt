@@ -10,6 +10,7 @@ import com.returngift.agent.channel.ChannelManager
 import com.returngift.agent.server.CloudDeepAgentManager
 import com.returngift.agent.server.ConfigServerManager
 import com.returngift.agent.tool.ToolRegistry
+import com.returngift.agent.task.TaskOrchestrator
 import com.returngift.agent.utils.AppLogStore
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
@@ -40,6 +41,17 @@ class ClawApplication : BaseApp() {
         registerNetworkCallback()
         appViewModelInstance = getAppViewModelProvider()[AppViewModel::class.java]
         KVUtils.init(this)
+        // C4: process-death reconciliation — if a previous task was interrupted by app restart,
+        // clear the state and notify the channel.
+        val activeTask = KVUtils.getString(TaskOrchestrator.KEY_ACTIVE_TASK, "")
+        if (activeTask.isNotEmpty()) {
+            val parts = activeTask.split('|', limit = 2)
+            val interruptedMessageId = parts[0]
+            val interruptedChannel = if (parts.size > 1) parts[1] else Channel.LOCAL.name
+            ForegroundService.resetToIdle(this)
+            ChannelManager.sendMessage(Channel.valueOf(interruptedChannel), "task was interrupted by app restart", interruptedMessageId)
+            KVUtils.remove(TaskOrchestrator.KEY_ACTIVE_TASK)
+        }
         LocalBackendHealth.recoverPendingGpuCrashIfNeeded()
         ToolRegistry.getInstance().registerAllTools(ToolRegistry.DeviceType.MOBILE)
         com.returngift.agent.agent.skill.SkillRegistry.loadBuiltInSkills()

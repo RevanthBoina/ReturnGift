@@ -22,8 +22,8 @@ import java.util.ArrayDeque
 class StuckDetector(private val windowSize: Int = 8) {
 
     private val actions = ArrayDeque<String>(windowSize + 1)
-    private val screenHashes = ArrayDeque<Int>(windowSize + 1)
-    private val screenDiffCounts = ArrayDeque<Int>(windowSize + 1)
+    private val screenHashes = ArrayDeque<Long>(windowSize + 1)
+    private val screenDiffCounts = ArrayDeque<Long>(windowSize + 1)
     private val errors = ArrayDeque<String>(windowSize + 1)
     private var consecutiveStuckSteps = 0
 
@@ -56,16 +56,16 @@ class StuckDetector(private val windowSize: Int = 8) {
         val recoveryHint: String
     )
 
-    /**
+        /**
      * Record one agent loop step and check for stuck patterns.
      *
      * @param action tool name + args fingerprint (e.g. "find_and_tap:cat videos")
-     * @param screenHash hash of current screen content
+     * @param screenHash hash of current screen content (fingerprint, not Int hash)
      * @param screenDiffCount number of text lines changed vs previous screen
      * @param error error message if tool failed, null otherwise
      * @return Detection if stuck, null if OK
      */
-    fun record(action: String, screenHash: Int, screenDiffCount: Int, error: String?): Detection? {
+    fun record(action: String, screenHash: Long, screenDiffCount: Long, error: String?): Detection? {
         // Add to sliding windows
         actions.addLast(action)
         if (actions.size > windowSize) actions.removeFirst()

@@ -1099,6 +1099,27 @@ public class ClawAccessibilityService extends AccessibilityService {
     }
 
     /**
+     * C5: 64-bit screen fingerprint — the same hierarchy hash used by the screen-tree
+     * optimizer over the active accessibility window. Comparable across reads (so the
+     * action-verifier can confirm "screen changed" without false positives from per-call
+     * volatile node IDs) and stable enough to feed the stuck/stall guards as a Long.
+     *
+     * @return 0L when the screen cannot be read.
+     */
+    public long getScreenFingerprint() {
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return 0L;
+            long hash = com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.computeHierarchyHash(root);
+            root.recycle();
+            return hash;
+        } catch (Exception e) {
+            XLog.w(TAG, "getScreenFingerprint failed", e);
+            return 0L;
+        }
+    }
+
+    /**
      * Computes a stable, content-derived signature of the current foreground screen.
      *
      * Unlike the volatile per-call node IDs ("n2","n24"), this signature is based on the
@@ -1109,43 +1130,8 @@ public class ClawAccessibilityService extends AccessibilityService {
      * @return a deterministic hash string, or null if the screen cannot be read.
      */
     public String getScreenStateSignature() {
-        try {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return null;
-            StringBuilder sb = new StringBuilder();
-            collectSignature(root, sb);
-            root.recycle();
-            return Integer.toString(sb.toString().hashCode());
-        } catch (Exception e) {
-            XLog.w(TAG, "getScreenStateSignature failed", e);
-            return null;
-        }
-    }
-
-    private void collectSignature(AccessibilityNodeInfo node, StringBuilder sb) {
-        if (node == null) return;
-        if (node.isVisibleToUser()) {
-            boolean hasText = node.getText() != null && node.getText().length() > 0;
-            boolean hasDesc = node.getContentDescription() != null && node.getContentDescription().length() > 0;
-            boolean interactive = node.isClickable() || node.isScrollable() || node.isEditable()
-                    || node.isCheckable() || node.isLongClickable();
-            if (hasText || hasDesc || interactive) {
-                if (hasText) sb.append("t=").append(node.getText()).append('|');
-                if (hasDesc) sb.append("d=").append(node.getContentDescription()).append('|');
-                String resId = node.getViewIdResourceName();
-                if (resId != null && !resId.isEmpty()) sb.append("id=").append(resId).append('|');
-                Rect b = new Rect();
-                node.getBoundsInScreen(b);
-                sb.append("b=").append(b.toShortString()).append('\n');
-            }
-        }
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            if (child != null) {
-                collectSignature(child, sb);
-                child.recycle();
-            }
-        }
+        long fingerprint = getScreenFingerprint();
+        return fingerprint == 0L ? null : Long.toString(fingerprint);
     }
 
     /**
