@@ -723,27 +723,31 @@ class DefaultAgentService : AgentService {
         var consecutiveActionsWithoutObserve = 0
         val isFollowingProcedure = (learnedProcedure != null)
 
-        while (iterations < maxIterations && !cancelled.get()) {
-            iterations++
-            callback.onLoopStart(iterations)
+         while (iterations < maxIterations && !cancelled.get()) {
+             iterations++
+             callback.onLoopStart(iterations)
+             // P2.6: Begin tracker batch transaction for this round.
+             ExecutionTracker.beginRound()
 
-            // Compress history messages before sending to save tokens
-            compressHistoryForSend(messages)
+             // Compress history messages before sending to save tokens
+             compressHistoryForSend(messages)
 
             // LLM call (with retry) — per-run tool specs from the intent gate.
             val llmResponse: LlmResponse
             try {
                 llmResponse = chatWithRetry(messages, callback, iterations, runToolSpecs)
             } catch (e: Exception) {
-                XLog.e(TAG, "LLM API call failed after retries", e)
-                callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_api_call_failed, e.message)), totalTokens)
-                return
-            }
+XLog.e(TAG, "LLM API call failed after retries", e)
+                 callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_api_call_failed, e.message)), totalTokens)
+                 ExecutionTracker.endRound(commit = false)
+                 return
+             }
 
-            if (cancelled.get()) {
-                callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
-                return
-            }
+             if (cancelled.get()) {
+                 callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+                 ExecutionTracker.endRound(commit = false)
+                 return
+             }
 
             // Capture actual model name from first API response
             if (actualModelName == null && !llmResponse.modelName.isNullOrEmpty()) {
@@ -799,11 +803,12 @@ class DefaultAgentService : AgentService {
                     "Task stopped: token usage reached the safety ceiling (${tokenStatus.formattedTokens} tokens, " +
                     "${tokenStatus.formattedCost}). The task was aborted to prevent runaway cost. " +
                     "Please re-run with a narrower instruction.",
-                    totalTokens,
-                    actualModelName
-                )
-                return
-            }
+totalTokens,
+                        actualModelName
+                    )
+                    ExecutionTracker.endRound(commit = false)
+                    return
+                }
 
             // DEBUG: log raw LLM response for tool calling diagnosis
             XLog.i(TAG, "runAgentLoop iter=$iterations response.text=${llmResponse.text?.take(500)}")
@@ -871,9 +876,10 @@ class DefaultAgentService : AgentService {
                     ExecutionTracker.endTask(taskId, "SUCCESS", iterations, totalTokens)
                     SharedKnowledgeStore.remember(SharedKnowledgeStore.Category.TASK_FACT, rawUserRequest, responseText, sourceTask = rawUserRequest)
                     if (learnedProcedure != null) LearnedProcedureStore.recordOutcome(learnedProcedure.id, true)
-                    callback.onComplete(iterations, responseText, totalTokens, actualModelName)
-                    return
-                }
+callback.onComplete(iterations, responseText, totalTokens, actualModelName)
+                     ExecutionTracker.endRound(commit = false)
+                     return
+                 }
                 // Empty response with no tools — something went wrong, finish
                 XLog.w(TAG, "runAgentLoop: empty response with no tools, finishing")
                 ExecutionTracker.endTask(taskId, "COMPLETED", iterations, totalTokens)
@@ -886,11 +892,12 @@ class DefaultAgentService : AgentService {
             for (toolRequest in llmResponse.toolExecutionRequests) {
                 if (cancelled.get()) {
                     ExecutionTracker.endTask(taskId, "CANCELLED", iterations, totalTokens)
-                    callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
-                    return
-                }
+callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+                     ExecutionTracker.endRound(commit = false)
+                     return
+                 }
 
-                val toolName = toolRequest.name() ?: ""
+                 val toolName = toolRequest.name() ?: ""
                 val displayName = ToolRegistry.getInstance().getDisplayName(toolName)
                 val toolArgs = toolRequest.arguments() ?: "{}"
 
@@ -1056,26 +1063,73 @@ class DefaultAgentService : AgentService {
                                 totalTokens,
                                 actualModelName,
                             )
+                            ExecutionTracker.endRound(commit = false)
                             return
                         }
                     }
 }
                  }
 
-                 // P1.2c: Injection canary — one new checkpoint AFTER consent/allow-list,
-                 // BEFORE executeTool. One new counter: injection_canary.
-                 val canaryBlock = com.returngift.agent.agent.SafetyInterceptor.checkInjectionCanary(
-                     toolName, params, paramsText
-                 )
-                 canaryBlock?.let {
-                     XLog.w(TAG, "Injection canary blocked: $canaryBlock")
-                     callback.onToolResult(iterations, toolName, displayName, paramsText, ToolResult.error(canaryBlock))
-                     messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(ToolResult.error(canaryBlock))))
-                     messages.add(UserMessage.from(canaryBlock))
-                     continue
-                 }
+                  // P1.2c: Injection canary — one new checkpoint AFTER consent/allow-list,
+                  // BEFORE executeTool. One new counter: injection_canary.
+                  val canaryBlock = com.returngift.agent.agent.SafetyInterceptor.checkInjectionCanary(
+                      toolName, params, paramsText
+                  )
+                  canaryBlock?.let {
+                      XLog.w(TAG, "Injection canary blocked: $canaryBlock")
+                      callback.onToolResult(iterations, toolName, displayName, paramsText, ToolResult.error(canaryBlock))
+                      messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(ToolResult.error(canaryBlock))))
+                      messages.add(UserMessage.from(canaryBlock))
+                      continue
+                  }
 
-                 // Unified control loop: capture the state BEFORE the action so we can verify
+                  // P2.5: Pre-action judge — second-opinion local LLM call for high-risk
+                  // tools. Fail-open on model unavailable. Closed counters only.
+                  // Fired AFTER injection canary, BEFORE executeTool (no guard reorder).
+                  if (toolName in com.returngift.agent.agent.guardrail.PreActionJudge.HIGH_RISK_TOOLS) {
+                      val judgeOutcome = com.returngift.agent.agent.guardrail.PreActionJudge.judgeWithTimeout(
+                          client = if (::llmClient.isInitialized) llmClient else null,
+                          toolName = toolName,
+                          paramsText = paramsText,
+                          taskSummary = userPrompt.take(200),
+                      )
+                      when (judgeOutcome) {
+                          is PreActionJudge.Outcome.Block -> {
+                              XLog.w(TAG, "PreActionJudge blocked: ${judgeOutcome.reason}")
+                              callback.onToolResult(iterations, toolName, displayName, paramsText,
+                                  ToolResult.error(judgeOutcome.reason))
+                              messages.add(ToolExecutionResultMessage.from(toolRequest,
+                                  GSON.toJson(ToolResult.error(judgeOutcome.reason))))
+                              messages.add(UserMessage.from(judgeOutcome.reason))
+                              continue
+                          }
+                          is PreActionJudge.Outcome.AskUser -> {
+                              XLog.i(TAG, "PreActionJudge asking user: ${judgeOutcome.question}")
+                              val clarification = com.returngift.agent.agent.clarify.ClarificationManager.request(
+                                      id = "judge_${System.currentTimeMillis()}",
+                                      question = judgeOutcome.question,
+                                      choices = listOf("Proceed", "Cancel"),
+                              )
+                              val answer = when (clarification?.trim()?.lowercase()) {
+                                  "proceed" -> "yes"
+                                  else -> "no"
+                              }
+                              if (answer != "yes") {
+                                  XLog.i(TAG, "PreActionJudge: user declined, blocking")
+                                  callback.onToolResult(iterations, toolName, displayName, paramsText,
+                                      ToolResult.error("Action blocked by user"))
+                                  messages.add(ToolExecutionResultMessage.from(toolRequest,
+                                      GSON.toJson(ToolResult.error("Action blocked by user"))))
+                                  messages.add(UserMessage.from("Action blocked by user"))
+                                  continue
+                              }
+                              // User approved — proceed with execution
+                          }
+                          is PreActionJudge.Outcome.Allow -> { /* proceed */ }
+                      }
+                  }
+
+                  // Unified control loop: capture the state BEFORE the action so we can verify
                 // the action's effect afterwards (observe → resolve → act → verify → recover).
                 val a11ySvc = ClawAccessibilityService.getInstance()
                 val beforeState = if (a11ySvc != null && toolName in ACTION_TOOLS) {
@@ -1103,6 +1157,7 @@ class DefaultAgentService : AgentService {
                             totalTokens,
                             actualModelName
                         )
+                        ExecutionTracker.endRound(commit = false)
                         return
                     }
                 }
@@ -1172,6 +1227,7 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                                 totalTokens,
                                 actualModelName
                             )
+                            ExecutionTracker.endRound(commit = false)
                             return
                         }
                         recoveryExecuted = interactionWatchdog.executeRecovery(
@@ -1219,10 +1275,11 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                 // System dialog blocking detected → notify user and stop task
                 if (!result.isSuccess && result.error == GetScreenInfoTool.SYSTEM_DIALOG_BLOCKED) {
                     XLog.w(TAG, "System dialog blocked, notifying user and stopping task")
-                    ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
-                    callback.onSystemDialogBlocked(iterations, totalTokens)
-                    return
-                }
+ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
+                     callback.onSystemDialogBlocked(iterations, totalTokens)
+                     ExecutionTracker.endRound(commit = false)
+                     return
+                 }
 
                 // finish tool → task complete
                 if (toolName == "finish" && result.isSuccess) {
@@ -1241,9 +1298,10 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                     SharedKnowledgeStore.decay()
                     LearnedProcedureStore.prune()
 
-                    callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
-                    return
-                }
+callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
+                     ExecutionTracker.endRound(commit = false)
+                     return
+                 }
 
                 // Opt-3: Adaptive Observe/Act Loop.
                 // Decides dynamically whether screen capture is necessary.
@@ -1282,9 +1340,10 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                                 }
                                 is InterruptDetector.InterruptResult.PauseAndConfirm -> {
                                     XLog.w(TAG, "Interrupt PAUSE_AND_CONFIRM: ${interruptResult.description}")
-                                    callback.onSystemDialogBlocked(iterations, totalTokens)
-                                    return
-                                }
+callback.onSystemDialogBlocked(iterations, totalTokens)
+                                     ExecutionTracker.endRound(commit = false)
+                                     return
+                                 }
                                 is InterruptDetector.InterruptResult.Clean -> { /* proceed */ }
                             }
                         }
@@ -1405,6 +1464,7 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                             totalTokens,
                             actualModelName
                         )
+                        ExecutionTracker.endRound(commit = false)
                         return
                     }
                     else -> {
@@ -1440,6 +1500,8 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                 ObserveStallGuard.Verdict.OK -> { /* progress */ }
             }
             XLog.d(TAG, "Round:$iterations total=$totalTokens thisRound=${llmResponse.tokenUsage?.totalTokenCount()}")
+            // P2.6: Commit the round's tracker writes atomically.
+            ExecutionTracker.endRound(commit = true)
         }
 
         if (cancelled.get()) {

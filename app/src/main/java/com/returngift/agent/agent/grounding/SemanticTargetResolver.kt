@@ -5,6 +5,7 @@ package com.returngift.agent.agent.grounding
 
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
+import com.returngift.agent.agent.session.AppSessionManager
 import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.utils.XLog
 
@@ -86,6 +87,8 @@ object SemanticTargetResolver {
     /**
      * Resolve a target description against the *current* screen hierarchy.
      * Re-queries the accessibility tree every call — never caches across transitions.
+     * P2.3: checks per-app selector cache first; on fingerprint match returns
+     * cached descriptor without re-querying the tree.
      *
      * @return a [ResolvedTarget], or null if no matching node exists on the current screen.
      */
@@ -98,11 +101,96 @@ object SemanticTargetResolver {
             XLog.w(TAG, "resolve: no active window root")
             return null
         }
-        return try {
-            resolveInTree(root, target)
-        } finally {
-            // Don't recycle root here — obtained via service accessor; GC handles it.
+        val packageName = service.getForegroundPackage()
+
+        // P2.3: Check selector cache before walking the tree.
+        if (packageName != null) {
+            val cacheKey = buildCacheKey(target)
+            val fp = service.getScreenFingerprint()
+            val cached = SelectorCache.get(packageName, cacheKey)
+            if (cached != null && cached.fingerprint == fp) {
+                // Fingerprint unchanged — try to quickly locate the node
+                // using the cached resolution properties.
+                val node = quickResolve(root, cached)
+                if (node != null) {
+                    XLog.d(TAG, "SelectorCache HIT: $packageName|$cacheKey (fp=$fp)")
+                    return ResolvedTarget(node, cached.method, cached.bounds)
+                }
+                XLog.d(TAG, "SelectorCache STALE NODE at fp=$fp — re-resolving")
+            }
+            // On miss or fingerprint mismatch, fall through to full resolution
+            // and cache the result on success.
+            val result = try { resolveInTree(root, target) } catch (e: Exception) { null }
+            result?.let { resolved ->
+                SelectorCache.put(
+                    packageName = packageName,
+                    fingerprint = fp,
+                    description = cacheKey,
+                    resourceId = target.resourceId,
+                    text = target.text,
+                    contentDesc = target.contentDesc,
+                    viewClass = target.viewClass,
+                    bounds = resolved.bounds,
+                    method = resolved.method,
+                )
+            }
+            return result
         }
+        return try { resolveInTree(root, target) } catch (e: Exception) { null }
+    }
+
+    /** Try to find a node quickly using cached resolution properties. */
+    private fun quickResolve(root: AccessibilityNodeInfo, cached: SelectorCache.CachedEntry): AccessibilityNodeInfo? {
+        if (cached.resourceId != null) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(cached.resourceId)
+            if (!nodes.isNullOrEmpty()) {
+                for (n in nodes) {
+                    if (n.isVisibleToUser && n.isClickable) {
+                        return AccessibilityNodeInfo.obtain(n)
+                    }
+                }
+                nodes.forEach { it.recycle() }
+            }
+        }
+        // Fallback: walk the tree looking for a node near the cached center.
+        val nearest = findNearestToPoint(root, cached.centerX, cached.centerY)
+        return nearest
+    }
+
+    private fun findNearestToPoint(root: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
+        var best: AccessibilityNodeInfo? = null
+        var bestDist = Int.MAX_VALUE
+        val stack = ArrayDeque<AccessibilityNodeInfo>()
+        stack.addLast(root)
+        while (stack.isNotEmpty()) {
+            val node = stack.removeLast()
+            if (node.isVisibleToUser) {
+                val b = Rect()
+                node.getBoundsInScreen(b)
+                val dx = b.centerX() - x
+                val dy = b.centerY() - y
+                val d = dx * dx + dy * dy
+                if (d < bestDist) {
+                    bestDist = d
+                    best?.let { runCatching { it.recycle() } }
+                    best = AccessibilityNodeInfo.obtain(node)
+                }
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { stack.addLast(it) }
+            }
+        }
+        return best
+    }
+
+    private fun buildCacheKey(target: TargetDescription): String {
+        val parts = mutableListOf<String>()
+        if (!target.resourceId.isNullOrEmpty()) parts.add("rid:${target.resourceId}")
+        if (!target.text.isNullOrEmpty()) parts.add("txt:${target.text}")
+        if (!target.contentDesc.isNullOrEmpty()) parts.add("desc:${target.contentDesc}")
+        if (!target.viewClass.isNullOrEmpty()) parts.add("cls:${target.viewClass}")
+        if (target.x != null && target.y != null) parts.add("pos:${target.x},${target.y}")
+        return parts.joinToString(";").ifEmpty { "fallback" }
     }
 
     /**
