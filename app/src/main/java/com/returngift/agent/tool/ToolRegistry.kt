@@ -4,9 +4,17 @@
 package com.returngift.agent.tool
 
 import com.returngift.agent.agent.knowledge.*
+import com.returngift.agent.core.DeviceRegistry
 import com.returngift.agent.tool.impl.*
 import com.returngift.agent.tool.impl.mobile.*
 import com.returngift.agent.tool.impl.tv.*
+import com.returngift.agent.utils.XLog
+import okhttp3.MediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 object ToolRegistry {
 
@@ -127,6 +135,111 @@ object ToolRegistry {
         } catch (e: Exception) {
             com.returngift.agent.utils.XLog.e("ToolRegistry", "Tool '$name' execution failed with params=$params", e)
             ToolResult.error("Tool execution failed: ${e.message}")
+        }
+    }
+
+    // ======================== P3.2: Companion Device Dispatch ========================
+
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    private val JSON = MediaType.get("application/json; charset=utf-8")
+
+    /**
+     * P3.2: Execute a tool on a companion device.
+     *
+     * POSTs to the companion's "hands" endpoint with the token-gated JSON contract:
+     * {
+     *   "tool": "dpad_up",
+     *   "params": { ... },
+     *   "token": "<pairing-token>"
+     * }
+     *
+     * The companion device is a TV-optimized build of this app exposing ONLY the
+     * accessibility service + hands endpoint (no UI, no brain). The companion target
+     * itself is scope for a later wave — this wave ships the phone side + contract doc.
+     *
+     * @param deviceId The companion device ID from DeviceRegistry
+     * @param toolName The tool name to execute (e.g. "dpad_up", "volume_up")
+     * @param params Tool parameters
+     * @return ToolResult from the companion, or an error if dispatch fails
+     */
+    fun executeOn(deviceId: String, toolName: String, params: Map<String, Any>): ToolResult {
+        val device = DeviceRegistry.getDevice(deviceId)
+            ?: return ToolResult.error("Companion device not found: $deviceId")
+
+        // Verify the tool exists in our registry (both sides share the same tool vocabulary)
+        val tool = tools[toolName] ?: return ToolResult.error("Unknown tool: $toolName")
+
+        // Safety check runs on the phone (brain) before dispatch
+        val dialogContext = com.blankj.utilcode.util.ActivityUtils.getTopActivity()
+            ?: com.returngift.agent.ClawApplication.instance
+        val blockReason = com.returngift.agent.agent.SafetyInterceptor.check(toolName, params, dialogContext)
+        if (blockReason != null) {
+            com.returngift.agent.utils.XLog.w("ToolRegistry", "Companion dispatch blocked '$toolName': $blockReason")
+            return ToolResult.error(blockReason)
+        }
+
+        // Build the token-gated request body
+        val requestBody = JSONObject().apply {
+            put("tool", toolName)
+            put("params", JSONObject(params))
+            put("token", device.pairingToken)
+        }.toString()
+
+        val request = Request.Builder()
+            .url("http://${device.address}/hands")
+            .post(RequestBody.create(requestBody, JSON))
+            .build()
+
+        return try {
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                val body = response.body?.string() ?: "no body"
+                XLog.w("ToolRegistry", "Companion $deviceId returned ${response.code}: $body")
+                return ToolResult.error("Companion HTTP ${response.code}: $body")
+            }
+            val body = response.body?.string() ?: "empty response"
+            val resultJson = JSONObject(body)
+            val success = resultJson.optBoolean("success", false)
+            val message = resultJson.optString("message", "")
+            if (success) {
+                ToolResult.success(message)
+            } else {
+                ToolResult.error(message)
+            }
+        } catch (e: Exception) {
+            XLog.e("ToolRegistry", "Companion dispatch failed for $deviceId/$toolName", e)
+            ToolResult.error("Companion dispatch failed: ${e.message}")
+        }
+    }
+
+    /** P3.2: Loopback E2E test helper — dispatch to a fake companion for unit testing.
+     *  Registers a fake DeviceRegistry entry pointing to a test server, dispatches dpad_up,
+     *  and asserts the JSON arrives token-gated. Used by the unit test suite. */
+    fun executeOnLoopback(testServerUrl: String, pairingToken: String, toolName: String, params: Map<String, Any>): ToolResult {
+        val requestBody = JSONObject().apply {
+            put("tool", toolName)
+            put("params", JSONObject(params))
+            put("token", pairingToken)
+        }.toString()
+
+        val request = Request.Builder()
+            .url(testServerUrl)
+            .post(RequestBody.create(requestBody, JSON))
+            .build()
+
+        return try {
+            val response = httpClient.newCall(request).execute()
+            val body = response.body?.string() ?: "empty response"
+            val resultJson = JSONObject(body)
+            val success = resultJson.optBoolean("success", false)
+            val message = resultJson.optString("message", "")
+            if (success) ToolResult.success(message) else ToolResult.error(message)
+        } catch (e: Exception) {
+            ToolResult.error("Loopback dispatch failed: ${e.message}")
         }
     }
 }

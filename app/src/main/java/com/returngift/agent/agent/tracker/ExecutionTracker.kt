@@ -37,7 +37,8 @@ object ExecutionTracker {
         TOOL_RESULT,
         ERROR,
         RECOVER,
-        TASK_COMPLETE
+        TASK_COMPLETE,
+        LEAVE  // P3.4: data egress event (cloud LLM response)
     }
 
     data class ExecutionEvent(
@@ -637,26 +638,140 @@ object ExecutionTracker {
     }
 
     /**
-     * P3.3: Delete all observation rows tagged with `screen:<packageName>`.
-     * Also cascades to task trajectories that have no remaining events.
-     * Returns the number of deleted observation rows.
+     * P3.4: Count observations per package (for P3.4 privacy dashboard).
+     * Returns a map of package name → observation count, sorted by count desc.
      */
-    fun forgetApp(packageName: String): Int {
+    fun observationCountsByPackage(limit: Int = 10): List<Pair<String, Int>> {
         return try {
             val db = getDb()
-            val source = "screen:$packageName"
-            // Delete observation rows tagged with this package
-            val deletedRows = db.delete(
+            val cursor = db.query(
                 TABLE_EVENTS,
-                "source = ? AND event_type = ?",
-                arrayOf(source, EventType.OBSERVE.name)
+                arrayOf("app_package", "COUNT(*) as cnt"),
+                "event_type = ? AND app_package IS NOT NULL",
+                arrayOf(EventType.OBSERVE.name),
+                "app_package",
+                null,
+                "cnt DESC",
+                limit.toString()
             )
-            XLog.i(TAG, "forgetApp($packageName): deleted $deletedRows observation rows")
-            deletedRows
+            val result = mutableListOf<Pair<String, Int>>()
+            while (cursor.moveToNext()) {
+                val pkg = cursor.getString(0) ?: continue
+                val count = cursor.getInt(1)
+                result.add(pkg to count)
+            }
+            cursor.close()
+            result
         } catch (e: Exception) {
-            XLog.e(TAG, "forgetApp failed: $packageName", e)
-            0
+            XLog.e(TAG, "observationCountsByPackage failed: ${e.message}", e)
+            emptyList()
         }
+    }
+
+    // ======================== P3.4: LEAVE event stats ========================
+
+    data class LeaveStats(
+        val count: Int,
+        val totalOutputTokens: Int,
+        val firstEventTimestampMs: Long,
+        val lastEventTimestampMs: Long
+    )
+
+    /**
+     * P3.4: Aggregate LEAVE events by (provider, model) for the privacy dashboard.
+     * Returns provider/model → stats so users can see how much data has been sent
+     * to each cloud LLM provider.
+     */
+    fun leaveEventStats(): Map<Pair<String, String>, LeaveStats> {
+        return try {
+            val db = getDb()
+            val cursor = db.query(
+                TABLE_EVENTS,
+                arrayOf(
+                    "metadata_json",
+                    "COUNT(*) as cnt",
+                    "MIN(timestamp) as first_ts",
+                    "MAX(timestamp) as last_ts"
+                ),
+                "event_type = ?",
+                arrayOf(EventType.LEAVE.name),
+                "metadata_json",
+                null,
+                null,
+                null
+            )
+
+            val result = mutableMapOf<Pair<String, String>, LeaveStats>()
+            while (cursor.moveToNext()) {
+                val metadata = cursor.optNullableString("metadata_json") ?: continue
+                val count = cursor.getInt(1)
+                val firstTs = cursor.getLong(2)
+                val lastTs = cursor.getLong(3)
+
+                val json = JSONObject(metadata)
+                val provider = json.optString("provider", "unknown")
+                val model = json.optString("model", "unknown")
+                val totalTokens = json.optInt("total_output_tokens", 0)
+
+                val key = provider to model
+                val existing = result[key]
+                if (existing != null) {
+                    result[key] = existing.copy(
+                        count = existing.count + count,
+                        totalOutputTokens = existing.totalOutputTokens + totalTokens,
+                        firstEventTimestampMs = minOf(existing.firstEventTimestampMs, firstTs),
+                        lastEventTimestampMs = maxOf(existing.lastEventTimestampMs, lastTs)
+                    )
+                } else {
+                    result[key] = LeaveStats(
+                        count = count,
+                        totalOutputTokens = totalTokens,
+                        firstEventTimestampMs = firstTs,
+                        lastEventTimestampMs = lastTs
+                    )
+                }
+            }
+            cursor.close()
+            result
+        } catch (e: Exception) {
+            XLog.e(TAG, "leaveEventStats failed: ${e.message}", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * P3.4: Record a LEAVE event (data egress to a cloud LLM provider).
+     *
+     * @param provider The provider name (openai, anthropic, omniroute)
+     * @param model The model name (e.g. "gpt-4o-mini", "claude-3-5-sonnet")
+     * @param inputTokens Approximate input tokens (optional, for future use)
+     * @param outputTokens Approximate output tokens from the response
+     * @param taskId Optional task ID to associate with the event
+     */
+    fun recordLeave(
+        provider: String,
+        model: String,
+        inputTokens: Int = 0,
+        outputTokens: Int,
+        taskId: String = "standalone"
+    ) {
+        // Do NOT record for LOCAL provider (zero-row invariant)
+        if (provider == "local") return
+
+        getDb().insert(TABLE_EVENTS, null, android.content.ContentValues().apply {
+            put("task_id", taskId)
+            put("step_index", 0)
+            put("event_type", EventType.LEAVE.name)
+            put("timestamp", System.currentTimeMillis())
+            put("metadata_json", JSONObject().apply {
+                put("provider", provider)
+                put("model", model)
+                put("input_tokens", inputTokens)
+                put("output_tokens", outputTokens)
+                put("total_output_tokens", outputTokens)
+            }.toString())
+        })
+        XLog.d(TAG, "LEAVE event recorded: provider=$provider model=$model outputTokens=$outputTokens")
     }
 }
 
