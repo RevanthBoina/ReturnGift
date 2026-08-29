@@ -487,7 +487,7 @@ class TaskOrchestrator(
         // executor, …), the UI must still receive a terminal event — otherwise the chat
         // FAB stays stuck in the generating state.
         try {
-        agentService.executeTask(agentPrompt, object : AgentCallback {
+            agentService.executeTask(agentPrompt, messageID, object : AgentCallback {
             /** Set by onTerminalOutcome (fires before the deferred terminal callback). */
             private var terminalOutcome = com.returngift.agent.agent.TerminalOutcome.COMPLETED
 
