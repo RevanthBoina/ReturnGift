@@ -60,11 +60,11 @@ class ScreenReadGateTest {
         val gate = ScreenReadGate(maxReads = 3)
         repeat(3) {
             gate.recordAction()
-            gate.requestRead(ScreenReadGate.Purpose.POST_ACTION_VERIFY, it)
-            gate.recordRead(it)
+            gate.requestRead(ScreenReadGate.Purpose.POST_ACTION_VERIFY, 100L)
+            gate.recordRead(100L)
         }
         gate.recordAction()
-        val decision = gate.requestRead(ScreenReadGate.Purpose.POST_ACTION_VERIFY, 99)
+        val decision = gate.requestRead(ScreenReadGate.Purpose.POST_ACTION_VERIFY, 99L)
         assertTrue(decision is ScreenReadGate.Decision.Deny)
         assertTrue((decision as ScreenReadGate.Decision.Deny).guidance.contains("budget", ignoreCase = true))
     }

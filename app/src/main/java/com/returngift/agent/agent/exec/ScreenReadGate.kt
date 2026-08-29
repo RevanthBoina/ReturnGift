@@ -44,7 +44,7 @@ class ScreenReadGate(
     var consecutivePassiveReads = 0
         private set
     private var actionsSinceLastRead = 0
-    private var lastSignature: Int? = null
+    private var lastSignature: Long? = null
 
     /** Record that a device action executed (resets the passive-read streak). */
     fun recordAction() {
@@ -54,9 +54,9 @@ class ScreenReadGate(
     /**
      * Ask permission for a read.
      * @param purpose   why the read is needed
-     * @param newSignature hash of the CURRENT screen state if cheaply known, else null
+     * @param newSignature fingerprint of the CURRENT screen state if cheaply known, else null
      */
-    fun requestRead(purpose: Purpose, newSignature: Int? = null): Decision {
+    fun requestRead(purpose: Purpose, newSignature: Long? = null): Decision {
         if (totalReads >= maxReads) {
             return Decision.Deny(
                 "Screen-read budget exhausted ($totalReads/$maxReads). " +
@@ -84,7 +84,7 @@ class ScreenReadGate(
     }
 
     /** Record that a read actually happened (call after a successful read). */
-    fun recordRead(signature: Int? = null) {
+    fun recordRead(signature: Long? = null) {
         // Passive = a re-read (there WAS a previous read) with no action in
         // between and no evidence of change. The first read is never passive.
         val wasPassive = actionsSinceLastRead == 0 && totalReads > 0 &&

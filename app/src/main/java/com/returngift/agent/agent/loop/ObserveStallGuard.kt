@@ -28,7 +28,7 @@ class ObserveStallGuard(
 
     enum class Verdict { OK, HINT, ABORT }
 
-    private var lastScreenHash: Int = 0
+    private var lastScreenHash: Long = 0
     private var consecutiveIdleRounds: Int = 0
     private var hintInjected: Boolean = false
 
@@ -36,9 +36,9 @@ class ObserveStallGuard(
      * Record one agent-loop round.
      *
      * @param madeAction true if any ACTION_TOOLS tool executed this round
-     * @param screenHash hash of the current screen content; 0 = unknown
+     * @param screenHash fingerprint of the current screen content; 0 = unknown
      */
-    fun recordRound(madeAction: Boolean, screenHash: Int): Verdict {
+    fun recordRound(madeAction: Boolean, screenHash: Long): Verdict {
         val screenChanged = screenHash != 0 && screenHash != lastScreenHash
         if (screenHash != 0) lastScreenHash = screenHash
 

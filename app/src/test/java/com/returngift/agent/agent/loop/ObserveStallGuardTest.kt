@@ -9,63 +9,63 @@ class ObserveStallGuardTest {
     @Test
     fun actionResetsIdleCounter() {
         val guard = ObserveStallGuard()
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 100))
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 100))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 100L))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 100L))
         // One action round clears the streak, so the next idle round is not a hint.
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = true, screenHash = 100))
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 100))
-        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 100))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = true, screenHash = 100L))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 100L))
+        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 100L))
     }
 
     @Test
     fun screenChangeResetsIdleCounter() {
         val guard = ObserveStallGuard()
-        guard.recordRound(madeAction = false, screenHash = 100)
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 100))
+        guard.recordRound(madeAction = false, screenHash = 100L)
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 100L))
         // Screen changed -> progress, streak cleared even without an action.
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 200))
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 200))
-        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 200))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 200L))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 200L))
+        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 200L))
     }
 
     @Test
     fun hintAtTwoIdleRounds() {
         val guard = ObserveStallGuard()
-        guard.recordRound(madeAction = false, screenHash = 42)
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 42))
-        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 42))
+        guard.recordRound(madeAction = false, screenHash = 42L)
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 42L))
+        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 42L))
     }
 
     @Test
     fun hintInjectedOnlyOncePerStreak() {
         val guard = ObserveStallGuard()
-        guard.recordRound(madeAction = false, screenHash = 42)
-        guard.recordRound(madeAction = false, screenHash = 42)
-        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 42))
+        guard.recordRound(madeAction = false, screenHash = 42L)
+        guard.recordRound(madeAction = false, screenHash = 42L)
+        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 42L))
         // 3rd consecutive idle round: hint already injected, not repeated.
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 42))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 42L))
     }
 
     @Test
     fun abortAtFourIdleRounds() {
         val guard = ObserveStallGuard()
-        guard.recordRound(madeAction = false, screenHash = 42)
-        guard.recordRound(madeAction = false, screenHash = 42)
-        guard.recordRound(madeAction = false, screenHash = 42)
-        guard.recordRound(madeAction = false, screenHash = 42)
-        assertEquals(ObserveStallGuard.Verdict.ABORT, guard.recordRound(madeAction = false, screenHash = 42))
+        guard.recordRound(madeAction = false, screenHash = 42L)
+        guard.recordRound(madeAction = false, screenHash = 42L)
+        guard.recordRound(madeAction = false, screenHash = 42L)
+        guard.recordRound(madeAction = false, screenHash = 42L)
+        assertEquals(ObserveStallGuard.Verdict.ABORT, guard.recordRound(madeAction = false, screenHash = 42L))
         // Stays aborted while the stall continues.
-        assertEquals(ObserveStallGuard.Verdict.ABORT, guard.recordRound(madeAction = false, screenHash = 42))
+        assertEquals(ObserveStallGuard.Verdict.ABORT, guard.recordRound(madeAction = false, screenHash = 42L))
     }
 
     @Test
     fun zeroHashCountsAsIdle() {
         val guard = ObserveStallGuard()
         // hash 0 = unknown screen; must never be treated as progress.
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 0))
-        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 0))
-        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 0))
-        assertEquals(ObserveStallGuard.Verdict.ABORT, guard.recordRound(madeAction = false, screenHash = 0))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 0L))
+        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 0L))
+        assertEquals(ObserveStallGuard.Verdict.OK, guard.recordRound(madeAction = false, screenHash = 0L))
+        assertEquals(ObserveStallGuard.Verdict.ABORT, guard.recordRound(madeAction = false, screenHash = 0L))
     }
 
     @Test
@@ -74,7 +74,7 @@ class ObserveStallGuardTest {
         // round on an unchanged screen and burned 121.8K / 74.1K tokens. The guard
         // must abort after hintThreshold..abortThreshold idle rounds, not at 200K tokens.
         val guard = ObserveStallGuard()
-        val screenHash = "com.example.app/home screen node tree".hashCode()
+        val screenHash = "com.example.app/home screen node tree".hashCode().toLong()
         val verdicts = (1..10).map { guard.recordRound(madeAction = false, screenHash = screenHash) }
         assertEquals(1, verdicts.count { it == ObserveStallGuard.Verdict.HINT })
         assertTrue(verdicts.count { it == ObserveStallGuard.Verdict.ABORT } >= 1)
@@ -89,9 +89,9 @@ class ObserveStallGuardTest {
     @Test
     fun customThresholdsAreHonored() {
         val guard = ObserveStallGuard(hintThreshold = 1, abortThreshold = 2)
-        guard.recordRound(madeAction = false, screenHash = 7) // first non-zero hash registers the screen
-        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 7))
-        assertEquals(ObserveStallGuard.Verdict.ABORT, guard.recordRound(madeAction = false, screenHash = 7))
+        guard.recordRound(madeAction = false, screenHash = 7L) // first non-zero hash registers the screen
+        assertEquals(ObserveStallGuard.Verdict.HINT, guard.recordRound(madeAction = false, screenHash = 7L))
+        assertEquals(ObserveStallGuard.Verdict.ABORT, guard.recordRound(madeAction = false, screenHash = 7L))
     }
 
     @Test
