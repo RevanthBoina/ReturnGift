@@ -45,6 +45,11 @@ class TaskOrchestrator(
     private lateinit var agentService: AgentService
     val taskSessionStore = TaskSessionStore()
 
+    // C4: supervisor scope for the orchestrator's background work (D4)
+    private val supervisorScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+    )
+
     internal var appContext: android.content.Context
         get() = injectedAppContext ?: ClawApplication.instance
         set(value) { injectedAppContext = value }
@@ -191,6 +196,13 @@ class TaskOrchestrator(
         taskEventCallback?.invoke(event)
         channelMsg?.let { sendChannelMessage(s.channel ?: Channel.LOCAL, it, s.messageId) }
         ForegroundService.resetToIdle(appContext); if (ok) setSuccessFloatingState() else setErrorFloatingState(); onTaskFinished()
+        // D3: dequeue and start next pending task if available
+        val next = taskSessionStore.tryDequeuePending()
+        if (next != null) {
+            XLog.i(TAG, "Dequeued pending task ${next.messageId}; restarting")
+            taskEventCallback?.invoke(TaskEvent.Progress(0, "Resuming queued task..."))
+            startNewTask(next.channel, next.taskText, next.messageId)
+        }
     }
 
     fun isTaskRunning(): Boolean = taskSessionStore.isTaskRunning()
@@ -233,12 +245,11 @@ class TaskOrchestrator(
             if (current.messageId == messageID && current.channel == channel) {
                 taskSessionStore.updateTaskText(task)
             } else {
-                XLog.w(
-                    TAG,
-                    "Rejecting new task while another task is still active: current=${current.messageId}/${current.channel} new=$messageID/$channel"
-                )
-                taskEventCallback?.invoke(TaskEvent.Failed("Another task is still running. Stop it first."))
-                ChannelManager.sendMessage(channel, "Another task is still running. Stop it first.", messageID)
+                // D2: enqueue instead of reject — bounded FIFO
+                XLog.i(TAG, "Another task is running; enqueuing new task for later")
+                taskSessionStore.enqueuePending(messageID, channel, task)
+                taskEventCallback?.invoke(TaskEvent.Queued(messageID, taskSessionStore.pendingCount))
+                ChannelManager.sendMessage(channel, "Task queued (${taskSessionStore.pendingCount} ahead). Stop current task to cancel.", messageID)
                 return
             }
         }
@@ -264,14 +275,14 @@ class TaskOrchestrator(
             }
             is PipelineRouter.Route.DirectTool -> {
                 XLog.i(TAG, "Pipeline Tier 1: DirectTool — ${route.toolName}")
-                Thread({
-                    // FIX 9: a stop arriving while this thread is starting must suppress the
+                supervisorScope.launch {
+                    // FIX 9: a stop arriving while this coroutine is starting must suppress the
                     // tool call (no per-tool mid-execution hooks; tools have their own
                     // settle/timeout logic).
                     if (taskSessionStore.snapshot().stopRequested) {
                         XLog.i(TAG, "DirectTool ${route.toolName} suppressed by stop request before execution")
                         terminal(messageID, ok = false, TaskEvent.Cancelled, "Task cancelled")
-                        return@Thread
+                        return@launch
                     }
                     // FIX 10: a hung tool must not hold the session lock. The invocation is
                     // bounded by the shared wall-clock guard; on timeout the future is
@@ -318,7 +329,7 @@ class TaskOrchestrator(
                     } else {
                         terminal(messageID, ok = true, TaskEvent.Completed(route.description), "✓ ${route.description}")
                     }
-                }, "direct-tool-${route.toolName}").start()
+                }
                 return
             }
             is PipelineRouter.Route.Skill -> {
@@ -330,7 +341,7 @@ class TaskOrchestrator(
                     if (skill != null) {
                         FloatingCircleManager.ensureShowing()
                         FloatingCircleManager.showTaskNotify(task, channel)
-                        Thread({
+                        supervisorScope.launch {
                             val skillResult = skillExecutor.execute(
                                 skill = skill,
                                 params = route.params,
@@ -383,7 +394,7 @@ class TaskOrchestrator(
                                 }
                                 startNewTask(channel, fallbackGoal, messageID, agentPromptOverride = override, isFallback = true)
                             }
-                        }, "skill-executor").start()
+                        }
                         return
                     }
                     XLog.w(TAG, "Skill ${route.skillId} not found, falling through to agent loop")
@@ -396,7 +407,7 @@ class TaskOrchestrator(
                 if (skill != null) {
                     FloatingCircleManager.ensureShowing()
                     FloatingCircleManager.showTaskNotify(task, channel)
-                    Thread({
+                    supervisorScope.launch {
                         val skillResult = skillExecutor.execute(
                             skill = skill,
                             params = emptyMap(),
@@ -433,7 +444,7 @@ class TaskOrchestrator(
                             }
                             startNewTask(channel, fallbackGoal, messageID, agentPromptOverride = override, isFallback = true)
                         }
-                    }, "skill-executor-redirect").start()
+                    }
                     return
                 }
                 XLog.w(TAG, "Redirected skill ${route.targetSkillId} not found, falling through to agent loop")

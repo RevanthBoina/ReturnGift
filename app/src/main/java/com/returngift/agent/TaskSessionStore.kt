@@ -6,11 +6,13 @@ package com.returngift.agent
 import com.returngift.agent.channel.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.ArrayDeque
 
 enum class TaskSessionPhase {
     IDLE,
     RUNNING,
     STOPPING,
+    PENDING,
 }
 
 data class TaskSessionState(
@@ -27,6 +29,20 @@ data class TaskSessionState(
 }
 
 /**
+ * A task held in the bounded FIFO pending queue. The orchestrator dequeues one whenever
+ * the live session releases its lock (via [TaskSessionStore.tryDequeuePending]).
+ *
+ * `messageId` is the persisted "m<hex>" id; `taskText` is the user message exactly as
+ * typed so re-routing (with `isFallback = false`) replays the same request.
+ */
+data class PendingTask(
+    val messageId: String,
+    val channel: Channel,
+    val taskText: String,
+    val enqueuedAtMillis: Long = System.currentTimeMillis(),
+)
+
+/**
  * Single authoritative state holder for the currently running task session.
  *
  * The orchestrator mutates this store; UI and service layers can observe it
@@ -37,6 +53,11 @@ class TaskSessionStore {
     private val lock = Any()
     private val _state = MutableStateFlow(TaskSessionState())
     val state: StateFlow<TaskSessionState> = _state
+    
+    // D1: Pending task queue (bounded FIFO)
+    private val pendingQueue = ArrayDeque<PendingTask>()
+    private val _pendingFlow = MutableStateFlow(emptyList<PendingTask>())
+    val pendingFlow: StateFlow<List<PendingTask>> = _pendingFlow
 
     fun snapshot(): TaskSessionState = _state.value
 
@@ -108,4 +129,23 @@ class TaskSessionStore {
             return current
         }
     }
+    
+    // D1: Pending queue operations
+    fun enqueuePending(messageId: String, channel: Channel, taskText: String) {
+        synchronized(lock) {
+            pendingQueue.addLast(PendingTask(messageId, channel, taskText))
+            _pendingFlow.value = pendingQueue.toList()
+        }
+    }
+    
+    fun tryDequeuePending(): PendingTask? {
+        synchronized(lock) {
+            val task = pendingQueue.pollFirst()
+            _pendingFlow.value = pendingQueue.toList()
+            return task
+        }
+    }
+    
+    val pendingCount: Int
+        get() = synchronized(lock) { pendingQueue.size }
 }
