@@ -26,6 +26,7 @@ import com.returngift.agent.widget.CommonToolbar
 import com.returngift.agent.widget.InputDialog
 import com.returngift.agent.widget.MenuGroup
 import com.returngift.agent.widget.MenuItem
+import com.returngift.agent.widget.QRCodeGenerator
 import com.returngift.agent.AppCapabilityCoordinator
 import com.returngift.agent.AppRequirement
 import com.returngift.agent.appViewModel
