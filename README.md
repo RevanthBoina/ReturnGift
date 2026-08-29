@@ -74,6 +74,7 @@ graph LR
 - **Local storage** — all vault data stored on-device using EncryptedSharedPreferences
 - **No cloud dependency** — task execution works entirely offline
 - **Audit logging** — all actions logged via XLog with no utterance text in logs
+- **Privacy Dashboard** — visible data egress ledger (LEAVE events by provider/model), per-app observation counts, one-tap data forgetting
 
 ### ✅ Quality Assurance
 - **E2E QA checklist** — 3702+ test cases covering all major functionality
