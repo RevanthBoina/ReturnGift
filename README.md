@@ -103,6 +103,7 @@ graph LR
 - **YAML-defined skills** — declarative task definitions for flexible extensibility
 - **Safety-first design** — confirmation gates, blocklist patterns, risk tiers
 - **Built-in + custom skills** — extend functionality without code changes
+- **Self-growing skills [human-approved]** — trajectories distill into draft skills after 3 successful runs; human PR approval gates promotion (no auto-merge)
 
 ### 🧠 Memory & Learning
 - **3-layer memory** — short-term, structured facts, and historical context

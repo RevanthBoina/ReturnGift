@@ -607,6 +607,40 @@ class SettingsActivity : BaseActivity() {
             }
         }
 
+        // Section 3: Data egress ledger (LEAVE events) - P3.4 Privacy Dashboard
+        val leaveStats = com.returngift.agent.agent.tracker.ExecutionTracker.leaveEventStats()
+        if (leaveStats.isNotEmpty()) {
+            // Add a divider header
+            privacyGroup.addMenuItem(
+                leadingIcon = android.R.drawable.ic_menu_manage,
+                title = "Data egress ledger (LEAVE events)",
+                onClick = { },
+                showDivider = true
+            ).apply {
+                setTrailingText("${leaveStats.size} providers")
+            }
+            leaveStats.forEachIndexed { i, ((provider, model), stats) ->
+                privacyGroup.addMenuItem(
+                    leadingIcon = android.R.drawable.ic_upload,
+                    title = "$provider/$model",
+                    onClick = {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("LEAVE event details")
+                            .setMessage("Provider: $provider\nModel: $model\nTotal events: ${stats.count}\nTotal output tokens: ${stats.totalOutputTokens}\nLast event: ${if (stats.lastEventTimestampMs > 0) java.text.DateFormat.getDateTimeInstance().format(java.util.Date(stats.lastEventTimestampMs)) else "Never"}")
+                            .setPositiveButton("OK", null)
+                            .show()
+                    },
+                    showDivider = i < leaveStats.size - 1
+                ).apply {
+                    val ratePerHour = if (stats.count > 0 && stats.firstEventTimestampMs > 0) {
+                        val hours = (System.currentTimeMillis() - stats.firstEventTimestampMs) / (1000 * 60 * 60)
+                        if (hours > 0) stats.count / hours else 0.0
+                    } else 0.0
+                    setTrailingText("${stats.count} events (${"%.1f".format(ratePerHour)}/hr)")
+                }
+            }
+        }
+
         // About
         val aboutGroup = findViewById<MenuGroup>(R.id.aboutGroup)
         aboutGroup.setTitle("About")
