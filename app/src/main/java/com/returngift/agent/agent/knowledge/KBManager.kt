@@ -248,10 +248,10 @@ object KBManager {
         }
     }
 
-    /**
-     * P3.3: Find vault files whose frontmatter `provenance` field matches the given origin.
-     * Used by `forgetApp` to find and remove vault artifacts tagged with a specific package.
-     */
+     /**
+      * P3.3: Find vault files whose frontmatter `provenance` field matches the given origin.
+      * Used by `forgetApp` to find and remove vault artifacts tagged with a specific source.
+      */
     fun vaultFilesForProvenance(origin: String): List<VaultFile> {
         return try {
             val vault = vaultDir()
@@ -262,7 +262,9 @@ object KBManager {
                     val rel = file.relativeTo(vault).path
                     val fm = readFrontmatter(rel)
                     val prov = fm["provenance"] ?: ""
-                    if (prov.endsWith(":$origin") || prov.contains(origin)) rel else null
+                    // Match: provenance equals the origin, OR provenance ends with ":origin"
+                    // (for sub-pattern matching like package-only lookups)
+                    if (prov == origin || prov.endsWith(":$origin")) rel else null
                 }
                 .map { rel -> VaultFile(rel, File(rel).name, 0L, 0L) }
                 .toList()
