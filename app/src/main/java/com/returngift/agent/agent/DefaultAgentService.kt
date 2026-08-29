@@ -803,11 +803,12 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                     "Task stopped: token usage reached the safety ceiling (${tokenStatus.formattedTokens} tokens, " +
                     "${tokenStatus.formattedCost}). The task was aborted to prevent runaway cost. " +
                     "Please re-run with a narrower instruction.",
-                    totalTokens,
-                    actualModelName
-                )
-                return
-            }
+totalTokens,
+                        actualModelName
+                    )
+                    ExecutionTracker.endRound(commit = false)
+                    return
+                }
 
             // DEBUG: log raw LLM response for tool calling diagnosis
             XLog.i(TAG, "runAgentLoop iter=$iterations response.text=${llmResponse.text?.take(500)}")
@@ -1297,9 +1298,10 @@ ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
                     SharedKnowledgeStore.decay()
                     LearnedProcedureStore.prune()
 
-                    callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
-                    return
-                }
+callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
+                     ExecutionTracker.endRound(commit = false)
+                     return
+                 }
 
                 // Opt-3: Adaptive Observe/Act Loop.
                 // Decides dynamically whether screen capture is necessary.
@@ -1338,9 +1340,10 @@ ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
                                 }
                                 is InterruptDetector.InterruptResult.PauseAndConfirm -> {
                                     XLog.w(TAG, "Interrupt PAUSE_AND_CONFIRM: ${interruptResult.description}")
-                                    callback.onSystemDialogBlocked(iterations, totalTokens)
-                                    return
-                                }
+callback.onSystemDialogBlocked(iterations, totalTokens)
+                                     ExecutionTracker.endRound(commit = false)
+                                     return
+                                 }
                                 is InterruptDetector.InterruptResult.Clean -> { /* proceed */ }
                             }
                         }
@@ -1461,6 +1464,7 @@ ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
                             totalTokens,
                             actualModelName
                         )
+                        ExecutionTracker.endRound(commit = false)
                         return
                     }
                     else -> {
