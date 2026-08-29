@@ -123,6 +123,11 @@ object ExecutionTracker {
 
     private var dbHelper: DbHelper? = null
 
+    // P2.6: Round-level batching — accumulate events in a pending list within a
+    // transaction and flush once per round, instead of one DB write per event.
+    private var batchActive = false
+    private val pendingEvents = mutableListOf<ExecutionEvent>()
+
     private fun getDb(): SQLiteDatabase {
         if (dbHelper == null) {
             synchronized(this) {
@@ -132,6 +137,52 @@ object ExecutionTracker {
             }
         }
         return dbHelper!!.writableDatabase
+    }
+
+    /**
+     * P2.6: Begin a new round batch. Opens a transaction and clears any stale
+     * pending events from a previous cancelled round.
+     */
+    fun beginRound() {
+        pendingEvents.clear()
+        batchActive = true
+        try {
+            getDb().beginTransactionNonExclusive()
+        } catch (e: Exception) {
+            batchActive = false
+            XLog.w(TAG, "beginRound: failed to open transaction: ${e.message}")
+        }
+    }
+
+    /**
+     * P2.6: End the current round batch.
+     * @param commit true = flush pending events to DB and commit the transaction.
+     *              false = discard pending events and rollback the transaction.
+     * Called at the natural end of each loop iteration (commit) and at every
+     * early-exit `return` site (rollback).
+     */
+    fun endRound(commit: Boolean) {
+        if (!batchActive) return
+        batchActive = false
+        try {
+            val db = getDb()
+            if (commit) {
+                // Flush all pending events in one batch
+                for (event in pendingEvents) {
+                    flushEventToDb(db, event)
+                }
+                pendingEvents.clear()
+                db.setTransactionSuccessful()
+                XLog.d(TAG, "endRound: committed ${pendingEvents.size} events")
+            } else {
+                pendingEvents.clear()
+                XLog.d(TAG, "endRound: rolled back")
+            }
+        } catch (e: Exception) {
+            XLog.w(TAG, "endRound: failed: ${e.message}")
+        } finally {
+            try { getDb().endTransaction() } catch (_: Exception) {}
+        }
     }
 
     fun beginTask(taskId: String, taskText: String, channel: String) {
@@ -287,8 +338,19 @@ object ExecutionTracker {
     }
 
     private fun recordEvent(event: ExecutionEvent) {
+        if (!batchActive) {
+            // No batch active — write immediately (fallback for beginTask/endTask
+            // which are called outside the round loop)
+            flushEventToDb(getDb(), event)
+        } else {
+            // Batch active — accumulate and flush at round end
+            pendingEvents.add(event)
+        }
+    }
+
+    /** Flush a single event to the database (used by recordEvent). */
+    private fun flushEventToDb(db: SQLiteDatabase, event: ExecutionEvent) {
         try {
-            val db = getDb()
             val cv = ContentValues().apply {
                 put("task_id", event.taskId)
                 put("step_index", event.stepIndex)

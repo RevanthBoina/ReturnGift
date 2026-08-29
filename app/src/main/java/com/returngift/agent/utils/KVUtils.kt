@@ -397,4 +397,14 @@ object KVUtils {
     fun getCustomLocalModelUrl(): String = getString(KEY_CUSTOM_LOCAL_MODEL_URL, "")
     fun setCustomLocalModelUrl(value: String) = putString(KEY_CUSTOM_LOCAL_MODEL_URL, value)
     fun hasCustomLocalModelUrl(): Boolean = getCustomLocalModelUrl().isNotBlank()
+
+    /**
+     * Atomically increment a closed-vocab counter (Int). No-op if KV is not
+     * yet initialized (e.g. unit tests before Application.onCreate ran).
+     */
+    fun increment(key: String) {
+        if (!isInitialized) return
+        val current = getInt(key, 0)
+        putInt(key, current + 1)
+    }
 }
