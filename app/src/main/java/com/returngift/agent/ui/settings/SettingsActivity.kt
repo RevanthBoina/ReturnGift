@@ -26,6 +26,7 @@ import com.returngift.agent.widget.CommonToolbar
 import com.returngift.agent.widget.InputDialog
 import com.returngift.agent.widget.MenuGroup
 import com.returngift.agent.widget.MenuItem
+import com.returngift.agent.widget.QRCodeGenerator
 import com.returngift.agent.AppCapabilityCoordinator
 import com.returngift.agent.AppRequirement
 import com.returngift.agent.appViewModel
@@ -347,9 +348,18 @@ class SettingsActivity : BaseActivity() {
             leadingIcon = R.drawable.ic_lan_config,
             title = getString(R.string.menu_lan_config),
             onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.LAN_CONFIG) },
-            showDivider = false
+            showDivider = true
         )
         menuItems[SettingsViewModel.MenuAction.LAN_CONFIG.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
+
+        // LAN Pairing — show the pairing token, server URL, and reset
+        menuItems[SettingsViewModel.MenuAction.LAN_PAIRING.name] = channelGroup.addMenuItem(
+            leadingIcon = android.R.drawable.ic_menu_info_details,
+            title = getString(R.string.menu_lan_pairing),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.LAN_PAIRING) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.LAN_PAIRING.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
 
 
         val modelGroup = findViewById<MenuGroup>(R.id.modelGroup)
@@ -1002,6 +1012,9 @@ class SettingsActivity : BaseActivity() {
                                     Toast.makeText(this@SettingsActivity, R.string.lan_config_no_wifi, Toast.LENGTH_SHORT).show()
                                 }
                             }
+                            SettingsViewModel.MenuAction.LAN_PAIRING -> {
+                                showLanPairingDialog()
+                            }
                             SettingsViewModel.MenuAction.LLM_CONFIG -> {
                                 llmConfigLauncher.launch(Intent(this@SettingsActivity, LlmConfigActivity::class.java))
                             }
@@ -1026,6 +1039,113 @@ class SettingsActivity : BaseActivity() {
             actionTitle = getString(R.string.unbind_action),
             onAction = onUnbind
         )
+    }
+
+    /**
+     * Show LAN pairing dialog: QR code + short code + server URL + reset button
+     */
+    private fun showLanPairingDialog() {
+        val token = com.returngift.agent.server.ServerTokenStore.getToken() ?: run {
+            Toast.makeText(this, R.string.lan_pairing_no_token, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val address = com.returngift.agent.server.ConfigServerManager.getAddress()
+        val shortCode = token.take(10)
+        val displayUrl = if (address != null) "http://$address" else getString(R.string.lan_pairing_no_server)
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 24)
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+        }
+
+        val titleView = android.widget.TextView(this).apply {
+            text = getString(R.string.lan_pairing_title)
+            setTextColor(getColor(R.color.colorTextPrimary))
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        container.addView(titleView)
+
+        val padding16 = (16 * resources.displayMetrics.density).toInt()
+        val padding8 = (8 * resources.displayMetrics.density).toInt()
+
+        // QR code
+        val qrBitmap = try {
+            val qrSize = 200
+            com.returngift.agent.widget.QRCodeGenerator.generate(token, qrSize)
+        } catch (e: Exception) {
+            null
+        }
+        if (qrBitmap != null) {
+            val qrView = android.widget.ImageView(this).apply {
+                setImageBitmap(qrBitmap)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    (220 * resources.displayMetrics.density).toInt(),
+                    (220 * resources.displayMetrics.density).toInt()
+                ).apply {
+                    topMargin = padding16
+                }
+            }
+            container.addView(qrView)
+        }
+
+        // Short code (first 10 chars)
+        val codeLabel = android.widget.TextView(this).apply {
+            text = getString(R.string.lan_pairing_short_code, shortCode)
+            setTextColor(getColor(R.color.colorTextPrimary))
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.MONOSPACE)
+        }
+        val codeParams = android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = padding16 }
+        codeLabel.layoutParams = codeParams
+        container.addView(codeLabel)
+
+        // Server URL
+        val urlLabel = android.widget.TextView(this).apply {
+            text = getString(R.string.lan_pairing_url, displayUrl)
+            setTextColor(getColor(R.color.colorTextSecondary))
+            textSize = 13f
+        }
+        val urlParams = android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = padding8 }
+        urlLabel.layoutParams = urlParams
+        container.addView(urlLabel)
+
+        // Reset button
+        val resetBtn = android.widget.Button(this).apply {
+            text = getString(R.string.lan_pairing_reset)
+            setOnClickListener {
+                AlertDialog.showWarm(
+                    context = this@SettingsActivity,
+                    title = getString(R.string.lan_pairing_reset_title),
+                    message = getString(R.string.lan_pairing_reset_message),
+                    actionTitle = getString(R.string.lan_pairing_reset),
+                    onAction = {
+                        val newToken = com.returngift.agent.server.ServerTokenStore.generateToken()
+                        com.returngift.agent.server.ServerTokenStore.storeToken(newToken)
+                        Toast.makeText(this@SettingsActivity, R.string.lan_pairing_reset_done, Toast.LENGTH_SHORT).show()
+                        showLanPairingDialog()
+                    }
+                )
+            }
+        }
+        val resetParams = android.widget.LinearLayout.LayoutParams(
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = padding16 }
+        resetBtn.layoutParams = resetParams
+        container.addView(resetBtn)
+
+        AlertDialog.Builder(this)
+            .setView(container)
+            .setNegativeButton(R.string.common_close, null)
+            .show()
     }
 
     private fun showBudgetDialog() {

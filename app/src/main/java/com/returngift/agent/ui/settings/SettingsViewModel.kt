@@ -286,7 +286,7 @@ class SettingsViewModel : ViewModel() {
      */
     enum class MenuAction {
         DISCORD, TELEGRAM, WECHAT,
-        LAN_CONFIG,
+        LAN_CONFIG, LAN_PAIRING,
         LLM_CONFIG
     }
 }

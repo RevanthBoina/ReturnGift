@@ -272,73 +272,91 @@ const i18nMessages = {
     toggle_visibility: '显示/隐藏',
     save_btn: '保存配置',
     saving: '保存中...',
-    save_success: '配置已保存，通道将自动重连',
-    save_failed: '保存失败',
-    unknown_error: '未知错误',
-  },
-  'en': {
-    title: 'ReturnGift Config',
-    subtitle: 'Configure LLM and credentials for DingTalk, Feishu, QQ, Discord, Telegram',
-    loading: 'Loading...',
-    llm_title: 'LLM Config',
-    llm_api_key: 'API Key',
-    llm_base_url: 'Base URL',
-    llm_model_name: 'Model Name',
-    ph_llm_api_key: 'e.g. sk-xxx (leave empty to keep current)',
-    ph_llm_base_url: 'e.g. https://api.openai.com/v1 (empty = default)',
-    ph_llm_model: 'e.g. gpt-4o, gpt-4o-mini',
-    llm_tip: 'API Key is stored locally only. You can also edit in Settings → LLM Config',
-    load_failed: 'Failed to load, please check connection',
-    dingtalk: 'DingTalk',
-    feishu: 'Feishu (Lark)',
-    ph_dingtalk_id: 'Enter Client ID',
-    ph_dingtalk_secret: 'Enter Client Secret',
-    ph_feishu_id: 'Enter App ID',
-    ph_feishu_secret: 'Enter App Secret',
-    ph_qq_id: 'Enter QQ Bot App ID',
-    ph_qq_secret: 'Enter App Secret',
-    ph_discord_token: 'Enter Discord Bot Token',
-    discord_tip: 'Enable Message Content Intent in Discord Developer Portal',
-    ph_telegram_token: 'Enter Telegram Bot Token',
-    telegram_tip: 'Create a bot via @BotFather and get the token',
-    toggle_visibility: 'Show/Hide',
-    save_btn: 'Save',
-    saving: 'Saving...',
-    save_success: 'Saved. Channels will reconnect automatically.',
-    save_failed: 'Save failed',
-    unknown_error: 'Unknown error',
-  },
-  'ja': {
-    title: 'ReturnGift 設定',
-    subtitle: 'LLM と DingTalk、Feishu、QQ、Discord、Telegram の資格情報を設定',
-    loading: '読み込み中...',
-    llm_title: 'LLM 設定',
-    llm_api_key: 'API Key',
-    llm_base_url: 'Base URL',
-    llm_model_name: 'モデル名',
-    ph_llm_api_key: '例: sk-xxx（空欄で現状維持）',
-    ph_llm_base_url: '例: https://api.openai.com/v1（空欄でデフォルト）',
-    ph_llm_model: '例: gpt-4o、gpt-4o-mini',
-    llm_tip: 'API Key は端末内にのみ保存されます。設定 → LLM 設定 からも変更可能',
-    load_failed: '読み込みに失敗しました。接続を確認してください',
-    dingtalk: 'DingTalk',
-    feishu: 'Feishu (Lark)',
-    ph_dingtalk_id: 'Client ID を入力',
-    ph_dingtalk_secret: 'Client Secret を入力',
-    ph_feishu_id: 'App ID を入力',
-    ph_feishu_secret: 'App Secret を入力',
-    ph_qq_id: 'QQ ボット App ID を入力',
-    ph_qq_secret: 'App Secret を入力',
-    ph_discord_token: 'Discord Bot Token を入力',
-    discord_tip: 'Discord Developer Portal で Message Content Intent を有効にしてください',
-    ph_telegram_token: 'Telegram Bot Token を入力',
-    telegram_tip: '@BotFather で Bot を作成して Token を取得してください',
-    toggle_visibility: '表示/非表示',
-    save_btn: '保存',
-    saving: '保存中...',
-    save_success: '設定を保存しました。チャネルは自動的に再接続されます。',
-    save_failed: '保存に失敗しました',
-    unknown_error: '不明なエラー',
+save_success: '配置已保存，通道将自动重连',
+     save_failed: '保存失败',
+     unknown_error: '未知错误',
+     pairing_required: '需要配对',
+     pairing_instructions: '请在 ReturnGift 应用的设置 → LAN 配置中获取配对令牌，然后在此输入',
+     enter_token: '输入配对令牌',
+     submit: '提交',
+     token_required: '请先输入令牌',
+     show_secrets: '显示完整凭证',
+   },
+   'en': {
+     title: 'ReturnGift Config',
+     subtitle: 'Configure LLM and credentials for DingTalk, Feishu, QQ, Discord, Telegram',
+     loading: 'Loading...',
+     llm_title: 'LLM Config',
+     llm_api_key: 'API Key',
+     llm_base_url: 'Base URL',
+     llm_model_name: 'Model Name',
+     ph_llm_api_key: 'e.g. sk-xxx (leave empty to keep current)',
+     ph_llm_base_url: 'e.g. https://api.openai.com/v1 (empty = default)',
+     ph_llm_model: 'e.g. gpt-4o, gpt-4o-mini',
+     llm_tip: 'API Key is stored locally only. You can also edit in Settings → LLM Config',
+     load_failed: 'Failed to load, please check connection',
+     dingtalk: 'DingTalk',
+     feishu: 'Feishu (Lark)',
+     ph_dingtalk_id: 'Enter Client ID',
+     ph_dingtalk_secret: 'Enter Client Secret',
+     ph_feishu_id: 'Enter App ID',
+     ph_feishu_secret: 'Enter App Secret',
+     ph_qq_id: 'Enter QQ Bot App ID',
+     ph_qq_secret: 'Enter App Secret',
+     ph_discord_token: 'Enter Discord Bot Token',
+     discord_tip: 'Enable Message Content Intent in Discord Developer Portal',
+     ph_telegram_token: 'Enter Telegram Bot Token',
+     telegram_tip: 'Create a bot via @BotFather and get the token',
+     toggle_visibility: 'Show/Hide',
+     save_btn: 'Save',
+     saving: 'Saving...',
+     save_success: 'Saved. Channels will reconnect automatically.',
+     save_failed: 'Save failed',
+     unknown_error: 'Unknown error',
+     pairing_required: 'Pairing Required',
+     pairing_instructions: 'Get the pairing token from Settings → LAN Config in the ReturnGift app, then enter it here',
+     enter_token: 'Enter pairing token',
+     submit: 'Submit',
+     token_required: 'Please enter the token',
+     show_secrets: 'Show full credentials',
+   },
+   'ja': {
+     title: 'ReturnGift 設定',
+     subtitle: 'LLM と DingTalk、Feishu、QQ、Discord、Telegram の資格情報を設定',
+     loading: '読み込み中...',
+     llm_title: 'LLM 設定',
+     llm_api_key: 'API Key',
+     llm_base_url: 'Base URL',
+     llm_model_name: 'モデル名',
+     ph_llm_api_key: '例: sk-xxx（空欄で現状維持）',
+     ph_llm_base_url: '例: https://api.openai.com/v1（空欄でデフォルト）',
+     ph_llm_model: '例: gpt-4o、gpt-4o-mini',
+     llm_tip: 'API Key は端末内にのみ保存されます。設定 → LLM 設定 からも変更可能',
+     load_failed: '読み込みに失敗しました。接続を確認してください',
+     dingtalk: 'DingTalk',
+     feishu: 'Feishu (Lark)',
+     ph_dingtalk_id: 'Client ID を入力',
+     ph_dingtalk_secret: 'Client Secret を入力',
+     ph_feishu_id: 'App ID を入力',
+     ph_feishu_secret: 'App Secret を入力',
+     ph_qq_id: 'QQ ボット App ID を入力',
+     ph_qq_secret: 'App Secret を入力',
+     ph_discord_token: 'Discord Bot Token を入力',
+     discord_tip: 'Discord Developer Portal で Message Content Intent を有効にしてください',
+     ph_telegram_token: 'Telegram Bot Token を入力',
+     telegram_tip: '@BotFather で Bot を作成して Token を取得してください',
+     toggle_visibility: '表示/非表示',
+     save_btn: '保存',
+     saving: '保存中...',
+     save_success: '設定を保存しました。チャネルは自動的に再接続されます。',
+     save_failed: '保存に失敗しました',
+     unknown_error: '不明なエラー',
+     pairing_required: 'ペアリングが必要です',
+     pairing_instructions: 'ReturnGift アプリの「設定 → LAN 設定」でペアリング令牌を取得して、ここに入力してください',
+     enter_token: 'ペアリング令牌を入力',
+     submit: '送信',
+     token_required: '令牌を入力してください',
+     show_secrets: '完全な資格情報を表示',
   },
 };
 
@@ -390,63 +408,166 @@ const fields = ['dingtalkAppKey', 'dingtalkAppSecret', 'feishuAppId', 'feishuApp
 const llmFields = ['llmApiKey', 'llmBaseUrl', 'llmModelName'];
 
 async function load() {
-  try {
-    const [chanRes, llmRes] = await Promise.all([fetch('/api/channels'), fetch('/api/llm')]);
-    const chanJson = await chanRes.json();
-    const llmJson = await llmRes.json();
-    if (chanJson.code === 0 && chanJson.data) {
-      fields.forEach(f => {
-        const el = document.getElementById(f);
-        if (el && chanJson.data[f]) el.value = chanJson.data[f];
-      });
+    const token = getUrlParameter('token') || localStorage.getItem('pairingToken');
+    const headers = {};
+    if (token) headers['X-Server-Token'] = token;
+    
+    try {
+        const [chanRes, llmRes] = await Promise.all([
+            fetch('/api/channels', { headers }),
+            fetch('/api/llm', { headers })
+        ]);
+        const chanJson = await chanRes.json();
+        const llmJson = await llmRes.json();
+        
+        // Check for authentication errors
+        if (chanRes.status === 401 || llmRes.status === 401) {
+            showPromptForToken();
+            return;
+        }
+        
+        if (chanJson.code === 0 && chanJson.data) {
+            fields.forEach(f => {
+                const el = document.getElementById(f);
+                if (el && chanJson.data[f]) el.value = chanJson.data[f];
+            });
+        }
+        if (llmJson.code === 0 && llmJson.data) {
+            llmFields.forEach(f => {
+                const el = document.getElementById(f);
+                if (el && llmJson.data[f] !== undefined) el.value = llmJson.data[f] || '';
+            });
+        }
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+        
+        // Show mask/unmask toggle if we got data
+        if (token) {
+            showRevealToggle();
+        }
+    } catch (e) {
+        document.getElementById('loading').textContent = t('load_failed');
+        console.error(e);
     }
-    if (llmJson.code === 0 && llmJson.data) {
-      llmFields.forEach(f => {
-        const el = document.getElementById(f);
-        if (el && llmJson.data[f] !== undefined) el.value = llmJson.data[f] || '';
-      });
-    }
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
-  } catch (e) {
-    document.getElementById('loading').textContent = t('load_failed');
-  }
 }
 
 async function save() {
-  const btn = document.getElementById('saveBtn');
-  btn.disabled = true;
-  btn.textContent = t('saving');
-  try {
-    const chanBody = {};
-    fields.forEach(f => {
-      const el = document.getElementById(f);
-      if (el) chanBody[f] = el.value.trim();
-    });
-    const llmBody = {};
-    llmFields.forEach(f => {
-      const el = document.getElementById(f);
-      if (el) llmBody[f] = el.value.trim();
-    });
-    const [chanRes, llmRes] = await Promise.all([
-      fetch('/api/channels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chanBody) }),
-      fetch('/api/llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(llmBody) })
-    ]);
-    const chanJson = await chanRes.json();
-    const llmJson = await llmRes.json();
-    if (chanJson.code === 0 && llmJson.code === 0) {
-      showToast(t('save_success'), 'success');
-      setTimeout(load, 500);
-    } else {
-      const msg = chanJson.code !== 0 ? chanJson.message : llmJson.message;
-      showToast(t('save_failed') + ': ' + (msg || t('unknown_error')), 'error');
+    const token = getUrlParameter('token') || localStorage.getItem('pairingToken');
+    if (!token) {
+        showToast('Authentication required', 'error');
+        return;
     }
-  } catch (e) {
-    showToast(t('save_failed') + ': ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = t('save_btn');
-  }
+    
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    btn.textContent = t('saving');
+    try {
+        const headers = { 'Content-Type': 'application/json', 'X-Server-Token': token };
+        const chanBody = {};
+        fields.forEach(f => {
+            const el = document.getElementById(f);
+            if (el) chanBody[f] = el.value.trim();
+        });
+        const llmBody = {};
+        llmFields.forEach(f => {
+            const el = document.getElementById(f);
+            if (el) llmBody[f] = el.value.trim();
+        });
+        
+        const [chanRes, llmRes] = await Promise.all([
+            fetch('/api/channels', { method: 'POST', headers, body: JSON.stringify(chanBody) }),
+            fetch('/api/llm', { method: 'POST', headers, body: JSON.stringify(llmBody) })
+        ]);
+        
+        const chanJson = await chanRes.json();
+        const llmJson = await llmRes.json();
+        
+        if (chanJson.code === 0 && llmJson.code === 0) {
+            showToast(t('save_success'), 'success');
+            setTimeout(() => load(), 500);
+        } else {
+            const msg = chanJson.code !== 0 ? chanJson.message : llmJson.message;
+            showToast(t('save_failed') + ': ' + (msg || t('unknown_error')), 'error');
+        }
+    } catch (e) {
+        showToast(t('save_failed') + ': ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = t('save_btn');
+    }
+}
+
+function getUrlParameter(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+}
+
+function showPromptForToken() {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').innerHTML = `
+        <div class="card" style="text-align: center; padding: 40px;">
+            <h2>${t('pairing_required')}</h2>
+            <p>${t('pairing_instructions')}</p>
+            <div style="margin: 24px 0;">
+                <input type="password" id="tokenInput" placeholder="${t('enter_token')}" 
+                       style="width: 80%; max-width: 300px; padding: 12px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <button class="btn" onclick="submitToken()" style="margin-top: 16px;">
+                ${t('submit')}
+            </button>
+            <div id="tokenError" style="color: #ff3b30; margin-top: 12px; min-height: 20px;"></div>
+        </div>
+    `;
+}
+
+function submitToken() {
+    const token = document.getElementById('tokenInput').value.trim();
+    if (!token) {
+        document.getElementById('tokenError').textContent = t('token_required');
+        return;
+    }
+    
+    // Store token for future use
+    localStorage.setItem('pairingToken', token);
+    // Reload the page with token parameter
+    const url = new URL(window.location);
+    url.searchParams.set('token', token);
+    window.location.href = url.toString();
+}
+
+function showRevealToggle() {
+    const container = document.querySelector('.container');
+    const revealDiv = document.createElement('div');
+    revealDiv.style.textAlign = 'center';
+    revealDiv.style.margin = '24px 0';
+    revealDiv.innerHTML = `
+        <label style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; color: #86868b;">
+            <input type="checkbox" id="revealToggle" style="width: 16px; height: 16px;">
+            <span>${t('show_secrets')}</span>
+        </label>
+    `;
+    container.appendChild(revealDiv);
+    
+    const checkbox = document.getElementById('revealToggle');
+    checkbox.addEventListener('change', function() {
+        if (this.checked) {
+            // Add reveal parameter and reload
+            const url = new URL(window.location);
+            url.searchParams.set('reveal', '1');
+            window.location.href = url.toString();
+        } else {
+            // Remove reveal parameter and reload
+            const url = new URL(window.location);
+            url.searchParams.delete('reveal');
+            window.location.href = url.toString();
+        }
+    });
+    
+    // Check if reveal is currently active
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('reveal') === '1') {
+        checkbox.checked = true;
+    }
 }
 
 function showToast(msg, type) {
