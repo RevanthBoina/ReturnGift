@@ -20,7 +20,7 @@ import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.agent.InterruptDetector
 import com.returngift.agent.agent.AllowListToolGate
 import com.returngift.agent.agent.UndoManager
-import com.returngift.agent.utils.XLog
+import com.returngift.agent.agent.memory.LearnedProcedureStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dev.langchain4j.data.message.AiMessage
@@ -30,7 +30,6 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.data.message.UserMessage
 import dev.langchain4j.agent.tool.ToolExecutionRequest
 import com.returngift.agent.agent.memory.SharedKnowledgeStore
-import com.returngift.agent.agent.memory.LearnedProcedureStore
 import com.returngift.agent.agent.tracker.ExecutionTracker
 import com.returngift.agent.agent.session.AppSessionManager
 import com.returngift.agent.agent.loop.ObservationPolicy
@@ -1095,6 +1094,8 @@ class DefaultAgentService : AgentService {
                     execBudget.recordAction()?.let { breach ->
                         XLog.e(TAG, "Execution budget breach: ${breach.detail}")
                         ExecutionTracker.endTask(taskId, "BUDGET_EXCEEDED", iterations, totalTokens)
+                        // P1.3a: Record failure for learned procedure learning
+                        ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
                         callback.onComplete(
                             iterations,
                             "Task stopped: execution budget exceeded (${breach.detail}). " +
@@ -1159,8 +1160,10 @@ class DefaultAgentService : AgentService {
                         val budgetBreach = execBudget.recordRetry(stateKey)
                         if (budgetBreach?.violation == com.returngift.agent.agent.exec.ExecutionBudget.Violation.RETRY_BUDGET) {
                             XLog.e(TAG, "Watchdog recovery budget exhausted for state $stateKey (${recovery.strategy}) — stopping task")
-                            ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
-                            callback.onComplete(
+ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
+                        // P1.3a: Record failure for learned procedure learning
+                        ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
+                        callback.onComplete(
                                 iterations,
                                 "Task stopped: ${recovery.message} " +
                                     "Automatic recovery was already attempted " +
@@ -1393,6 +1396,8 @@ class DefaultAgentService : AgentService {
                         XLog.w(TAG, "StuckDetector AUTO_KILL at iteration $iterations: ${detection.signal.description}")
                         val status = tokenMonitor.getStatus()
                         ExecutionTracker.endTask(taskId, "AUTO_KILL", iterations, totalTokens)
+                        // P1.3a: Record failure for learned procedure learning
+                        ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
                         callback.onComplete(
                             iterations,
                             "Task stopped: agent was stuck (${detection.signal.description}). " +
@@ -1415,6 +1420,8 @@ class DefaultAgentService : AgentService {
                 ObserveStallGuard.Verdict.ABORT -> {
                     XLog.e(TAG, "ObserveStallGuard ABORT at iteration $iterations (observe-only stall)")
                     ExecutionTracker.endTask(taskId, "STALL_ABORT", iterations, totalTokens)
+                    // P1.3a: Record failure for learned procedure learning
+                    ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
                     val status = tokenMonitor.getStatus()
                     callback.onComplete(
                         iterations,
