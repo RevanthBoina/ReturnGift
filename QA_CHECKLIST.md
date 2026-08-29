@@ -712,8 +712,14 @@ When in doubt, rerun the smaller bundle first, then expand only if something dri
 
 ## D. Local LLM â€” Chat
 
-- [ ] **D1. Pure chat**: switch to Local LLM â†’ "hello" â†’ on-device reply in bot bubble
-- [ ] **D2. Chat tab has no task ability**: type "open YouTube" in Chat tab â†’ LLM responds conversationally (doesn't try to control phone)
+- [ ] **D1. Pure chat**: switch to Local LLM → "hello" → on-device reply in bot bubble
+- [ ] **D2. Chat tab has no task ability**: type "open YouTube" in Chat tab → LLM responds conversationally (doesn't try to control phone)
+- [ ] **D3. Task mode via toggle**: Local tab → tap 🗒 Task → input placeholder changes to "Describe a phone task...", input area tints orange
+- [ ] **D4. Task mode via Quick Task tap**: tap "⚡ How much battery left?" in Quick Tasks → input fills + auto-switches to Task mode
+- [ ] **D5. Monitor via Quick Tasks panel**: scroll to BACKGROUND → tap Monitor card → centered dialog → enter contact → Start → monitoring activates
+- [ ] **D6. Task sends correctly**: type "how much battery left" in Task mode → tap send → task executes, response in chat bubble
+- [ ] **D7. Top bar during task**: while task runs → orange "Task running..." + red "Stop" button visible
+- [ ] **D8. Send button becomes stop**: while task runs → send button turns red X → tapping it cancels task
 
 ## E. Local LLM â€” Task Mode (v9: unified chat screen)
 

@@ -57,4 +57,7 @@ sealed class TaskEvent {
 
     /** Thinking/content stream from LLM (non-streaming mode). */
     data class Thinking(val content: String) : TaskEvent()
+
+    /** Task was queued behind another running task. */
+    data class Queued(val messageId: String, val position: Int) : TaskEvent()
 }
