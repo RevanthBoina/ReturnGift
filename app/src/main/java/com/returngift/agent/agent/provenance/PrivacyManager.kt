@@ -57,13 +57,7 @@ object PrivacyManager {
         cacheCleared = true
 
         // (d) Clear AppSessionManager state for the package
-        val session = AppSessionManager.getActiveSession(safePackage)
-        if (session != null) {
-            // AppSessionManager doesn't have a per-package clear, so clear all and re-add others
-            // For simplicity, we clear the specific package's entry by recreating the map
-            // This is a bit heavy-handed but matches the "forget" semantics
-            clearAppSession(safePackage)
-        }
+        AppSessionManager.forgetApp(safePackage)
         sessionCleared = true
 
         XLog.i(TAG, "forgetApp($safePackage): tracker=$trackerDeleted vault=$vaultDeleted cacheCleared=$cacheCleared sessionCleared=$sessionCleared")
@@ -74,14 +68,6 @@ object PrivacyManager {
             sessionCleared = sessionCleared,
             message = "Forgot $safePackage (tracker: $trackerDeleted, vault: $vaultDeleted)"
         )
-    }
-
-    /**
-     * Clear a single app's session from AppSessionManager.
-     */
-    private fun clearAppSession(packageName: String) {
-        AppSessionManager.forgetApp(packageName)
-        XLog.d(TAG, "Removed $packageName from AppSessionManager")
     }
 
     /**
