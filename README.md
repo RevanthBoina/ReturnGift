@@ -682,6 +682,11 @@ flowchart LR
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v2.2.0
+- **Observation Provenance (P3.3)**: Added `ProvenanceTag` with Kind enum (SCREEN|WEB|EXTERNAL_AI|USER|SYSTEM) to stamp the origin of every observation. Observations are tagged `screen:<package>` for screen captures, `web:<hostname>` for web_fetch saves, etc. Provenance is stored in the `source` column of ExecutionTracker and in vault file frontmatter.
+- **Privacy Dashboard (P3.3)**: Added per-app observation counts in Settings → Privacy with "Forget all data" buttons. `forgetApp()` deletes observation rows, vault files matching the provenance origin, SelectorCache entries, and AppSessionManager state.
+- **Vault provenance display**: Files with provenance in frontmatter show a "Source: <provenance>" line in VaultActivity detail view.
+
 ### v2.1.0
 - **Shared Persistent Memory Across Chats**: Added `SharedKnowledgeStore` persistent cross-chat key-value memory layer storing user preferences, discovered facts, and app states that persist across conversations without polluting short-term dialogue context.
 - **Execution Trajectory Tracker**: Integrated `ExecutionTracker` recording append-only structured trajectories (observations, thoughts, tool actions, latencies, and outcomes) inspired by Browser Use and OpenHands event streams.
