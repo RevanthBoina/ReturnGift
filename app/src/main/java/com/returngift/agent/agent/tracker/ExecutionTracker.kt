@@ -29,6 +29,7 @@ object ExecutionTracker {
 
     enum class EventType {
         TASK_START,
+        TIER,
         OBSERVE,
         THINK,
         ACT,
@@ -158,6 +159,36 @@ object ExecutionTracker {
             XLog.i(TAG, "Execution trajectory started: $taskId ($taskText)")
         } catch (e: Exception) {
             XLog.e(TAG, "Failed to begin task trajectory: ${e.message}", e)
+        }
+    }
+
+    /**
+     * P1.1c: Record which tier a task was routed to at its start.
+     * tier is one of: "tier1", "tier2", "tier3"
+     * route is the action/tool name (tier1), skill id (tier2), or "agent-loop" (tier3)
+     */
+    fun recordTier(taskId: String, tier: String, route: String) {
+        // Closed-vocab guard: reject unexpected tier values
+        if (tier !in listOf("tier1", "tier2", "tier3")) {
+            XLog.w(TAG, "recordTier: rejected invalid tier value '$tier'")
+            return
+        }
+        try {
+            val metadata = JSONObject().apply {
+                put("tier", tier)
+                put("route", route)
+            }
+            recordEvent(
+                ExecutionEvent(
+                    taskId = taskId,
+                    stepIndex = 0,
+                    eventType = EventType.TIER,
+                    resultSummary = "$tier:$route",
+                    metadataJson = metadata.toString()
+                )
+            )
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to record tier event: ${e.message}", e)
         }
     }
 
