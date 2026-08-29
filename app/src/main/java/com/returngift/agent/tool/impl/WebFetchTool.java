@@ -3,7 +3,8 @@
 
 package com.returngift.agent.tool.impl;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.agent.provenance.ProvenanceHelper;
+import com.returngift.agent.agent.provenance.ProvenanceTag;
 import com.returngift.agent.R;
 import com.returngift.agent.agent.knowledge.KBManager;
 import com.returngift.agent.agent.retrieve.WebFetcher;
@@ -182,10 +183,13 @@ public class WebFetchTool extends BaseTool {
             String host = WebFetcher.INSTANCE.hostOf(url).replaceAll("[^A-Za-z0-9.-]", "_");
             String ts = new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date());
             String path = "research/" + host + "-" + ts + ".md";
-            Map<String, Object> frontmatter = new HashMap<>();
+            java.util.Map<String, Object> frontmatter = new java.util.HashMap<>();
             frontmatter.put("type", "research");
             frontmatter.put("source", url);
             frontmatter.put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()));
+            // P3.3: stamp provenance (web:<hostname>)
+            ProvenanceHelper.addToFrontmatter(frontmatter,
+                    new ProvenanceTag(ProvenanceTag.Kind.WEB, "web:" + host));
             // NB: KBManager.write returns kotlin.Result (value class → JVM name
             // mangling, uncallable from Java) — use the Boolean wrapper instead.
             boolean ok = KBManager.INSTANCE.writeFromJava(path, frontmatter,

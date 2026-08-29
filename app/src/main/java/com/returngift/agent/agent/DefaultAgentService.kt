@@ -13,6 +13,7 @@ import com.returngift.agent.agent.llm.LlmClient
 import com.returngift.agent.agent.llm.LlmClientFactory
 import com.returngift.agent.agent.llm.LlmResponse
 import com.returngift.agent.agent.llm.StreamingListener
+import com.returngift.agent.agent.provenance.ProvenanceTag
 import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.tool.impl.GetScreenInfoTool
@@ -686,12 +687,17 @@ class DefaultAgentService : AgentService {
                         // C5: use screen fingerprint instead of ad-hoc string hash
                         val fp = prewarmService?.getScreenFingerprint() ?: 0L
                         screenReadGate.recordRead(fp)
+                        // P3.3: stamp observation with provenance
+                        val foregroundPackage = prewarmService?.getForegroundPackage()
+                        val provenance = ProvenanceTag(ProvenanceTag.Kind.SCREEN, "screen:$foregroundPackage")
                         XLog.i(TAG, "runAgentLoop: pre-warm screen attached (${screenResult.data!!.length} chars)")
                         ExecutionTracker.recordObservation(
                             taskId = taskId,
                             stepIndex = 0,
                             screenHash = fp.toString(),
-                            screenSummary = screenResult.data!!
+                            screenSummary = screenResult.data!!,
+                            appPackage = foregroundPackage,
+                            provenance = provenance
                         )
                         // P1.2b: wrap observation content in untrusted delimiters so the model
                         // knows observed content is data, not instructions (Rule 15).
@@ -1354,6 +1360,9 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                         if (screenAfter != null && screenAfter.isSuccess && !screenAfter.data.isNullOrBlank()) {
                             // C5: use screen fingerprint instead of ad-hoc string hash
                             val screenFingerprint = a11ySvc?.getScreenFingerprint() ?: 0L
+                            // P3.3: stamp observation with provenance (foreground package)
+                            val foregroundPackage = a11ySvc?.getForegroundPackage()
+                            val provenance = ProvenanceTag(ProvenanceTag.Kind.SCREEN, "screen:$foregroundPackage")
                             // P2.1: delta observation — if fingerprint is stable and
                             // at least one action already occurred since the last full
                             // send, deliver a delta line instead of the full tree.
@@ -1367,7 +1376,9 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                                     taskId = taskId,
                                     stepIndex = iterations,
                                     screenHash = lastScreenHash.toString(),
-                                    screenSummary = deltaMsg
+                                    screenSummary = deltaMsg,
+                                    appPackage = foregroundPackage,
+                                    provenance = provenance
                                 )
                                 XLog.i(TAG, "Opt3: delta observation — screen unchanged (fp=$lastScreenHash)")
                                 // Continue to build enriched data with delta message
@@ -1385,7 +1396,9 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                                     taskId = taskId,
                                     stepIndex = iterations,
                                     screenHash = lastScreenHash.toString(),
-                                    screenSummary = screenAfter.data!!
+                                    screenSummary = screenAfter.data!!,
+                                    appPackage = foregroundPackage,
+                                    provenance = provenance
                                 )
                                 XLog.i(TAG, "Opt3: auto-attached screen after $toolName (${screenAfter.data!!.length} chars)")
                                 // Screen diff: extract text lines and compare with previous

@@ -8,6 +8,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.returngift.agent.ClawApplication
+import com.returngift.agent.agent.provenance.ProvenanceTag
 import com.returngift.agent.utils.XLog
 import org.json.JSONObject
 
@@ -23,7 +24,7 @@ object ExecutionTracker {
 
     private const val TAG = "ExecutionTracker"
     private const val DB_NAME = "execution_tracker.db"
-    private const val DB_VERSION = 2
+    private const val DB_VERSION = 3
     private const val TABLE_EVENTS = "execution_events"
     private const val TABLE_TASKS = "task_trajectories"
 
@@ -55,7 +56,9 @@ object ExecutionTracker {
         val metadataJson: String? = null,
         val targetResolution: String? = null,
         val verificationResult: String? = null,
-        val recoveryAction: String? = null
+        val recoveryAction: String? = null,
+        /** P3.3: provenance source tag — e.g. "screen:com.whatsapp" for screen observations. */
+        val source: String? = null
     )
 
     data class Trajectory(
@@ -103,10 +106,12 @@ object ExecutionTracker {
                     metadata_json TEXT,
                     target_resolution TEXT,
                     verification_result TEXT,
-                    recovery_action TEXT
+                    recovery_action TEXT,
+                    source TEXT
                 )
             """.trimIndent())
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_events_task ON $TABLE_EVENTS(task_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_events_source ON $TABLE_EVENTS(source)")
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -117,6 +122,11 @@ object ExecutionTracker {
                 db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN target_resolution TEXT")
                 db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN verification_result TEXT")
                 db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN recovery_action TEXT")
+            }
+            // v3: P3.3 provenance — add source column for observation origin tracking.
+            if (oldVersion < 3) {
+                db.execSQL("ALTER TABLE $TABLE_EVENTS ADD COLUMN source TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS idx_events_source ON $TABLE_EVENTS(source)")
             }
         }
     }
@@ -248,8 +258,10 @@ object ExecutionTracker {
         stepIndex: Int,
         screenHash: String,
         screenSummary: String,
-        appPackage: String? = null
+        appPackage: String? = null,
+        provenance: ProvenanceTag? = null
     ) {
+        val source = provenance?.toStorageString() ?: appPackage?.let { "screen:$it" }
         recordEvent(
             ExecutionEvent(
                 taskId = taskId,
@@ -257,7 +269,8 @@ object ExecutionTracker {
                 eventType = EventType.OBSERVE,
                 screenHash = screenHash,
                 screenSummary = screenSummary.take(300),
-                appPackage = appPackage
+                appPackage = appPackage,
+                source = source
             )
         )
     }
@@ -368,6 +381,7 @@ object ExecutionTracker {
                 put("target_resolution", event.targetResolution)
                 put("verification_result", event.verificationResult)
                 put("recovery_action", event.recoveryAction)
+                put("source", event.source)
             }
             db.insert(TABLE_EVENTS, null, cv)
         } catch (e: Exception) {
@@ -408,26 +422,27 @@ object ExecutionTracker {
                 "step_index ASC, id ASC"
             )
             while (eventsCursor.moveToNext()) {
-                events.add(
-                    ExecutionEvent(
-                        taskId = taskId,
-                        stepIndex = eventsCursor.getInt(eventsCursor.getColumnIndexOrThrow("step_index")),
-                        eventType = try { EventType.valueOf(eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("event_type"))) } catch (_: Exception) { EventType.ACT },
-                        timestamp = eventsCursor.getLong(eventsCursor.getColumnIndexOrThrow("timestamp")),
-                        screenHash = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("screen_hash")),
-                        screenSummary = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("screen_summary")),
-                        actionTool = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("action_tool")),
-                        actionParams = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("action_params")),
-                        resultSuccess = eventsCursor.getInt(eventsCursor.getColumnIndexOrThrow("result_success")) == 1,
-                        resultSummary = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("result_summary")),
-                        latencyMs = eventsCursor.getLong(eventsCursor.getColumnIndexOrThrow("latency_ms")),
-                        appPackage = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("app_package")),
-                        metadataJson = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("metadata_json")),
-                        targetResolution = eventsCursor.optNullableString("target_resolution"),
-                        verificationResult = eventsCursor.optNullableString("verification_result"),
-                        recoveryAction = eventsCursor.optNullableString("recovery_action")
+                    events.add(
+                        ExecutionEvent(
+                            taskId = taskId,
+                            stepIndex = eventsCursor.getInt(eventsCursor.getColumnIndexOrThrow("step_index")),
+                            eventType = try { EventType.valueOf(eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("event_type"))) } catch (_: Exception) { EventType.ACT },
+                            timestamp = eventsCursor.getLong(eventsCursor.getColumnIndexOrThrow("timestamp")),
+                            screenHash = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("screen_hash")),
+                            screenSummary = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("screen_summary")),
+                            actionTool = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("action_tool")),
+                            actionParams = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("action_params")),
+                            resultSuccess = eventsCursor.getInt(eventsCursor.getColumnIndexOrThrow("result_success")) == 1,
+                            resultSummary = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("result_summary")),
+                            latencyMs = eventsCursor.getLong(eventsCursor.getColumnIndexOrThrow("latency_ms")),
+                            appPackage = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("app_package")),
+                            metadataJson = eventsCursor.getString(eventsCursor.getColumnIndexOrThrow("metadata_json")),
+                            targetResolution = eventsCursor.optNullableString("target_resolution"),
+                            verificationResult = eventsCursor.optNullableString("verification_result"),
+                            recoveryAction = eventsCursor.optNullableString("recovery_action"),
+                            source = eventsCursor.optNullableString("source")
+                        )
                     )
-                )
             }
             eventsCursor.close()
 
@@ -588,6 +603,60 @@ object ExecutionTracker {
                 recoveryAction = recoveryAction?.take(200)
             )
         )
+    }
+
+    /**
+     * Count observations per package (for P3.4 privacy dashboard).
+     * Returns a map of package name → observation count, sorted by count desc.
+     */
+    fun observationCountsByPackage(limit: Int = 10): List<Pair<String, Int>> {
+        return try {
+            val db = getDb()
+            val cursor = db.query(
+                TABLE_EVENTS,
+                arrayOf("app_package", "COUNT(*) as cnt"),
+                "event_type = ? AND app_package IS NOT NULL",
+                arrayOf(EventType.OBSERVE.name),
+                "app_package",
+                null,
+                "cnt DESC",
+                limit.toString()
+            )
+            val result = mutableListOf<Pair<String, Int>>()
+            while (cursor.moveToNext()) {
+                val pkg = cursor.getString(0) ?: continue
+                val count = cursor.getInt(1)
+                result.add(pkg to count)
+            }
+            cursor.close()
+            result
+        } catch (e: Exception) {
+            XLog.e(TAG, "observationCountsByPackage failed: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * P3.3: Delete all observation rows tagged with `screen:<packageName>`.
+     * Also cascades to task trajectories that have no remaining events.
+     * Returns the number of deleted observation rows.
+     */
+    fun forgetApp(packageName: String): Int {
+        return try {
+            val db = getDb()
+            val source = "screen:$packageName"
+            // Delete observation rows tagged with this package
+            val deletedRows = db.delete(
+                TABLE_EVENTS,
+                "source = ? AND event_type = ?",
+                arrayOf(source, EventType.OBSERVE.name)
+            )
+            XLog.i(TAG, "forgetApp($packageName): deleted $deletedRows observation rows")
+            deletedRows
+        } catch (e: Exception) {
+            XLog.e(TAG, "forgetApp failed: $packageName", e)
+            0
+        }
     }
 }
 

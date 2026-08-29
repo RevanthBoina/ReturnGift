@@ -33,6 +33,7 @@ import com.returngift.agent.appViewModel
 import com.returngift.agent.server.ConfigServerManager
 import com.returngift.agent.service.ForegroundService
 import com.returngift.agent.support.DebugReportManager
+import com.returngift.agent.agent.provenance.PrivacyManager
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 import kotlinx.coroutines.Dispatchers
@@ -533,8 +534,11 @@ class SettingsActivity : BaseActivity() {
         }
 
         // Privacy — remembered personal-content consent grants (TTL'd; revoke per app)
+        // P3.3: Also show observation counts + "Forget all data" per package
         val privacyGroup = findViewById<MenuGroup>(R.id.privacyGroup)
         privacyGroup.setTitle("Privacy")
+
+        // Section 1: Personal-content consent grants
         val remembered = com.returngift.agent.agent.exec.PersonalContentConsentGuard.rememberedApps()
         if (remembered.isEmpty()) {
             privacyGroup.addMenuItem(
@@ -564,6 +568,41 @@ class SettingsActivity : BaseActivity() {
                     showDivider = i < remembered.size - 1
                 ).apply {
                     setTrailingText("Remembered — tap to revoke")
+                }
+            }
+        }
+
+        // Section 2: Per-app observation counts + "Forget all data"
+        val topPackages = com.returngift.agent.agent.tracker.ExecutionTracker.observationCountsByPackage(10)
+        if (topPackages.isNotEmpty()) {
+            // Add a divider header
+            privacyGroup.addMenuItem(
+                leadingIcon = android.R.drawable.ic_menu_my_calendar,
+                title = "Observed apps (tap to forget)",
+                onClick = { },
+                showDivider = true
+            ).apply {
+                setTrailingText("${topPackages.size} apps")
+            }
+            topPackages.forEachIndexed { i, (pkg, count) ->
+                privacyGroup.addMenuItem(
+                    leadingIcon = android.R.drawable.ic_menu_delete,
+                    title = pkg,
+                    onClick = {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Forget all data for $pkg?")
+                            .setMessage("This will delete:\n• $count screen observations\n• Associated vault files\n• Selector cache & session state\n\nThis action cannot be undone.")
+                            .setPositiveButton("Forget") { _, _ ->
+                                val result = PrivacyManager.forgetApp(pkg)
+                                Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                                recreate()
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    },
+                    showDivider = i < topPackages.size - 1
+                ).apply {
+                    setTrailingText("$count observations")
                 }
             }
         }
