@@ -17,6 +17,11 @@ import android.provider.AlarmClock
  */
 object TaskParser {
 
+    // ── Compiled regex objects (hoisted from per-call creates — TASK 3.1) ─────────
+    private val WS_Collapse = Regex("\\s+")
+    private val PHONE_TOKEN = Regex("[0-9][0-9\\s\\-+().]*")
+    private val EXT_PATTERN = Regex("x\\d+|ext\\.?\\s*\\d*")
+
     data class ParseResult(
         val action: String,
         val intent: Intent?,
@@ -37,7 +42,7 @@ object TaskParser {
      */
     internal fun normalize(raw: String): String {
         var s = raw.trim().lowercase()
-        s = Regex("\\s+").replace(s, " ")
+        s = WS_Collapse.replace(s, " ")
         var changed = true
         while (changed) {
             changed = false
@@ -61,7 +66,7 @@ object TaskParser {
      */
     private fun stripPoliteness(raw: String): String {
         var s = raw.trim()
-        s = Regex("\\s+").replace(s, " ")
+        s = WS_Collapse.replace(s, " ")
         var changed = true
         while (changed) {
             changed = false
@@ -141,7 +146,7 @@ object TaskParser {
      * limitation, A7): the candidate stops at the first non-numeric separator.
      */
     private fun extractPhoneNumber(text: String): String? {
-        val m = Regex("[0-9][0-9\\s\\-+().]*").find(text) ?: return null
+        val m = PHONE_TOKEN.find(text) ?: return null
         val candidate = m.value
         val digits = candidate.filter(Char::isDigit)
         if (digits.length < 3 || digits.length > 15) return null
@@ -199,7 +204,7 @@ object TaskParser {
         if (!message.any { it.isLetter() }) return null
 
         val contextual = setOf("that", "this", "it", "them", "above", "summary", "token")
-        val messageTokens = messageLowerCase.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val messageTokens = messageLowerCase.split(WS_Collapse).filter { it.isNotBlank() }
         if (messageTokens.any { it in contextual }) return null
 
         return ParseResult(
@@ -235,14 +240,14 @@ object TaskParser {
     private fun matchSms(normalized: String): ParseResult? {
         val m = SMS_VERB.find(normalized) ?: return null
         val target = m.groupValues[1].trim()
-        val numMatch = Regex("[0-9][0-9\\s\\-+().]*").find(target) ?: return null
+        val numMatch = PHONE_TOKEN.find(target) ?: return null
         val digits = numMatch.value.filter(Char::isDigit)
         if (digits.length < 3 || digits.length > 15) return null
         // Only a pure number opens the compose UI. Text beyond the number token
         // (e.g. "555-0100 to mom") makes the recipient ambiguous → fall through.
         val remainder = target.substring(numMatch.range.last + 1).trim()
         if (remainder.isNotEmpty()) {
-            val extOnly = remainder.lowercase().matches(Regex("x\\d+|ext\\.?\\s*\\d*"))
+            val extOnly = remainder.lowercase().matches(EXT_PATTERN)
             if (!extOnly) return null
         }
         return ParseResult(

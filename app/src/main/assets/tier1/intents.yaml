@@ -1,0 +1,329 @@
+tier1_intents:
+  # Order 0: compound guard
+  - id: compound
+    anchor: compound_guard
+    filler_prefix_table: []
+    exact_match_sets:
+      - BACK_EXACT
+      - HOME_EXACT
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 3
+      max_digits: 15
+    priority: 0
+
+  # Order 1: call
+  - id: call
+    anchor: start
+    filler_prefix_table:
+      - callback: "to"
+      - callback: "the number"
+      - callback: "the phone"
+    exact_match_sets: []
+    settings_keywords:
+      wifi: android.settings.WIFI_SETTINGS
+      bluetooth: android.settings.BLUETOOTH_SETTINGS
+      display: android.settings.DISPLAY_SETTINGS
+      brightness: android.settings.DISPLAY_SETTINGS
+      sound: android.settings.SOUND_SETTINGS
+      volume: android.settings.SOUND_SETTINGS
+      battery: android.intent.action.POWER_USAGE_SUMMARY
+      storage: android.settings.INTERNAL_STORAGE_SETTINGS
+      location: android.settings.LOCATION_SOURCE_SETTINGS
+      airplane: android.settings.AIRPLANE_MODE_SETTINGS
+      notification: android.settings.APP_NOTIFICATION_SETTINGS
+      accessibility: android.settings.ACCESSIBILITY_SETTINGS
+    vector_content:
+      - "a message"
+      - "message"
+      - "the message"
+      - "text"
+      - "a text"
+      - "sms"
+      - "an sms"
+      - "the sms"
+      - "a note"
+    contextual_words:
+      - "that"
+      - "this"
+      - "it"
+      - "them"
+      - "above"
+      - "summary"
+      - "token"
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 3
+      max_digits: 15
+    priority: 1
+
+  # Order 2: send_message
+  - id: send_message
+    anchor: find
+    filler_prefix_table:
+      - callback: "send"
+      - callback: "message"
+      - callback: "text"
+      - callback: "a message"
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content:
+      - "a message"
+      - "message"
+      - "the message"
+      - "text"
+      - "a text"
+      - "sms"
+      - "an sms"
+      - "the sms"
+      - "a note"
+    contextual_words:
+      - "that"
+      - "this"
+      - "it"
+      - "them"
+      - "above"
+      - "summary"
+      - "token"
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 3
+      max_digits: 15
+    priority: 2
+
+  # Order 3: sms
+  - id: sms
+    anchor: find
+    filler_prefix_table:
+      - callback: "sms"
+      - callback: "text"
+      - callback: "message"
+      - callback: "send an sms"
+      - callback: "send an text"
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content:
+      - "a message"
+      - "message"
+      - "the message"
+      - "text"
+      - "a text"
+      - "sms"
+      - "an sms"
+      - "the sms"
+      - "a note"
+    contextual_words:
+      - "that"
+      - "this"
+      - "it"
+      - "them"
+      - "above"
+      - "summary"
+      - "token"
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 3
+      max_digits: 15
+    priority: 3
+
+  # Order 4: alarm
+  - id: alarm
+    anchor: find
+    filler_prefix_table:
+      - callback: "set"
+      - callback: "create"
+      - callback: "wake"
+      - callback: "alarm"
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 1
+      max_digits: 2
+    priority: 4
+
+  # Order 4a: timer (corrected from spec table)
+  - id: timer
+    anchor: find
+    filler_prefix_table:
+      - callback: "set"
+      - callback: "start"
+      - callback: "timer"
+      - callback: "countdown"
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 1
+      max_digits: 3
+    priority: 4
+
+  # Order 5: screenshot
+  - id: screenshot
+    anchor: find
+    filler_prefix_table: []
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 0
+      max_digits: 0
+    priority: 5
+
+  # Order 6: flashlight
+  - id: flashlight
+    anchor: find
+    filler_prefix_table: []
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 0
+      max_digits: 0
+    priority: 6
+
+  # Order 7: camera
+  - id: camera
+    anchor: find
+    filler_prefix_table:
+      - callback: "open"
+      - callback: "launch"
+      - callback: "start"
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 0
+      max_digits: 0
+    priority: 7
+
+  # Order 8: back / home (combined)
+  - id: back
+    anchor: exact
+    filler_prefix_table: []
+    exact_match_sets:
+      - "back"
+      - "go back"
+      - "press back"
+      - "press the back button"
+      - "press the back key"
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 0
+      max_digits: 0
+    priority: 8
+
+  - id: home
+    anchor: exact
+    filler_prefix_table: []
+    exact_match_sets:
+      - "home"
+      - "go home"
+      - "press home"
+      - "press the home button"
+      - "press the home key"
+      - "go to the home screen"
+      - "go to home screen"
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 0
+      max_digits: 0
+    priority: 8
+
+  # Order 9: open_url
+  - id: open_url
+    anchor: find
+    filler_prefix_table:
+      - callback: "open"
+      - callback: "go to"
+      - callback: "visit"
+      - callback: "navigate to"
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 0
+      max_digits: 0
+    priority: 9
+
+  # Order 10: open_settings
+  - id: open_settings
+    anchor: find
+    filler_prefix_table:
+      - callback: "open"
+      - callback: "go to"
+      - callback: "the"
+      - callback: "settings"
+    exact_match_sets: []
+    settings_keywords:
+      wifi: android.settings.WIFI_SETTINGS
+      bluetooth: android.settings.BLUETOOTH_SETTINGS
+      display: android.settings.DISPLAY_SETTINGS
+      brightness: android.settings.DISPLAY_SETTINGS
+      sound: android.settings.SOUND_SETTINGS
+      volume: android.settings.SOUND_SETTINGS
+      battery: android.intent.action.POWER_USAGE_SUMMARY
+      storage: android.settings.INTERNAL_STORAGE_SETTINGS
+      location: android.settings.LOCATION_SOURCE_SETTINGS
+      airplane: android.settings.AIRPLANE_MODE_SETTINGS
+      notification: android.settings.APP_NOTIFICATION_SETTINGS
+      accessibility: android.settings.ACCESSIBILITY_SETTINGS
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 0
+      max_digits: 0
+    priority: 10
+
+  # Order 11: open_app
+  - id: open_app
+    anchor: suffix
+    filler_prefix_table:
+      - callback: "open"
+      - callback: "launch"
+      - callback: "start"
+    exact_match_sets: []
+    settings_keywords: {}
+    vector_content: []
+    contextual_words: []
+    not_app_name: []
+    bare_domain: []
+    number_rules:
+      min_digits: 0
+      max_digits: 0
+    priority: 11

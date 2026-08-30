@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 4dp-based spacing scale -->
+    <!-- rf_ = ReturnGift space -->
+    <dimen name="rf_space_2">2dp</dimen>
+    <dimen name="rf_space_4">4dp</dimen>
+    <dimen name="rf_space_6">6dp</dimen>
+    <dimen name="rf_space_8">8dp</dimen>
+    <dimen name="rf_space_12">12dp</dimen>
+    <dimen name="rf_space_16">16dp</dimen>
+    <dimen name="rf_space_20">20dp</dimen>
+    <dimen name="rf_space_24">24dp</dimen>
+    <dimen name="rf_space_32">32dp</dimen>
+    <dimen name="rf_space_40">40dp</dimen>
+
+    <!-- Derived from the scale -->
+    <dimen name="rf_bubble_max_width">260dp</dimen>
+    <dimen name="rf_card_min_height">40dp</dimen>
+
+    <!-- FAB inset: the 40dp vertical padding sites that appear in ChatScreen -->
+    <!-- rf_fab_inset is the vertical padding used around the FAB in ChatInputBar -->
+    <dimen name="rf_fab_inset">40dp</dimen>
+</resources>
