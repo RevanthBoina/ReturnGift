@@ -35,12 +35,14 @@ object ClarificationManager {
     private const val POLL_SLICE_MS = 250L
     private const val KEY_PERSISTED_QUESTION = "clarification_pending_question"
 
-    data class PendingQuestion(
+data class PendingQuestion(
         val id: String,
         val question: String,
         val choices: List<String>,
         val allowFreeText: Boolean,
         val createdAtMs: Long,
+        /** Closed vocab: "d3_send_confirm" for the D3 send-confirm flow, "generic" for other clarifications. */
+        val surface: String = "generic"
     )
 
     /** True when a question just resolved within [windowMs] — used by the chat
@@ -144,12 +146,16 @@ object ClarificationManager {
      * cancelled, or [timeoutMs] elapses. Returns the user's answer text, or null
      * on timeout/cancellation. Only one question can be pending at a time — a
      * second request while one is pending returns null immediately.
+     *
+     * @param surface Optional surface identifier: "d3_send_confirm" for the D3
+     *   send-confirm flow, "generic" for other clarifications. Defaults to "generic".
      */
     fun request(
         question: String,
         choices: List<String>,
         allowFreeText: Boolean,
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+        surface: String = "generic",
     ): String? {
         if (isMainThread()) {
             // Parking the UI thread would deadlock: the answer can only arrive via the UI.
@@ -167,18 +173,21 @@ object ClarificationManager {
                 choices = choices,
                 allowFreeText = allowFreeText,
                 createdAtMs = System.currentTimeMillis(),
+                surface = surface,
             )
             latch = CountDownLatch(1)
             answer = null
             cancelled = false
         }
-        XLog.i(TAG, "Clarification pending: \"$question\" choices=${choices.size} freeText=$allowFreeText")
+        XLog.i(TAG, "Clarification pending: \"$question\" choices=${choices.size} freeText=$allowFreeText surface=$surface")
         persistHook(pending)
         notifyListeners(pending)
         pending?.let { headsUpHook(it) }
 
         val activeLatch = latch
         val deadline = System.currentTimeMillis() + timeoutMs
+        // Start the remaining-ms ticker so the UI can show a countdown chip
+        remainingMsFlow.startTicker(deadline)
         while (true) {
             val remaining = deadline - System.currentTimeMillis()
             if (remaining <= 0) {
@@ -238,6 +247,8 @@ object ClarificationManager {
             cancelled = false
             lastResolvedAtMs = System.currentTimeMillis()
         }
+        // Stop the remaining-ms ticker so the UI countdown chip vanishes
+        remainingMsFlow.stopTicker()
         persistHook(null)
         notifyListeners(null)
         headsUpDismissHook()

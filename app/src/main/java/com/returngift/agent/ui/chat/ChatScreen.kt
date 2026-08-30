@@ -329,6 +329,18 @@ fun ChatScreen(
                             )
                         }
 
+                        // D3 send-confirm countdown chip
+                        val d3Surface = pendingClarification?.surface ?: "generic"
+                        // Observe remainingMs using collectAsState for proper compose integration
+                        val remainingMs by ClarificationManager.remainingMs.collectAsState()
+                        ClarificationChip(
+                            isD3 = d3Surface == "d3_send_confirm",
+                            remainingMs = remainingMs,
+                            onConfirm = { onClarificationAnswer("Send") },
+                            onCancel = { onStopAllTasks() },
+                            colors = colors,
+                        )
+
                         previewPlan?.let { plan ->
                             PreviewPlanCard(
                                 plan = plan,
@@ -620,7 +632,77 @@ private fun ChatTopBar(
                                         if (model.id == currentModel && !isLocalModel) {
                                             Spacer(Modifier.width(6.dp))
                                             Text("✓", fontSize = 12.sp, color = colors.accent)
-                                        }
+}
+}
+
+// ======================== D3 SEND CONFIRM COUNTDOWN CHIP ========================
+
+/**
+ * Countdown chip shown when a D3 send-confirm clarification is pending.
+ * Shown only when isD3 is true. Contains a send icon, "Sending? Tap Send" text,
+ * and a digit countdown block (5→1) in a stable 24×28dp box.
+ */
+@Composable
+private fun ConfirmCountdownChip(
+    isD3: Boolean,
+    remainingMs: Long,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+    colors: ReturnGiftColors,
+) {
+    if (!isD3 || remainingMs <= 0) return@ConfirmCountdownChip
+
+    val digit = kotlin.math.min(5, (remainingMs + 999) / 1000)
+    val digitString = digit.toString()
+
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.accent.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            // Send icon
+            Icon(
+                Icons.Default.ArrowUpward,
+                contentDescription = "Send",
+                tint = colors.accent,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            // Text
+            Text(
+                text = "Sending? Tap Send",
+                fontSize = 14.sp,
+                color = colors.textPrimary,
+            )
+            Spacer(Modifier.width(8.dp))
+            // Digit block - fixed 24dp wide × 28dp tall box
+            Box(
+                modifier = Modifier
+                    .width(24.dp)
+                    .height(28.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = digitString,
+                    fontSize = 16.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = colors.textPrimary,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            // Cancel button
+            TextButton(onClick = onCancel) {
+                Text("Cancel", color = Color(0xFFF44336), fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
                                     }
                                 },
                                 onClick = {
