@@ -1112,9 +1112,9 @@ callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agen
                           is PreActionJudge.Outcome.AskUser -> {
                               XLog.i(TAG, "PreActionJudge asking user: ${judgeOutcome.question}")
                               val clarification = com.returngift.agent.agent.clarify.ClarificationManager.request(
-                                      id = "judge_${System.currentTimeMillis()}",
                                       question = judgeOutcome.question,
                                       choices = listOf("Proceed", "Cancel"),
+                                      allowFreeText = false,
                               )
                               val answer = when (clarification?.trim()?.lowercase()) {
                                   "proceed" -> "yes"

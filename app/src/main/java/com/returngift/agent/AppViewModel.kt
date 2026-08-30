@@ -70,6 +70,19 @@ class AppViewModel : ViewModel() {
 
     fun isTaskRunning(): Boolean = taskSessionStore.isTaskRunning()
 
+    /** Number of tasks waiting in the queue (bounded to 1). */
+    fun pendingCount(): Int = taskSessionStore.pendingCount
+
+    /** Clear the pending queue (cancel queued task). */
+    fun clearPending() {
+        taskSessionStore.clearPending()
+    }
+
+    /** Start the pending task immediately. Enabled only when no task is running. */
+    fun startPendingNow() {
+        taskOrchestrator.startPendingNow()
+    }
+
     fun clearTaskCallback() {
         taskOrchestrator.taskEventCallback = null
     }

@@ -17,6 +17,7 @@ import com.returngift.agent.AppCapabilityCoordinator
 import com.returngift.agent.AppViewModel
 import com.returngift.agent.ServiceBindingState
 import com.returngift.agent.TaskEvent
+import com.returngift.agent.TaskOrchestrator
 import com.returngift.agent.channel.Channel
 import com.returngift.agent.ClawApplication
 import com.returngift.agent.agent.DirectDeviceDataGuard
@@ -88,6 +89,15 @@ class TaskFlowController(
     /** Live ask_user question the agent is parked on, or null. */
     val pendingClarification = androidx.compose.runtime.mutableStateOf<ClarificationManager.PendingQuestion?>(null)
 
+    /** Pending queue state (bounded to 1) — observed from TaskSessionStore. */
+    val pendingTasks = androidx.compose.runtime.mutableStateOf<List<com.returngift.agent.TaskSessionStore.PendingTask>>(emptyList())
+
+    private val pendingFlowJob: kotlinx.coroutines.Job = kotlinx.coroutines.Dispatchers.Main.immediate.launch {
+        appViewModel.taskSessionStore.pendingFlow.collect { pending ->
+            pendingTasks.value = pending
+        }
+    }
+
 
 
     /** Latest Preview (dry-run) mode plan, rendered as a plan card with
@@ -125,6 +135,7 @@ class TaskFlowController(
     /** Unregister UI listeners. Call from Activity.onDestroy. */
     fun release() {
         ClarificationManager.removeListener(clarificationListener)
+        pendingFlowJob.cancel()
     }
 
     /** Submit the user's answer to a parked ask_user question (choice tap or typed reply). */
@@ -155,6 +166,17 @@ class TaskFlowController(
         // Stale-bubble sweep: a previous task/chat may have left the placeholder
         // or the FAB thinking state behind (e.g. an exception killed a terminal event).
         sweepStaleTypingIndicator()
+// Cancel queued task: typed "cancel queue" drops the pending slot without
+        // touching the running task. Case-insensitive contains so "cancel queued task".
+        if (appViewModel.pendingCount() > 0 &&
+            (text.lowercase().contains("cancel queue") ||
+                text.lowercase().contains("cancel queued task"))
+        ) {
+            appViewModel.clearPending()
+            addSystem("Queued task cancelled.")
+            onPersistConversation()
+            return
+        }
         // A pending ask_user question consumes the next outgoing message as its answer.
         if (ClarificationManager.snapshot() != null) {
             submitClarificationAnswer(text)
