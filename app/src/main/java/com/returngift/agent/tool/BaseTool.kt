@@ -14,7 +14,7 @@ abstract class BaseTool {
         var useChineseDescription: Boolean = false
 
         /** Maximum value for the wait_after parameter (milliseconds) */
-        private const val MAX_WAIT_AFTER_MS = 10000L
+        private const val MAX_WAIT_AFTER_MS = 2000L
 
         /**
          * Shared wait_after parameter definition used by all tools.
@@ -24,7 +24,7 @@ abstract class BaseTool {
         val WAIT_AFTER_PARAM = ToolParameter(
             "wait_after",
             "integer",
-            "Optional: milliseconds to wait after this action completes (e.g. 2000 for page load). Default 0 (no wait).",
+            "Optional extra wait after this action in ms (max 2000). Screens settle automatically — use only for known-slow loads (video, uploads). Omit in most cases.",
             false
         )
     }

@@ -123,6 +123,7 @@ public class InputTextTool extends BaseTool {
     private boolean verifyEnteredText(ClawAccessibilityService service, String expected, boolean clearFirst) {
         try {
             // Give the field a brief, bounded moment to commit the text.
+            AdaptiveSettleController.INSTANCE.waitForSettle();
             long deadline = System.currentTimeMillis() + 1500L;
             while (System.currentTimeMillis() < deadline) {
                 String current = service.getFocusedEditableText();
@@ -133,7 +134,6 @@ public class InputTextTool extends BaseTool {
                         if (current.contains(expected)) return true;
                     }
                 }
-                Thread.sleep(150);
             }
             return false;
         } catch (InterruptedException e) {
@@ -167,12 +167,8 @@ public class InputTextTool extends BaseTool {
             if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
                 return true;
             }
-            try {
-                Thread.sleep(200);
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
+            // IME composition settle (replaces Thread.sleep(200))
+            AdaptiveSettleController.INSTANCE.waitForSettle();
             node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
             node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
         }
@@ -299,10 +295,7 @@ public class InputTextTool extends BaseTool {
     }
 
     private void sleepShort() {
-        try {
-            Thread.sleep(200);
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
-        }
+        // UI settle (replaces Thread.sleep(200))
+        AdaptiveSettleController.INSTANCE.waitForSettle();
     }
 }

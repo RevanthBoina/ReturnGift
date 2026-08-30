@@ -103,6 +103,9 @@ public class OpenAppTool extends BaseTool {
                     + (result.getError() != null ? " (" + result.getError() + ")" : ""));
         }
 
+        // UI settle: wait for window to stabilize instead of fixed 500ms sleep
+        AdaptiveSettleController.INSTANCE.waitForSettle();
+
         // Wait for possible chain-launch intercept dialog and auto-click "Allow"
         dismissChainLaunchDialog(service);
 
