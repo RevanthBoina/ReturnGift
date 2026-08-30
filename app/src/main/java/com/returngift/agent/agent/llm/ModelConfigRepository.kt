@@ -20,6 +20,19 @@ data class LocalModelConfig(
     val isConfigured: Boolean get() = modelPath.isNotBlank()
 }
 
+/**
+ * The fast (small) model — used by FastRoundRouter for mechanical rounds
+ * (cache hit + procedure match). Independent from [LocalModelConfig]; never
+ * a cloud model (routing stays local-only by construction).
+ */
+data class LocalFastModelConfig(
+    val modelPath: String,
+    val modelId: String,
+    val displayName: String,
+) {
+    val isConfigured: Boolean get() = modelPath.isNotBlank() && modelId.isNotBlank()
+}
+
 data class CloudModelConfig(
     val providerName: String,
     val modelName: String,
@@ -44,7 +57,8 @@ data class ResolvedModelConfig(
     val activeMode: ActiveModelMode,
     val local: LocalModelConfig,
     val activeCloud: CloudModelConfig,
-    val defaultCloud: CloudModelConfig
+    val defaultCloud: CloudModelConfig,
+    val fastModel: LocalFastModelConfig?,
 ) {
     fun isLocalActive(): Boolean = activeMode == ActiveModelMode.LOCAL
 
@@ -148,11 +162,22 @@ object ModelConfigRepository {
         }
         val activeCloud = buildCloudConfig(activeCloudProvider, activeCloudModel, activeCloudBaseUrl)
 
+        val fastPath = KVUtils.getFastLocalModelPath()
+        val fastId = KVUtils.getFastLocalModelId()
+        val fastMatched = LocalModelManager.AVAILABLE_MODELS.find { fastPath.endsWith(it.fileName) }
+        val fastDisplay = fastMatched?.displayName
+            ?: fastPath.takeIf { it.isNotBlank() }?.let { File(it).nameWithoutExtension }
+            ?: fastId
+        val fastModel = if (fastPath.isNotBlank() && fastId.isNotBlank()) {
+            LocalFastModelConfig(fastPath, fastId, fastDisplay)
+        } else null
+
         return ResolvedModelConfig(
             activeMode = activeMode,
             local = local,
             activeCloud = activeCloud,
-            defaultCloud = defaultCloud
+            defaultCloud = defaultCloud,
+            fastModel = fastModel,
         )
     }
 
@@ -163,6 +188,15 @@ object ModelConfigRepository {
         if (activateNow) {
             activateLocal(modelPath, modelId)
         }
+    }
+
+    /**
+     * Persist the fast-model selection. Pass blank strings to clear (routing
+     * disabled → FastRoundRouter returns "unconfigured").
+     */
+    fun saveFastLocalDefault(modelPath: String, modelId: String) {
+        KVUtils.setFastLocalModelPath(modelPath)
+        KVUtils.setFastLocalModelId(modelId)
     }
 
     fun activateLocal(modelPath: String, modelId: String) {

@@ -22,6 +22,13 @@ import com.returngift.agent.agent.InterruptDetector
 import com.returngift.agent.agent.AllowListToolGate
 import com.returngift.agent.agent.UndoManager
 import com.returngift.agent.agent.memory.LearnedProcedureStore
+import com.returngift.agent.agent.grounding.SelectorCache
+import com.returngift.agent.agent.llm.EngineHolder
+import com.returngift.agent.agent.llm.FastRoundRouter
+import com.returngift.agent.agent.llm.FastRoundTelemetry
+import com.returngift.agent.agent.llm.LocalBackendHealth
+import com.returngift.agent.agent.llm.ModelConfigRepository
+import com.google.ai.edge.litertlm.Backend
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dev.langchain4j.data.message.AiMessage
@@ -253,6 +260,13 @@ class DefaultAgentService : AgentService {
                         XLog.w(TAG, "LlmClient close error after task", e)
                     }
                 }
+                // PROMPT 5: release the fast engine slot at every terminal path. Safe
+                // no-op when nothing was loaded.
+                try {
+                    EngineHolder.releaseFast()
+                } catch (e: Exception) {
+                    XLog.w(TAG, "releaseFast failed", e)
+                }
                 com.returngift.agent.agent.grounding.VisionInteractionMediator.clearTask()
                 running.set(false)
                 val terminal = terminalCallback
@@ -332,6 +346,7 @@ class DefaultAgentService : AgentService {
         callback: AgentCallback,
         iteration: Int,
         specs: List<dev.langchain4j.agent.tool.ToolSpecification>? = null,
+        useFast: Boolean = false,
     ): LlmResponse {
         val effectiveSpecs = specs ?: toolSpecs
         var lastException: Exception? = null
@@ -347,9 +362,9 @@ class DefaultAgentService : AgentService {
                         }
                         override fun onComplete(response: LlmResponse) {}
                         override fun onError(error: Throwable) {}
-                    })
+                    }, fast = useFast)
                 } else {
-                    llmClient.chat(messages, effectiveSpecs)
+                    llmClient.chat(messages, effectiveSpecs, fast = useFast)
                 }
             } catch (e: Exception) {
                 lastException = e
@@ -740,13 +755,62 @@ class DefaultAgentService : AgentService {
              // P2.6: Begin tracker batch transaction for this round.
              ExecutionTracker.beginRound()
 
+            // PROMPT 5: Round-classification routing. Pure decision based on
+            // (a) whether a fast model is configured, (b) the device memory gate,
+            // (c) whether the current task has a matched learned procedure, and
+            // (d) the conjunction "selector-cache hit OR (last tool == procedure's
+            // last step AND screen changed per ActionVerifier)". Closed-vocab
+            // reason only — see FastRoundTelemetry.
+            var lastVerificationOutcome: ActionVerifier.VerificationOutcome? = null
+            val routingScreenFingerprint: Long =
+                ClawAccessibilityService.getInstance()?.getScreenFingerprint() ?: 0L
+            val routingPackage: String? = currentTargetPackage
+            val selectorCacheHit: Boolean = routingPackage?.let { pkg ->
+                SelectorCache.hasValidFingerprint(pkg, routingScreenFingerprint)
+            } ?: false
+            val procedureStepMatch: Boolean? = if (learnedProcedure == null) {
+                null
+            } else {
+                val lastAi = messages.lastOrNull { it is AiMessage } as? AiMessage
+                val lastTool = lastAi?.toolExecutionRequests()?.lastOrNull()?.name()
+                val expectedLast = learnedProcedure.steps.lastOrNull()?.toolName
+                val toolMatches = lastTool != null && expectedLast != null && lastTool == expectedLast
+                val verifierOk = lastVerificationOutcome == ActionVerifier.VerificationOutcome.VERIFIED ||
+                    lastVerificationOutcome == ActionVerifier.VerificationOutcome.CHANGED_STATE
+                selectorCacheHit || (toolMatches && verifierOk)
+            }
+            val fastModelConfigured = ModelConfigRepository.snapshot().fastModel?.isConfigured == true
+            val memoryGate = LocalBackendHealth.shouldAllowFastEngine(ClawApplication.instance)
+            val routingDecision = FastRoundRouter.decideRound(
+                taskHasProcedure = learnedProcedure != null,
+                procedureStepMatch = procedureStepMatch,
+                selectorCacheHit = selectorCacheHit,
+                fastModelConfigured = fastModelConfigured,
+                memoryGate = memoryGate,
+            )
+            FastRoundTelemetry.record(routingDecision.reason)
+            var activeUseFast = routingDecision.useFast
+            if (activeUseFast) {
+                val fastConfig = ModelConfigRepository.snapshot().fastModel
+                val fastPath = fastConfig?.modelPath
+                if (fastPath.isNullOrBlank() || EngineHolder.acquireFast(
+                        modelPath = fastPath,
+                        cacheDir = ClawApplication.instance.cacheDir.path,
+                    ) == null) {
+                    // Engine creation failed / memory gate flipped since decideRound —
+                    // fall through to main; the closed-vocab counter still reflects
+                    // the original reason so telemetry stays truthful.
+                    activeUseFast = false
+                }
+            }
+
              // Compress history messages before sending to save tokens
              compressHistoryForSend(messages)
 
             // LLM call (with retry) — per-run tool specs from the intent gate.
             val llmResponse: LlmResponse
             try {
-                llmResponse = chatWithRetry(messages, callback, iterations, runToolSpecs)
+                llmResponse = chatWithRetry(messages, callback, iterations, runToolSpecs, useFast = activeUseFast)
             } catch (e: Exception) {
 XLog.e(TAG, "LLM API call failed after retries", e)
                  callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_api_call_failed, e.message)), totalTokens)

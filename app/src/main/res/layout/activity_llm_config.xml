@@ -262,6 +262,34 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
 
+            <!-- Fast Model (PROMPT 5: round-classification routing) -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:paddingHorizontal="4dp"
+                android:paddingBottom="4dp"
+                android:text="Fast model (mechanical steps)"
+                android:textColor="@color/colorTextSecondary"
+                android:textSize="13dp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvFastModelSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="4dp"
+                android:paddingBottom="8dp"
+                android:text="Used for routine steps in learned procedures. Not set → routing disabled."
+                android:textColor="@color/colorTextTertiary"
+                android:textSize="12dp" />
+
+            <LinearLayout
+                android:id="@+id/layoutFastModelList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
             <!-- Storage section hidden — not useful for end users -->
             <TextView
                 android:id="@+id/tvStorageInfo"

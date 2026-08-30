@@ -75,8 +75,9 @@ class LlmClientLeaveTracker(
 ) : LlmClient by delegate {
 
     override fun chat(messages: List<dev.langchain4j.data.message.ChatMessage>,
-                      toolSpecs: List<dev.langchain4j.agent.tool.ToolSpecification>): LlmResponse {
-        val response = delegate.chat(messages, toolSpecs)
+                      toolSpecs: List<dev.langchain4j.agent.tool.ToolSpecification>,
+                      fast: Boolean): LlmResponse {
+        val response = delegate.chat(messages, toolSpecs, fast)
 
         // Record LEAVE event: one row per response
         ExecutionTracker.recordLeave(
@@ -102,9 +103,10 @@ class LlmClientLeaveTracker(
     override fun chatStreaming(
         messages: List<dev.langchain4j.data.message.ChatMessage>,
         toolSpecs: List<dev.langchain4j.agent.tool.ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean
     ): LlmResponse {
-        val response = delegate.chatStreaming(messages, toolSpecs, listener)
+        val response = delegate.chatStreaming(messages, toolSpecs, listener, fast)
 
         // Record LEAVE event after streaming completes
         ExecutionTracker.recordLeave(

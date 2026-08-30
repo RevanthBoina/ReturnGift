@@ -7,14 +7,29 @@ import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.ChatMessage
 
 interface LlmClient {
-    /** Blocking call. Returns the complete AI response. */
-    fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>): LlmResponse
+    /**
+     * Blocking call. Returns the complete AI response.
+     *
+     * @param fast when true, the local client routes to the small (fast) engine slot
+     *             for mechanical rounds (PROMPT 5: FastRoundRouter). Remote clients
+     *             (OpenAI / Anthropic / OmniRoute) ignore the flag — the fast engine
+     *             is local-only by construction.
+     */
+    fun chat(
+        messages: List<ChatMessage>,
+        toolSpecs: List<ToolSpecification>,
+        fast: Boolean = false,
+    ): LlmResponse
 
-    /** Streaming call. Invokes listener callbacks as tokens arrive. Blocks until stream completes. */
+    /**
+     * Streaming call. Invokes listener callbacks as tokens arrive. Blocks until stream completes.
+     * @param fast see [chat].
+     */
     fun chatStreaming(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean = false,
     ): LlmResponse
 
     /**

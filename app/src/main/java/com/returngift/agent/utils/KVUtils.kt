@@ -283,6 +283,8 @@ object KVUtils {
     private const val KEY_LLM_PROVIDER = "KEY_LLM_PROVIDER"
     private const val KEY_LOCAL_MODEL_PATH = "KEY_LOCAL_MODEL_PATH"
     private const val KEY_LOCAL_BACKEND_PREFERENCE = "KEY_LOCAL_BACKEND_PREFERENCE"
+    private const val KEY_FAST_LOCAL_MODEL_PATH = "KEY_FAST_LOCAL_MODEL_PATH"
+    private const val KEY_FAST_LOCAL_MODEL_ID = "KEY_FAST_LOCAL_MODEL_ID"
     private const val KEY_LOCAL_CPU_SAFE_DEVICE = "KEY_LOCAL_CPU_SAFE_DEVICE"
     private const val KEY_LOCAL_CPU_SAFE_REASON = "KEY_LOCAL_CPU_SAFE_REASON"
     private const val KEY_LOCAL_CPU_SAFE_AT = "KEY_LOCAL_CPU_SAFE_AT"
@@ -309,6 +311,10 @@ object KVUtils {
     fun setLlmProvider(value: String) = putString(KEY_LLM_PROVIDER, value)
     fun getLocalModelPath(): String = getString(KEY_LOCAL_MODEL_PATH, "")
     fun setLocalModelPath(value: String) = putString(KEY_LOCAL_MODEL_PATH, value)
+    fun getFastLocalModelPath(): String = getString(KEY_FAST_LOCAL_MODEL_PATH, "")
+    fun setFastLocalModelPath(value: String) = putString(KEY_FAST_LOCAL_MODEL_PATH, value)
+    fun getFastLocalModelId(): String = getString(KEY_FAST_LOCAL_MODEL_ID, "")
+    fun setFastLocalModelId(value: String) = putString(KEY_FAST_LOCAL_MODEL_ID, value)
     fun getLocalBackendPreference(): String = getString(KEY_LOCAL_BACKEND_PREFERENCE, "")
     fun setLocalBackendPreference(value: String) = putString(KEY_LOCAL_BACKEND_PREFERENCE, value)
     fun getLocalCpuSafeDevice(): String = getString(KEY_LOCAL_CPU_SAFE_DEVICE, "")

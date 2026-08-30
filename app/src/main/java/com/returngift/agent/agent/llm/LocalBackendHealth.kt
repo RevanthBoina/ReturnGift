@@ -437,6 +437,52 @@ private fun loadConservativeList(key: String, fallback: List<String>): List<Stri
             .joinToString(": ")
     }
 
+    // ---------- Fast-engine memory gate (PROMPT 5) ----------
+
+    /** Minimum device RAM for the fast (small) model. Below this the fast engine is not loaded. */
+    private const val MIN_RAM_FOR_FAST_ENGINE_GB = 6
+
+    /** Free-RAM % of total device RAM required to load the fast engine. */
+    private const val FAST_ENGINE_FREE_RAM_THRESHOLD_PCT = 70
+
+    /**
+     * Pure decision: should we load the fast engine on this device right now?
+     * Reused by the JVM unit test for the truth table — keeps the policy testable
+     * without an Android Context.
+     */
+    internal fun shouldAllowFastEngine(
+        deviceRamGb: Int,
+        availableMemoryMb: Long,
+        minRamForFastGb: Int = MIN_RAM_FOR_FAST_ENGINE_GB,
+        thresholdPct: Int = FAST_ENGINE_FREE_RAM_THRESHOLD_PCT,
+    ): Boolean {
+        if (deviceRamGb < minRamForFastGb) return false
+        val totalRamMb = deviceRamGb.toLong() * 1024L
+        if (totalRamMb <= 0L) return false
+        val freePct = (availableMemoryMb * 100L) / totalRamMb
+        return freePct >= thresholdPct
+    }
+
+    /**
+     * Context-aware wrapper: reads the device RAM + free RAM and calls the pure
+     * decision above. Safe to call from DefaultAgentService each round — fast.
+     */
+    fun shouldAllowFastEngine(context: Context): Boolean {
+        val deviceRamGb = LocalModelManager.getDeviceRamGb(context)
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager?
+        val availableMb = if (am != null) {
+            val info = android.app.ActivityManager.MemoryInfo()
+            try {
+                am.getMemoryInfo(info)
+                info.availMem / (1024L * 1024L)
+            } catch (_: Exception) { 0L }
+        } else 0L
+        return shouldAllowFastEngine(
+            deviceRamGb = deviceRamGb,
+            availableMemoryMb = availableMb,
+        )
+    }
+
     internal fun shouldRearmVerifiedGpu(
         isCpuSafeModeEnabled: Boolean,
         hasVerifiedGpuSuccess: Boolean,

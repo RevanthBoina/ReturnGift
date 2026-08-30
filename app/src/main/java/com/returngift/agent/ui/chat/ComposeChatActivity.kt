@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import com.returngift.agent.TaskEvent
 import com.returngift.agent.agent.llm.ModelConfigRepository
 import com.returngift.agent.automation.ExternalAutomationContract
@@ -156,6 +158,7 @@ class ComposeChatActivity : ComponentActivity() {
 
         setContent {
             val activeTasks by activeTaskShellController.activeTasks.collectAsState()
+            val windowSizeClass = calculateWindowSizeClass(this)
 
             ChatScreen(
                 messages = _messages,
@@ -236,6 +239,7 @@ class ComposeChatActivity : ComponentActivity() {
                 onExecutePreviewPlan = { taskFlowController.executePreviewPlan() },
                 onDismissPreviewPlan = { taskFlowController.dismissPreviewPlan() },
                 colors = composeColors,
+                windowWidthSizeClass = windowSizeClass.widthSizeClass,
             )
         }
 

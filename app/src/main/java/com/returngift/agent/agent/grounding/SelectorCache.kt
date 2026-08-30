@@ -77,6 +77,15 @@ object SelectorCache {
     }
 
     /**
+     * True iff the package has a tracked fingerprint AND it equals the given
+     * fingerprint. Cheap O(1) read-only query used by FastRoundRouter to decide
+     * whether the current round can be safely served by the small (fast) engine.
+     * Returns false when the package has no tracked fingerprint yet.
+     */
+    fun hasValidFingerprint(packageName: String, fingerprint: Long): Boolean =
+        appFingerprints[packageName]?.let { it == fingerprint } == true
+
+    /**
      * Try to return a cached descriptor for (package, description).
      * Returns null if the fingerprint doesn't match (cache miss) or there
      * is no entry.

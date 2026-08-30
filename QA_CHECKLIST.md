@@ -2485,6 +2485,66 @@ covered by corpus (parser behavior unchanged).
 **Status:** `[2026-08-28] [PENDING-DEVICE] [T1.x]` — CI gates compile/lint/unit tests green;
 device E2E pending.
 
+### 2026-08-30 — Adaptive layout & aspect-ratio future-proofing (P3: P3.1–P3.5)
+
+**Change:** 3 long-lived activities (`ComposeChatActivity`, `SettingsActivity`,
+`VaultActivity`) now declare
+`android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|locale|layoutDirection|density|fontScale|uiMode"`
+so density / locale / font-scale / uiMode changes do not destroy Compose state. Added
+`androidx.compose.material3:material3-window-size-class` (BOM-managed) and a 720dp
+`widthIn(max = 720.dp)` cap on the chat column for `WindowWidthSizeClass != Compact`,
+wrapped in a centering `Box` so the existing `ModalNavigationDrawer` and `Scaffold` are
+untouched. Replaced the 48dp hardcoded `padding(top = 48.dp)` inside `SidebarContent`
+with `statusBarsPadding()` so tall-notch / dynamic-island / foldable insets are read
+from `WindowInsets` instead of guessed. The 480dp-and-below phone path is unchanged
+(`Compact` returns `Modifier.fillMaxSize()`). 4.4 (soft horizontal pad) was skipped —
+the 720dp cap already does the work on the >480dp band and the pad would add
+complexity without a clean win.
+
+**Tests:** `AndroidManifestConfigChangesTest` (3 tests — ComposeChatActivity /
+SettingsActivity / VaultActivity each declare the full set, verified by reading
+`app/src/main/AndroidManifest.xml` from the test classpath). Full suite green,
+preflight + lintDebug green; the unit suite gains +3. Device E2E cases P3.1–P3.5
+documented above (screenshot-based — configChanges effect, 720dp centering, real
+status-bar inset, ≤480dp pixel-identical, inset regression sweep).
+
+**Status:** `[2026-08-30] [PENDING-DEVICE] [P3.1–P3.5]` — CI gates compile/lint/unit
+tests green; device E2E pending.
+
+### 2026-08-30 — Round-classification model routing (P4: P4.1–P4.8)
+
+**Change:** `agent/llm/FastRoundRouter.kt` (pure, 34 lines) decides per-round
+whether the agent loop calls the small (fast) LiteRT-LM engine slot or stays
+on the main engine. Closed-vocab reasons: "unconfigured" / "memory" /
+"no-procedure" / "mechanical" / "planning" — never raw utterance text.
+`EngineHolder.acquireFast(...)` + `releaseFast()` carve out a SECOND engine slot
+(same GPU/CPU retry semantics, maxNumTokens=4096) so `close()` / `getOrCreate()`
+behaviour for the main engine is unchanged. `LocalBackendHealth.shouldAllowFastEngine`
+(pure + Context wrapper) gates the fast engine on device RAM (≥6GB) and free-RAM
+% (≥70%); rejected on 4GB phones by construction. `LocalLlmClient` gained a
+trailing `fast: Boolean = false` on `chat` / `chatStreaming` and a separate
+`fastConversation` (recreated on `fastSendCount >= 4`); fast-failure falls back
+to the main engine ONCE with the same `messages` + `toolSpecs`. Routing decision
+is computed at the top of every loop iteration in `DefaultAgentService.runAgentLoop`
+and threaded through `chatWithRetry(..., useFast = ...)`. The fast engine is
+released at the single terminal-seam `finally` block (covers ALL paths:
+COMPLETED / CANCELLED / ERROR / SYSTEM_DIALOG_BLOCKED — including the
+`runStructuredRoutine` path which is wrapped by the same `executor.submit`).
+`SelectorCache.hasValidFingerprint(package, fingerprint)` is the new
+O(1) read-only query used by the routing decision. `ModelConfigRepository.snapshot().fastModel`
++ `saveFastLocalDefault(...)` + `LlmConfigActivity.renderFastModelPicker(...)`
+add the local-only picker (cloud models never appear). New
+`FastRoundTelemetry` mirrors `Tier1Telemetry` (closed-vocab KV counters + a
+test seam `counterHook`).
+
+**Tests:** `FastRoundRouterTest` (16 cases — 14 row tests + 1 sanity + 1
+closed-vocab invariant), `LocalBackendHealthFastEngineTest` (6 cases for the
+pure memory-gate math), `SelectorCacheTest` (5 cases for the new fingerprint
+query). Full suite green, preflight + lintDebug green; the unit suite gains +27.
+
+**Status:** `[2026-08-30] [PENDING-DEVICE] [P4.1–P4.8]` — CI gates compile/lint/unit
+tests green; device E2E pending.
+
 ### 2026-08-23 — PV.4 scoped "never refuse" for external AI (prompt-only)
 
 **Change:** the external-AI/image-generation clause read as an unconditional
@@ -3782,10 +3842,149 @@ P2.6 bounds the `ExecutionTracker` per-task write storm: events accumulate in me
   - **PASS**: Top apps list shows observation counts per app with "Forget all data" buttons
 - **Forget app functionality**: Manual ADB + UI verification
   - **Act**: Use Settings → Privacy → [app name] → Forget all data for an app with observations
-  - **PASS**: 
+  - **PASS**:
     - ExecutionTracker observation rows for screen:<package> are deleted
     - Vault files with provenance matching screen:<package> are deleted
     - SelectorCache entries for package are invalidated
     - AppSessionManager state for package is cleared
     - Vault UI no longer shows the deleted files
     - Privacy dashboard no longer shows the app in observation counts
+
+---
+
+## P3 — Adaptive Layout & Aspect-Ratio Future-Proofing (2026-08-30)
+
+P3.1–P3.4 future-proofs ReturnGift for the next wave of Android form factors (foldables,
+tablets, dynamic-island phones, font-scale users). The 3 long-lived activities
+(`ComposeChatActivity`, `SettingsActivity`, `VaultActivity`) now declare
+`configChanges` so density / locale / font-scale / uiMode changes do not destroy Compose
+state, and the chat column caps at 720dp on wide screens. Net change: ~25 lines in
+ChatScreen + 1 dep + 3 manifest lines + 1 statusBarsPadding fix. No tool, event, or
+guard-order change.
+
+### P3.1 — configChanges preserves state (rotation / density / font-scale)
+- **Act**: launch chat, type text into the input bar, scroll mid-history. Then:
+  (a) `adb shell settings put system font_scale 1.3` (or trigger Settings → Display → Font size),
+  (b) `adb shell setprop persist.sys.locale fr-FR && adb shell stop && adb shell start` (or
+      trigger Settings → System → Languages), (c) `adb shell cmd uimode night yes` (dark-mode
+      toggle), (d) density change via `adb shell wm density 480` then back to 320.
+- **PASS**: the Activity is NOT recreated (`adb shell dumpsys activity activities | grep
+  -c "mResumed=true"` stays at 1; no double `ComposeChatActivity.onCreate` in logcat);
+  the typed input text is still in the input bar; the message list scroll position is
+  preserved; the IME does not flicker; the keyboard resizing is correct.
+- **Unit**: `./gradlew :app:testDebugUnitTest --tests '*AndroidManifestConfigChangesTest*'`
+  — 3 tests green (ComposeChatActivity / SettingsActivity / VaultActivity each declare
+  the full `orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|locale|layoutDirection|density|fontScale|uiMode`
+  set in `app/src/main/AndroidManifest.xml`).
+
+### P3.2 — 720dp column cap on wide screens
+- **Act**: 10" tablet (sw800dp) or 600dp+ emulator profile. Open chat, screenshot.
+- **PASS**: the chat column is centered horizontally with `widthIn(max = 720.dp)`; the
+  area outside the column shows the window background (no content there); the column
+  itself looks pixel-identical to the phone layout (same `ModalNavigationDrawer`,
+  `Scaffold`, toolbar, input bar). On 840dp+ the column is still 720dp (not stretched
+  — the cap is the upper bound, not the lower bound).
+- **Visual diff**: take a screenshot of a 600dp and a 1200dp profile; the column body
+  must be identical in width (720dp) on both, only the side margins differ.
+
+### P3.3 — Real status-bar inset on tall-notch / dynamic-island
+- **Act**: emulator with a 24dp status-bar profile + a 60dp tall-notch / dynamic-island
+  profile. Open chat, open the sidebar drawer (tap the hamburger), screenshot.
+- **PASS**: the sidebar's first row ("ReturnGift" title) is flush under the real
+  system-bar inset (no double gap, no clipping). 48dp hardcoded padding must NOT
+  appear in `ChatScreen.kt` (grep `padding(top = 48.dp)` returns 0 hits).
+- **Out of scope (noted, not fixed)**: there is a stray `padding(top = 24.dp)` in
+  `ChatScreen.kt` ChatTopBar area which is also a status-bar guess — left untouched
+  per the prompt's "only fix clean changes" rule.
+
+### P3.4 — Phones ≤480dp unchanged
+- **Act**: 360 / 412 / 480dp emulator profiles. Open chat, screenshot.
+- **PASS**: pixel-identical to pre-patch chat rendering. The 720dp cap does NOT bind
+  on these widths (`WindowWidthSizeClass.Compact` branch returns `Modifier.fillMaxSize()`
+  unchanged). No regression on the 9 most-common phone form factors.
+
+### P3.5 — Pillow-fast: statusBarsPadding regression sweep
+- **Act**: rotate the emulator (landscape → portrait), open & close the drawer, toggle
+  IME. The status-bar inset must adapt in every transition (no leftover 48dp gap when
+  the IME is up, no clipping when the drawer is open).
+- **PASS**: the sidebar's title row stays under the real inset in all 4 states
+  (closed, drawer-open, IME-up, drawer-open+IME-up).
+
+---
+
+## P4 — Round-Classification Model Routing (2026-08-30)
+
+P4 routes a single agent-loop round to a small (fast) LiteRT-LM engine slot when
+the conjunction "selector-cache hit AND procedure step matches" is true, falling
+back to the main engine otherwise. Routing is **local-only by construction** —
+no cloud model can ever be the fast model. The decision is pure
+(`FastRoundRouter.decideRound`), the engine slot is separate from the main
+engine, and the fast engine is released at every terminal path via the
+`DefaultAgentService` finally block. Closed-vocab counters ("unconfigured" /
+"memory" / "no-procedure" / "mechanical" / "planning") in
+`FastRoundTelemetry` only — no raw utterance text.
+
+### P4.1 — Default state (no fast model set): zero behavior change
+- **Act**: fresh install, never opened the fast-model picker. Run a 10-round task
+  that hits a learned procedure. Compare per-round latency + total task time +
+  final state vs the pre-patch baseline.
+- **PASS**: per-round latency within ±5%; task state identical to pre-patch; the
+  `FastRoundTelemetry` counter for "unconfigured" is incremented for every
+  routing decision. Logcat shows `fast_round_route: unconfigured`.
+
+### P4.2 — With fast model set + memory gate: per-round latency drop on mechanical rounds
+- **Act**: 8GB+ device, fast model downloaded and set in settings, learned
+  procedure available. Run 10 rounds. Capture per-round latency via the existing
+  `XLog` `D` tag (or `FastRoundTelemetry` KV counters).
+- **PASS**: rounds where the decision is "mechanical" show a 40-60% latency drop
+  vs the same round run on the main engine; "planning" rounds are unchanged;
+  final task state identical to a main-only run (golden-corpus pin).
+
+### P4.3 — Memory gate prevents load on 4GB device
+- **Act**: 4GB emulator profile, fast model configured. Run a task with a
+  matched procedure. Verify the fast engine is NOT loaded
+  (`dumpsys meminfo com.returngift.agent | grep -i "litert"` — fast-engine RSS
+  must be absent).
+- **PASS**: logcat shows `acquireFast: skipped — memory gate` (or
+  `LocalBackendHealth.shouldAllowFastEngine: deviceRamGb=4 rejected`); the
+  `FastRoundTelemetry` counter for "memory" is incremented. The main engine
+  continues to work; no functional regression.
+
+### P4.4 — Fast engine released at task end
+- **Act**: any device, run a routed task to completion. Capture
+  `dumpsys meminfo` before/after the task.
+- **PASS**: the fast-engine RSS delta post-completion is ≈ 0; logcat shows
+  `EngineHolder.releaseFast: releasing fast engine` exactly once at the
+  terminal seam (the single `finally` block in `DefaultAgentService`).
+  `EngineHolder.releaseFast()` is also called on CANCELLED and ERROR (the
+  same finally).
+
+### P4.5 — No cloud model ever in the fast-model list
+- **Act**: open LlmConfigActivity, open the fast-model picker.
+- **PASS**: the dropdown lists ONLY local models from
+  `LocalModelManager.AVAILABLE_MODELS` (e.g. `gemma4-e2b`, `gemma4-e4b`, and
+  any custom local model). Cloud providers (OpenAI, Anthropic, OmniRoute) do
+  NOT appear in the list. Architectural fact: `renderFastModelPicker` iterates
+  `LocalModelManager.AVAILABLE_MODELS` and never touches
+  `CloudProvider` / `ResolvedModelConfig.activeCloud` / `defaultCloud`.
+
+### P4.6 — Fast failure → main retry
+- **Act**: any device with fast model configured; force a transient failure in
+  the fast engine (e.g. a forced parse error). Run a task that would route to
+  the fast engine.
+- **PASS**: logcat shows `chat: fast round failed, retrying on main` (or
+  `chatStreaming: fast round failed, retrying on main`); the task completes
+  successfully via the main engine — no `agent_api_call_failed` toast; the
+  `FastRoundTelemetry` counter for "mechanical" was incremented before the
+  failure, confirming the routing decision itself was correct.
+
+### P4.7 — Golden corpus (tier1_golden_utterances.jsonl) unchanged
+- **Act**: `git diff fixtures/tier1_golden_utterances.jsonl` on the patch branch.
+- **PASS**: zero diff. The routing optimization is transparent to Tier-1
+  parsing.
+
+### P4.8 — Unit tests (UNIT)
+- `./gradlew :app:testDebugUnitTest --tests '*FastRoundRouterTest*' --tests '*LocalBackendHealthFastEngineTest*' --tests '*SelectorCacheTest*'`
+- **PASS**: 16 cases for FastRoundRouter (full truth-table coverage + closed-vocab
+  invariant); 6 cases for the memory-gate pure function; 5 cases for
+  `SelectorCache.hasValidFingerprint`.

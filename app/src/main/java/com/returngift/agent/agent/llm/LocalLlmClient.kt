@@ -40,11 +40,18 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
     // We keep a local reference only for null-check convenience.
     private var engine: Engine? = null
     private var conversation: com.google.ai.edge.litertlm.Conversation? = null
+    private var fastConversation: com.google.ai.edge.litertlm.Conversation? = null
     private var processedMessageCount = 0
+    private var fastProcessedMessageCount = 0
+    private var fastSendCount = 0
 
     private var gpuFailed = false
 
-    private fun ensureEngine() {
+    private fun ensureEngine(fast: Boolean = false) {
+        if (fast) {
+            ensureFastEngine()
+            return
+        }
         val modelPath = config.baseUrl
         val context = ClawApplication.instance
         try {
@@ -74,6 +81,23 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
     }
 
     /**
+     * Acquire the fast (small) engine from EngineHolder.fastEngine. The fast
+     * engine is loaded lazily by DefaultAgentService via EngineHolder.acquireFast()
+     * before chatFast is called; this method only validates that it is ready.
+     * Returns null when the fast engine isn't loaded (caller falls back to main).
+     */
+    private fun ensureFastEngine() {
+        val fast = EngineHolder.fastEngineOrNull() ?: run {
+            XLog.w(TAG, "ensureFastEngine: fast engine not loaded — caller should retry on main")
+            throw RuntimeException("Fast engine not loaded")
+        }
+        if (engine !== fast) {
+            XLog.i(TAG, "ensureFastEngine: using shared fast engine")
+            engine = fast
+        }
+    }
+
+    /**
      * Force engine to recreate with CPU backend. Called when GPU inference fails
      * (e.g. OpenCL library not found).
      */
@@ -90,10 +114,15 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
     /**
      * Create a new conversation with system prompt and tool declarations.
      */
-    private fun createConversation(systemPrompt: String, toolSpecs: List<ToolSpecification>) {
+    private fun createConversation(systemPrompt: String, toolSpecs: List<ToolSpecification>, fast: Boolean = false) {
         // LiteRT-LM only supports one session at a time — close existing first
-        try { conversation?.close() } catch (_: Exception) {}
-        conversation = null
+        if (fast) {
+            try { fastConversation?.close() } catch (_: Exception) {}
+            fastConversation = null
+        } else {
+            try { conversation?.close() } catch (_: Exception) {}
+            conversation = null
+        }
 
         // Convert tool specs to native LiteRT-LM tools
         val nativeTools = toolSpecs.mapNotNull { spec ->
@@ -113,62 +142,105 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
             }
         }
 
-        XLog.i(TAG, "createConversation: ${nativeTools.size} native tools")
+        XLog.i(TAG, "createConversation(${if (fast) "fast" else "main"}): ${nativeTools.size} native tools")
 
         val convConfig = ConversationConfig(
             systemInstruction = Contents.of(systemPrompt),
             tools = nativeTools,
             samplerConfig = SamplerConfig(
-                topK = 64,
+                topK = if (fast) 32 else 64,
                 topP = 0.95,
-                temperature = config.temperature
+                temperature = if (fast) 0.1 else config.temperature
             ),
             automaticToolCalling = false  // We handle execution in DefaultAgentService
         )
 
-        val lease = LocalModelRuntime.openConversation(
-            context = ClawApplication.instance,
-            modelPath = config.baseUrl,
-            conversationConfig = convConfig,
-            preferCpu = gpuFailed,
-        )
-        engine = lease.engine
-        conversation = lease.conversation
-        processedMessageCount = 0
+        if (fast) {
+            // The fast engine is shared via EngineHolder — open a conversation on it.
+            val fastEngine = EngineHolder.fastEngineOrNull()
+                ?: throw RuntimeException("Fast engine not loaded — caller must acquire it first")
+            val conv = fastEngine.createConversation(convConfig)
+            fastConversation = conv
+            engine = fastEngine
+            fastProcessedMessageCount = 0
+            fastSendCount = 0
+        } else {
+            val lease = LocalModelRuntime.openConversation(
+                context = ClawApplication.instance,
+                modelPath = config.baseUrl,
+                conversationConfig = convConfig,
+                preferCpu = gpuFailed,
+            )
+            engine = lease.engine
+            conversation = lease.conversation
+            processedMessageCount = 0
+        }
     }
 
     private var sendCount = 0
 
-    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>): LlmResponse {
+    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean): LlmResponse {
         return try {
-            chatInternal(messages, toolSpecs)
+            chatInternal(messages, toolSpecs, fast)
         } catch (e: Exception) {
+            // Fast-failure → main retry (PROMPT 5). Same messages, same toolSpecs.
+            if (fast) {
+                XLog.w(TAG, "chat: fast round failed, retrying on main: ${e.message}")
+                return try {
+                    chatInternal(messages, toolSpecs, fast = false)
+                } catch (mainError: Exception) {
+                    XLog.e(TAG, "chat: main retry after fast failure also failed", mainError)
+                    throw mainError
+                }
+            }
             // GPU inference failure (OpenCL not found) — fallback to CPU and retry once
             if (!gpuFailed && LocalModelRuntime.isGpuBackendFailure(e)) {
                 XLog.w(TAG, "chat: GPU inference failed, retrying with CPU: ${e.message}")
                 fallbackToCpu()
-                chatInternal(messages, toolSpecs)
+                chatInternal(messages, toolSpecs, fast)
             } else {
                 throw e
             }
         }
     }
 
-    private fun chatInternal(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>): LlmResponse {
-        ensureEngine()
+    private fun chatInternal(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean): LlmResponse {
+        ensureEngine(fast)
+
+        // Pick the per-path conversation + processed-message tracker. Each path
+        // has its own state — the fast path is recreated on first use after a
+        // new task starts (this client is per-task) and on sendCount reset.
+        val activeConversation: com.google.ai.edge.litertlm.Conversation?
+        val activeProcessedMessageCount: Int
+        val activeSendCount: Int
+        val maxSendCount = if (fast) 4 else 8
+        if (fast) {
+            activeConversation = fastConversation
+            activeProcessedMessageCount = fastProcessedMessageCount
+            activeSendCount = fastSendCount
+        } else {
+            activeConversation = conversation
+            activeProcessedMessageCount = processedMessageCount
+            activeSendCount = sendCount
+        }
 
         // Detect new task or recreate needed
-        if (processedMessageCount == 0 || messages.size < processedMessageCount || sendCount >= 8) {
+        val needRecreate = activeProcessedMessageCount == 0 ||
+            messages.size < activeProcessedMessageCount ||
+            activeSendCount >= maxSendCount
+        if (needRecreate) {
             val systemPrompt = messages.filterIsInstance<SystemMessage>().firstOrNull()?.text()
                 ?: config.systemPrompt.ifEmpty { LOCAL_SYSTEM_PROMPT }
-            createConversation(systemPrompt, toolSpecs)
+            createConversation(systemPrompt, toolSpecs, fast)
             sendCount = 0
             processedMessageCount = 0
+            fastSendCount = 0
+            fastProcessedMessageCount = 0
         }
 
         // Find new messages to send
         val newMessages = messages.subList(
-            processedMessageCount.coerceAtMost(messages.size),
+            activeProcessedMessageCount.coerceAtMost(messages.size),
             messages.size
         )
 
@@ -178,25 +250,24 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
             when (msg) {
                 is SystemMessage -> { /* handled in createConversation */ }
                 is UserMessage -> {
-                    val conv = conversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
-                    XLog.d(TAG, "chat: sendMessage user (${msg.singleText().take(80)}...) sendCount=$sendCount")
+                    val conv = activeConversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
+                    XLog.d(TAG, "chat(${if (fast) "fast" else "main"}): sendMessage user (${msg.singleText().take(80)}...)")
                     lastResponse = sendAndRecover(conv, msg.singleText())
-                    sendCount++
+                    if (fast) fastSendCount++ else sendCount++
                 }
                 is AiMessage -> { /* already in conversation state */ }
                 is ToolExecutionResultMessage -> {
-                    // Truncate tool results to prevent token overflow + reduce crash risk
-                    val truncatedResult = msg.text().take(400)
+                    val truncatedResult = msg.text().take(if (fast) 200 else 400)
                     val toolResultText = "[Tool ${msg.toolName()} result]: $truncatedResult"
-                    val conv = conversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
-                    XLog.d(TAG, "chat: sendMessage toolResult (${toolResultText.take(80)}...) sendCount=$sendCount")
+                    val conv = activeConversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
+                    XLog.d(TAG, "chat(${if (fast) "fast" else "main"}): sendMessage toolResult (${toolResultText.take(80)}...)")
                     lastResponse = sendAndRecover(conv, toolResultText)
-                    sendCount++
+                    if (fast) fastSendCount++ else sendCount++
                 }
             }
         }
 
-        processedMessageCount = messages.size
+        if (fast) fastProcessedMessageCount = messages.size else processedMessageCount = messages.size
         return parseResponse(lastResponse)
     }
 
@@ -263,15 +334,26 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
     override fun chatStreaming(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean,
     ): LlmResponse {
         return try {
-            chatStreamingInternal(messages, toolSpecs, listener)
+            chatStreamingInternal(messages, toolSpecs, listener, fast)
         } catch (e: Exception) {
+            // Fast-failure → main retry (PROMPT 5). Same messages, same toolSpecs.
+            if (fast) {
+                XLog.w(TAG, "chatStreaming: fast round failed, retrying on main: ${e.message}")
+                return try {
+                    chatStreamingInternal(messages, toolSpecs, listener, fast = false)
+                } catch (mainError: Exception) {
+                    XLog.e(TAG, "chatStreaming: main retry after fast failure also failed", mainError)
+                    throw mainError
+                }
+            }
             if (!gpuFailed && LocalModelRuntime.isGpuBackendFailure(e)) {
                 XLog.w(TAG, "chatStreaming: GPU inference failed, retrying with CPU: ${e.message}")
                 fallbackToCpu()
-                chatStreamingInternal(messages, toolSpecs, listener)
+                chatStreamingInternal(messages, toolSpecs, listener, fast)
             } else {
                 throw e
             }
@@ -281,20 +363,37 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
     private fun chatStreamingInternal(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean,
     ): LlmResponse {
-        ensureEngine()
+        ensureEngine(fast)
 
-        if (processedMessageCount == 0 || messages.size < processedMessageCount || sendCount >= 8) {
+        val activeConversation: com.google.ai.edge.litertlm.Conversation?
+        val activeProcessedMessageCount: Int
+        val activeSendCount: Int
+        val maxSendCount = if (fast) 4 else 8
+        if (fast) {
+            activeConversation = fastConversation
+            activeProcessedMessageCount = fastProcessedMessageCount
+            activeSendCount = fastSendCount
+        } else {
+            activeConversation = conversation
+            activeProcessedMessageCount = processedMessageCount
+            activeSendCount = sendCount
+        }
+
+        if (activeProcessedMessageCount == 0 || messages.size < activeProcessedMessageCount || activeSendCount >= maxSendCount) {
             val systemPrompt = messages.filterIsInstance<SystemMessage>().firstOrNull()?.text()
                 ?: config.systemPrompt.ifEmpty { LOCAL_SYSTEM_PROMPT }
-            createConversation(systemPrompt, toolSpecs)
+            createConversation(systemPrompt, toolSpecs, fast)
             sendCount = 0
             processedMessageCount = 0
+            fastSendCount = 0
+            fastProcessedMessageCount = 0
         }
 
         val newMessages = messages.subList(
-            processedMessageCount.coerceAtMost(messages.size),
+            activeProcessedMessageCount.coerceAtMost(messages.size),
             messages.size
         )
 
@@ -305,26 +404,26 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
             when (msg) {
                 is SystemMessage -> { /* handled in createConversation */ }
                 is UserMessage -> {
-                    val conv = conversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
-                    XLog.d(TAG, "chatStreaming: send user (${msg.singleText().take(80)}...) sendCount=$sendCount last=$isLast")
+                    val conv = activeConversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
+                    XLog.d(TAG, "chatStreaming(${if (fast) "fast" else "main"}): send user (${msg.singleText().take(80)}...) last=$isLast")
                     lastResponse = if (isLast) sendStreaming(conv, msg.singleText(), listener)
                         else sendAndRecover(conv, msg.singleText())
-                    sendCount++
+                    if (fast) fastSendCount++ else sendCount++
                 }
                 is AiMessage -> { /* already in conversation state */ }
                 is ToolExecutionResultMessage -> {
-                    val truncatedResult = msg.text().take(400)
+                    val truncatedResult = msg.text().take(if (fast) 200 else 400)
                     val toolResultText = "[Tool ${msg.toolName()} result]: $truncatedResult"
-                    val conv = conversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
-                    XLog.d(TAG, "chatStreaming: send toolResult (${toolResultText.take(80)}...) sendCount=$sendCount last=$isLast")
+                    val conv = activeConversation ?: throw RuntimeException("LiteRT-LM conversation not initialized — engine may have failed to load the model")
+                    XLog.d(TAG, "chatStreaming(${if (fast) "fast" else "main"}): send toolResult (${toolResultText.take(80)}...) last=$isLast")
                     lastResponse = if (isLast) sendStreaming(conv, toolResultText, listener)
                         else sendAndRecover(conv, toolResultText)
-                    sendCount++
+                    if (fast) fastSendCount++ else sendCount++
                 }
             }
         }
 
-        processedMessageCount = messages.size
+        if (fast) fastProcessedMessageCount = messages.size else processedMessageCount = messages.size
         val response = parseResponse(lastResponse)
         listener.onComplete(response)
         return response
@@ -620,11 +719,15 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
     }
 
     override fun close() {
-        XLog.i(TAG, "close() — closing conversation only (engine stays in EngineHolder)")
+        XLog.i(TAG, "close() — closing conversations only (engine stays in EngineHolder)")
         try { conversation?.close() } catch (e: Exception) { XLog.w(TAG, "close conversation error", e) }
         conversation = null
+        try { fastConversation?.close() } catch (e: Exception) { XLog.w(TAG, "close fast conversation error", e) }
+        fastConversation = null
         engine = null
         processedMessageCount = 0
+        fastProcessedMessageCount = 0
+        fastSendCount = 0
         XLog.i(TAG, "close() — done")
     }
 

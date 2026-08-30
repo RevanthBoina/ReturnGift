@@ -341,6 +341,10 @@ class LlmConfigActivity : BaseActivity() {
             modelList.addView(card)
         }
 
+        // Fast Model picker (PROMPT 5: round-classification routing).
+        // Local models only — never cloud.
+        renderFastModelPicker(resolvedConfig.fastModel)
+
         // Storage info
         updateStorageInfo()
 
@@ -659,4 +663,75 @@ class LlmConfigActivity : BaseActivity() {
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    // ---------- Fast Model picker (PROMPT 5) ----------
+
+    /**
+     * Render a single CardView with a "Not set" option + every built-in local
+     * model. Selecting one writes both KV keys via [ModelConfigRepository.saveFastLocalDefault].
+     * Cloud models are intentionally absent — the fast path stays local-only.
+     */
+    private fun renderFastModelPicker(current: com.returngift.agent.agent.llm.LocalFastModelConfig?) {
+        val container = findViewById<LinearLayout>(R.id.layoutFastModelList)
+        container.removeAllViews()
+        val tc = ThemeManager.getColors()
+        val fastModels = LocalModelManager.AVAILABLE_MODELS
+
+        fun addRow(label: String, isSelected: Boolean, onTap: () -> Unit) {
+            val card = androidx.cardview.widget.CardView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(6) }
+                radius = dp(12).toFloat()
+                cardElevation = dp(1).toFloat()
+                setCardBackgroundColor(tc.toolbarBg)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { onTap() }
+            }
+            val tv = TextView(this).apply {
+                text = label
+                textSize = 14f
+                setTextColor(tc.aiText)
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+                if (isSelected) setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+            card.addView(tv)
+            container.addView(card)
+        }
+
+        // "Not set" — clears both KV keys (routing disabled → "unconfigured" reason).
+        addRow(
+            label = "Not set",
+            isSelected = current == null,
+            onTap = {
+                ModelConfigRepository.saveFastLocalDefault("", "")
+                Toast.makeText(this, "Fast model cleared — routing disabled", Toast.LENGTH_SHORT).show()
+                recreate()
+            },
+        )
+
+        // Built-in local models only. We require the file to be downloaded before
+        // allowing the fast-model selection — otherwise the fast engine has nothing to load.
+        fastModels.forEach { model ->
+            val downloaded = LocalModelManager.isModelDownloaded(this, model)
+            val isSelected = current?.modelId == model.id
+            val label = if (downloaded) model.displayName else "${model.displayName} (download first)"
+            addRow(
+                label = label,
+                isSelected = isSelected,
+                onTap = {
+                    if (!downloaded) {
+                        Toast.makeText(this, "Download ${model.displayName} first", Toast.LENGTH_SHORT).show()
+                        return@addRow
+                    }
+                    val path = LocalModelManager.getModelPath(this, model)
+                    ModelConfigRepository.saveFastLocalDefault(path, model.id)
+                    Toast.makeText(this, "Fast model set to ${model.displayName}", Toast.LENGTH_SHORT).show()
+                    recreate()
+                },
+            )
+        }
+    }
 }

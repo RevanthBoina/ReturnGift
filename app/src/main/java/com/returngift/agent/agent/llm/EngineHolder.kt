@@ -28,6 +28,14 @@ object EngineHolder {
     private var currentModelPath: String? = null
     private var currentBackendLabel: String? = null
 
+    // Fast-engine slot (PROMPT 5): a separate, smaller model loaded only when
+    // FastRoundRouter decides a round is mechanical (cache hit + procedure match).
+    // Kept independent from `engine` so close() / getOrCreate() semantics for the
+    // main engine are unchanged. Closed-vocab counters only — see FastRoundTelemetry.
+    private var fastEngine: Engine? = null
+    private var currentFastModelPath: String? = null
+    private var currentFastBackendLabel: String? = null
+
     private fun backendLabel(backend: Backend): String =
         if (backend is Backend.CPU) "CPU" else if (backend is Backend.GPU) "GPU" else backend.javaClass.simpleName
 
@@ -119,6 +127,10 @@ object EngineHolder {
     @Synchronized
     fun isReady(modelPath: String): Boolean = engine != null && currentModelPath == modelPath
 
+    /** Returns the currently loaded fast engine, or null if none is loaded. */
+    @Synchronized
+    fun fastEngineOrNull(): Engine? = fastEngine
+
     /** Returns the actual backend label of the current shared engine, if any. */
     @Synchronized
     fun getBackendLabel(modelPath: String? = null): String? {
@@ -130,6 +142,103 @@ object EngineHolder {
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             XLog.w(TAG, "onTrimMemory level $level: releasing engine to free memory")
             close()
+            // Fast engine is smaller but still a separate allocation — release on the same threshold.
+            releaseFast()
         }
+    }
+
+    // ---------- Fast-engine slot (PROMPT 5) ----------
+
+    /**
+     * Acquire the fast (small) engine for [modelPath]. Returns null when the
+     * memory gate says no or engine creation fails (caller falls back to main).
+     *
+     * Mirrors the GPU/CPU retry semantics of [getOrCreate] for the main engine,
+     * but stays in a separate slot so close()/getOrCreate() behaviour for the
+     * main engine is unchanged.
+     */
+    @Synchronized
+    fun acquireFast(
+        modelPath: String,
+        cacheDir: String,
+        backend: Backend = Backend.CPU(),
+    ): LocalEngineLease? {
+        if (modelPath.isBlank()) {
+            XLog.i(TAG, "acquireFast: skipped — blank modelPath")
+            return null
+        }
+        val requestedBackendLabel = backendLabel(backend)
+        val existing = fastEngine
+        if (existing != null
+            && currentFastModelPath == modelPath
+            && currentFastBackendLabel == requestedBackendLabel
+        ) {
+            XLog.d(TAG, "acquireFast: reusing fast engine for $modelPath (${currentFastBackendLabel ?: "unknown"})")
+            return LocalEngineLease(existing, currentFastBackendLabel ?: requestedBackendLabel)
+        }
+
+        if (existing != null) {
+            XLog.i(
+                TAG,
+                "acquireFast: runtime changed (model=$currentFastModelPath/${currentFastBackendLabel ?: "?"} -> $modelPath/$requestedBackendLabel), closing old fast engine"
+            )
+            try {
+                existing.close()
+            } catch (e: Exception) {
+                XLog.w(TAG, "acquireFast: error closing old fast engine", e)
+            }
+            fastEngine = null
+            currentFastModelPath = null
+        }
+
+        XLog.i(TAG, "acquireFast: creating new fast engine for $modelPath with $requestedBackendLabel")
+        return try {
+            val engineConfig = EngineConfig(
+                modelPath = modelPath,
+                backend = backend,
+                maxNumTokens = 4096,
+                cacheDir = cacheDir
+            )
+            if (backend is Backend.GPU) {
+                LocalBackendHealth.markGpuInitStarted(modelPath)
+            }
+            val newEngine = Engine(engineConfig).also { it.initialize() }
+            if (backend is Backend.GPU) {
+                LocalBackendHealth.markGpuInitFinished()
+                LocalBackendHealth.noteGpuInitSuccess(modelPath)
+            }
+            fastEngine = newEngine
+            currentFastModelPath = modelPath
+            currentFastBackendLabel = requestedBackendLabel
+            XLog.i(TAG, "acquireFast: fast engine ready for $modelPath (${currentFastBackendLabel})")
+            LocalEngineLease(newEngine, currentFastBackendLabel ?: requestedBackendLabel)
+        } catch (e: Exception) {
+            if (backend is Backend.GPU) {
+                LocalBackendHealth.noteRecoverableGpuFailure(modelPath, e)
+            } else {
+                LocalBackendHealth.markGpuInitFinished()
+            }
+            XLog.e(TAG, "acquireFast: failed to create fast engine for $modelPath", e)
+            null
+        }
+    }
+
+    /**
+     * Release the fast engine and clear its slot. Safe to call when nothing
+     * is loaded (no-op). Does NOT touch the main [engine] slot.
+     */
+    @Synchronized
+    fun releaseFast() {
+        if (fastEngine == null && currentFastModelPath == null) return
+        XLog.i(TAG, "releaseFast: releasing fast engine for $currentFastModelPath")
+        try {
+            fastEngine?.close()
+        } catch (e: Exception) {
+            XLog.w(TAG, "releaseFast: error closing fast engine", e)
+        }
+        fastEngine = null
+        currentFastModelPath = null
+        currentFastBackendLabel = null
+        XLog.i(TAG, "releaseFast: done")
     }
 }

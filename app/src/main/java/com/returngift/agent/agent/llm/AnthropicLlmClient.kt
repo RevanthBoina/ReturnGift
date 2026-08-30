@@ -50,7 +50,8 @@ class AnthropicLlmClient(
         return builder.build()
     }
 
-    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>): LlmResponse {
+    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean): LlmResponse {
+        // Fast path is local-only by construction — cloud clients ignore the flag.
         val request = ChatRequest.builder()
             .messages(messages)
             .toolSpecifications(toolSpecs)
@@ -62,7 +63,8 @@ class AnthropicLlmClient(
     override fun chatStreaming(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean,
     ): LlmResponse {
         val request = ChatRequest.builder()
             .messages(messages)

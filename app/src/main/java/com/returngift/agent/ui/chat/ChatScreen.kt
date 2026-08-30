@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -174,6 +175,7 @@ fun ChatScreen(
     colors: ReturnGiftColors = AbyssDark,
     onCancelQueue: () -> Unit = {},
     onStartNow: (PendingTask?) -> Unit = {},
+    windowWidthSizeClass: WindowWidthSizeClass = WindowWidthSizeClass.Compact,
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -212,7 +214,19 @@ fun ChatScreen(
         selectedTab = if (isLocalModel) "local" else "cloud"
     }
 
-    ModalNavigationDrawer(
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        val widthModifier = if (windowWidthSizeClass == WindowWidthSizeClass.Compact) {
+            Modifier.fillMaxSize()
+        } else {
+            Modifier
+                .fillMaxSize()
+                .widthIn(max = 720.dp)
+        }
+        ModalNavigationDrawer(
+            modifier = widthModifier,
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
@@ -422,6 +436,7 @@ fun ChatScreen(
                 }
             }
         }
+    }
     }
 
     // Monitor skill dialog
@@ -2627,7 +2642,7 @@ private fun SidebarContent(
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .padding(top = 48.dp),
+            .statusBarsPadding(),
     ) {
         // Title with logo
         Row(
