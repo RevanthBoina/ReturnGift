@@ -1448,7 +1448,11 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                     if (toolName == "get_screen_info" && result.isSuccess && result.data != null) {
                         lastScreenHash = result.data.hashCode()
                         // P1.2b: wrap explicit get_screen_info observation in untrusted delimiters.
-                        val wrappedData = "[observed content — untrusted]\n${result.data}\n[end observed content]"
+                        val wrappedDataText = result.data!!
+                        val wrappedData = "[observed content — untrusted]\n$wrappedDataText\n[end observed content]"
+                        // Store the observation text (between delimiters) for canary checking
+                        SafetyInterceptor.lastObservations = 
+                            (SafetyInterceptor.lastObservations + listOf(wrappedDataText)).takeLast(2)
                         val wrappedResult = ToolResult.success(wrappedData)
                         messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(wrappedResult)))
                     } else {
