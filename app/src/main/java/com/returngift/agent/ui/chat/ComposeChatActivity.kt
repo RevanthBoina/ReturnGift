@@ -236,6 +236,8 @@ class ComposeChatActivity : ComponentActivity() {
                 onExecutePreviewPlan = { taskFlowController.executePreviewPlan() },
                 onDismissPreviewPlan = { taskFlowController.dismissPreviewPlan() },
                 colors = composeColors,
+                onCancelQueue = { appViewModel.clearPending() },
+                onStartNow = { pending -> appViewModel.startPendingNow() },
             )
         }
 

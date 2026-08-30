@@ -117,6 +117,12 @@ class TaskFlowController(
 
     init {
         ClarificationManager.addListener(clarificationListener)
+        // Observe pending queue flow and sync to the MutableState for UI.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main.immediate + pendingFlowJob).launch {
+            appViewModel.taskSessionStore.pendingFlow.collect { pending ->
+                pendingTasks.value = pending
+            }
+        }
         // Activity recreation: a question may already be parked — restore the card
         // state without re-posting the system message (the original one persists).
         val live = ClarificationManager.snapshot()
