@@ -139,6 +139,7 @@ fun ChatScreen(
     needsPermission: Boolean,
     isAwaitingReply: Boolean,
     isTaskRunning: Boolean,
+    pendingTasks: List<com.returngift.agent.TaskSessionStore.PendingTask> = emptyList(),
     isDownloading: Boolean = false,
     downloadProgress: Int = 0,
     isLocalModel: Boolean = true,
@@ -171,6 +172,8 @@ fun ChatScreen(
     onExecutePreviewPlan: () -> Unit = {},
     onDismissPreviewPlan: () -> Unit = {},
     colors: ReturnGiftColors = AbyssDark,
+    onCancelQueue: () -> Unit = {},
+    onStartNow: (PendingTask?) -> Unit = {},
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -335,6 +338,16 @@ fun ChatScreen(
                             )
                         }
 
+                        // Pending queue card (above the input bar)
+                        pendingTasks.forEach { pending ->
+                            PendingTaskCard(
+                                pending = pending,
+                                colors = colors,
+                                isTaskRunning = isTaskRunning,
+                                onDismiss = onCancelQueue,
+                                onStartNow = { onStartNow(pending) },
+                            )
+                        }
 
                         ChatInputBar(
                             isAwaitingReply = isAwaitingReply,
@@ -1270,6 +1283,57 @@ private fun ContinueNewChatCard(content: String, colors: ReturnGiftColors, onCon
         )
         TextButton(onClick = onContinue) {
             Text("New Chat", color = colors.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/**
+ * Pending queue card: shown above the input bar when a task is waiting.
+ * One-line task snippet truncated to 60 chars + ellipsis, two buttons:
+ * [Cancel] and [Start now]. Start now is disabled while a task is running.
+ */
+@Composable
+private fun PendingTaskCard(
+    pending: com.returngift.agent.TaskSessionStore.PendingTask,
+    colors: ReturnGiftColors,
+    isTaskRunning: Boolean,
+    onDismiss: () -> Unit,
+    onStartNow: () -> Unit,
+) {
+    val snippet = pending.taskText.take(60) + if (pending.taskText.length > 60) "…" else ""
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.accent.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Icon(
+                Icons.Default.HourglassTop,
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                snippet,
+                fontSize = 12.sp,
+                color = colors.textSecondary,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = colors.accent, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.width(4.dp))
+            TextButton(onClick = onStartNow, enabled = !isTaskRunning) {
+                Text("Start now", color = if (isTaskRunning) colors.textTertiary else colors.accent, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }

@@ -23,10 +23,10 @@ object ScreenTreeTokenOptimizer {
 
     @Volatile
     private var lastCachedScreen: CachedScreen? = null
+    /** Count of cache hits (content-addressed) - closed-vocab for telemetry. */
+    @Volatile
+    private var cacheHits = 0L
 
-    /**
-     * Fast 64-bit FNV-1a hash computation over visible nodes.
-     */
     fun computeHierarchyHash(root: AccessibilityNodeInfo?): Long {
         if (root == null) return 0L
         var hash = -3750763034362895579L // FNV offset basis

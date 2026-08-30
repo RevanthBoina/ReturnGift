@@ -34,6 +34,9 @@ import com.returngift.agent.ui.settings.SettingsActivity
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.ExecutorService
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Dispatchers.Main
 
 data class TaskFlowUiState(
     val messages: SnapshotStateList<ChatMessage>,
