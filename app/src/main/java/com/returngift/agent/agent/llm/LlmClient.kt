@@ -8,13 +8,14 @@ import dev.langchain4j.data.message.ChatMessage
 
 interface LlmClient {
     /** Blocking call. Returns the complete AI response. */
-    fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>): LlmResponse
+    fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean = false): LlmResponse
 
     /** Streaming call. Invokes listener callbacks as tokens arrive. Blocks until stream completes. */
     fun chatStreaming(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean = false
     ): LlmResponse
 
     /**

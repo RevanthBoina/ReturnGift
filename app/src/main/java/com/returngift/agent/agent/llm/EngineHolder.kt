@@ -8,6 +8,7 @@ import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import android.content.ComponentCallbacks2
+import android.os.Build
 
 /**
  * Process-wide singleton that keeps a single LiteRT-LM Engine alive across
@@ -27,6 +28,12 @@ object EngineHolder {
     private var engine: Engine? = null
     private var currentModelPath: String? = null
     private var currentBackendLabel: String? = null
+
+    // Fast model engine slot — loaded lazily only for tasks with learned procedure
+    // matching. Release automatically at task end. Never preloaded app-wide.
+    private var fastEngine: Engine? = null
+    private var fastModelPath: String? = null
+    private var fastBackendLabel: String? = null
 
     private fun backendLabel(backend: Backend): String =
         if (backend is Backend.CPU) "CPU" else if (backend is Backend.GPU) "GPU" else backend.javaClass.simpleName
@@ -123,6 +130,74 @@ object EngineHolder {
     @Synchronized
     fun getBackendLabel(modelPath: String? = null): String? {
         return if (modelPath == null || currentModelPath == modelPath) currentBackendLabel else null
+    }
+
+    /** Acquire the fast (mechanical-step) engine for the given model path.
+     *  Checks the memory gate before loading — returns null if insufficient resources.
+     *  Caller must release with releaseFast().
+     *
+     * @param modelPath absolute path to the .task model file
+     * @return LocalEngineLease or null if cannot acquire
+     */
+    @Synchronized
+    fun acquireFast(modelPath: String): LocalEngineLease? {
+        if (!LocalBackendHealth.canRunSecondEngine()) {
+            XLog.w(TAG, "acquireFast: memory gate blocks fast engine load")
+            return null
+        }
+
+        if (fastEngine != null && fastModelPath == modelPath) {
+            XLog.d(TAG, "acquireFast: reusing fast engine for $modelPath")
+            return LocalEngineLease(engine = fastEngine!!, backendLabel = fastBackendLabel!!)
+        }
+
+        if (fastEngine != null) {
+            XLog.i(TAG, "acquireFast: replacing previous fast engine")
+            try { fastEngine!!.close() } catch (e: Exception) { XLog.w(TAG, "acquireFast: close error", e) }
+            fastEngine = null
+            fastModelPath = null
+            fastBackendLabel = null
+        }
+
+        if (engine != null && currentModelPath != modelPath) {
+            XLog.i(TAG, "acquireFast: closing main engine to load fast")
+            try { engine!!.close() } catch (e: Exception) { XLog.w(TAG, "acquireFast: main close error", e) }
+            engine = null
+            currentModelPath = null
+            currentBackendLabel = null
+        }
+
+        XLog.i(TAG, "acquireFast: creating new fast engine for $modelPath")
+        return try {
+            val engineConfig = EngineConfig(
+                modelPath = modelPath,
+                backend = Backend.CPU(),
+                maxNumTokens = 8192,
+            )
+            val newEngine = Engine(engineConfig).also { it.initialize() }
+            fastEngine = newEngine
+            fastModelPath = modelPath
+            fastBackendLabel = "CPU"
+            XLog.i(TAG, "acquireFast: fast engine ready for $modelPath")
+            LocalEngineLease(engine = newEngine, backendLabel = fastBackendLabel)
+        } catch (e: Exception) {
+            fastEngine = null
+            fastModelPath = null
+            fastBackendLabel = null
+            XLog.e(TAG, "acquireFast: failed to create fast engine for $modelPath", e)
+            null
+        }
+    }
+
+    /** Release the fast engine. Safe to call even if none is loaded (no-op). */
+    @Synchronized
+    fun releaseFast() {
+        if (fastEngine == null) return
+        XLog.i(TAG, "releaseFast: releasing fast engine for ${fastModelPath ?: "unknown"}")
+        try { fastEngine!!.close() } catch (e: Exception) { XLog.w(TAG, "releaseFast: close error", e) }
+        fastEngine = null
+        fastModelPath = null
+        fastBackendLabel = null
     }
 
     @Synchronized
