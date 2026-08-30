@@ -130,14 +130,30 @@ class TaskSessionStore {
         }
     }
     
-    // D1: Pending queue operations
-    fun enqueuePending(messageId: String, channel: Channel, taskText: String) {
+    companion object {
+        /** Maximum number of pending tasks allowed in the queue (bounded FIFO, 1 slot). */
+        const val MAX_PENDING = 1
+    }
+
+// D1: Pending queue operations — bounded FIFO (max 1 slot).
+    // Returns false if the queue is full; the caller should reject/enqueue a different task.
+    fun enqueuePending(messageId: String, channel: Channel, taskText: String): Boolean {
         synchronized(lock) {
+            if (pendingQueue.size >= MAX_PENDING) return false
             pendingQueue.addLast(PendingTask(messageId, channel, taskText))
             _pendingFlow.value = pendingQueue.toList()
+            return true
         }
     }
-    
+
+    /** Clear the pending queue and reset the flow. */
+    fun clearPending() {
+        synchronized(lock) {
+            pendingQueue.clear()
+            _pendingFlow.value = emptyList()
+        }
+    }
+
     fun tryDequeuePending(): PendingTask? {
         synchronized(lock) {
             val task = pendingQueue.pollFirst()

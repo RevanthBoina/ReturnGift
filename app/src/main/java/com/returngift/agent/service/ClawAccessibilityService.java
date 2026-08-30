@@ -501,7 +501,7 @@ public class ClawAccessibilityService extends AccessibilityService {
 
         // Fast Hash Cache check (saves 80-120ms DOM traversal on static screens)
         long hash = com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.computeHierarchyHash(root);
-        String cached = com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.getCachedIfValid(hash, 1000L);
+        String cached = com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer.INSTANCE.getCachedIfValid(hash, 30_000L);
         if (cached != null) {
             return cached;
         }

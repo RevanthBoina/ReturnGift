@@ -49,7 +49,7 @@ class ClawApplication : BaseApp() {
             val interruptedMessageId = parts[0]
             val interruptedChannel = if (parts.size > 1) parts[1] else Channel.LOCAL.name
             ForegroundService.resetToIdle(this)
-            ChannelManager.sendMessage(Channel.valueOf(interruptedChannel), "task was interrupted by app restart", interruptedMessageId)
+            ChannelManager.sendMessage(Channel.valueOf(interruptedChannel), "task was interrupted by app restart — any queued (in-memory) task was dropped on restart", interruptedMessageId)
             KVUtils.remove(TaskOrchestrator.KEY_ACTIVE_TASK)
         }
         LocalBackendHealth.recoverPendingGpuCrashIfNeeded()

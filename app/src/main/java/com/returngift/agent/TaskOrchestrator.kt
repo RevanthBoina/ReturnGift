@@ -196,16 +196,65 @@ class TaskOrchestrator(
         taskEventCallback?.invoke(event)
         channelMsg?.let { sendChannelMessage(s.channel ?: Channel.LOCAL, it, s.messageId) }
         ForegroundService.resetToIdle(appContext); if (ok) setSuccessFloatingState() else setErrorFloatingState(); onTaskFinished()
-        // D3: dequeue and start next pending task if available
-        val next = taskSessionStore.tryDequeuePending()
-        if (next != null) {
-            XLog.i(TAG, "Dequeued pending task ${next.messageId}; restarting")
-            taskEventCallback?.invoke(TaskEvent.Progress(0, "Resuming queued task..."))
-            startNewTask(next.channel, next.taskText, next.messageId)
+        // D3: only auto-dequeue on Completed. Cancelled / Failed / Blocked leave the queue
+        // intact and emit a "still waiting" system line so the user decides whether to start it.
+        when (event) {
+            is TaskEvent.Completed -> {
+                val next = taskSessionStore.tryDequeuePending()
+                if (next != null) {
+                    XLog.i(TAG, "Dequeued pending task ${next.messageId}; restarting")
+                    taskEventCallback?.invoke(TaskEvent.Progress(0, "Resuming queued task..."))
+                    startNewTask(next.channel, next.taskText, next.messageId)
+                }
+            }
+            is TaskEvent.Cancelled, is TaskEvent.Failed, is TaskEvent.Blocked -> {
+                if (taskSessionStore.pendingCount > 0) {
+                    val pending = taskSessionStore.pendingFlow.value.firstOrNull()
+                    if (pending != null) {
+                        val snippet = pending.taskText.take(60) + if (pending.taskText.length > 60) "…" else ""
+                        taskEventCallback?.invoke(TaskEvent.Queued(pending.messageId, 1))
+                        ChannelManager.sendMessage(
+                            s.channel ?: Channel.LOCAL,
+                            "Current task ended without success — queued task \"$snippet\" is still waiting. Tap the queued card to start it, or say 'cancel queue' to drop it.",
+                            pending.messageId
+                        )
+                    }
+                }
+            }
+            else -> { /* not a terminal type that needs queue handling */ }
         }
     }
 
     fun isTaskRunning(): Boolean = taskSessionStore.isTaskRunning()
+
+    /**
+     * Cancel the pending queued task without touching the running task.
+     * Idempotent — safe to call when the queue is empty.
+     */
+    fun cancelQueue() {
+        val pending = taskSessionStore.pendingCount > 0
+        if (pending) {
+            taskSessionStore.clearPending()
+            XLog.i(TAG, "Queued task cancelled by user")
+        }
+    }
+
+    /**
+     * Start the pending task immediately (card "Start now" button). Guarded by
+     * isTaskRunning — a running task must be cancelled first. Returns the
+     * dequeued task, or null when there is nothing queued or the lock is held.
+     */
+    fun startPendingNow(): PendingTask? {
+        val pending = taskSessionStore.tryDequeuePending() ?: return null
+        if (isTaskRunning()) {
+            // Re-enqueue and let the card UI disable the button instead of
+            // silently dropping the task.
+            taskSessionStore.enqueuePending(pending.messageId, pending.channel, pending.taskText)
+            return null
+        }
+        startNewTask(pending.channel, pending.taskText, pending.messageId)
+        return pending
+    }
 
     // ==================== Task Execution ====================
 
@@ -245,11 +294,25 @@ class TaskOrchestrator(
             if (current.messageId == messageID && current.channel == channel) {
                 taskSessionStore.updateTaskText(task)
             } else {
-                // D2: enqueue instead of reject — bounded FIFO
-                XLog.i(TAG, "Another task is running; enqueuing new task for later")
-                taskSessionStore.enqueuePending(messageID, channel, task)
-                taskEventCallback?.invoke(TaskEvent.Queued(messageID, taskSessionStore.pendingCount))
-                ChannelManager.sendMessage(channel, "Task queued (${taskSessionStore.pendingCount} ahead). Stop current task to cancel.", messageID)
+                // D2: enqueue instead of reject — bounded FIFO (max 1 slot)
+                val enqueued = taskSessionStore.enqueuePending(messageID, channel, task)
+                if (enqueued) {
+                    XLog.i(TAG, "Another task is running; enqueued new task for later")
+                    taskEventCallback?.invoke(TaskEvent.Queued(messageID, taskSessionStore.pendingCount))
+                    ChannelManager.sendMessage(
+                        channel,
+                        "Task queued (1 ahead). It starts when the current task SUCCEEDS. Say 'cancel queue' or tap the queued card to drop it.",
+                        messageID
+                    )
+                } else {
+                    XLog.w(TAG, "Queue full; rejecting new task")
+                    taskEventCallback?.invoke(TaskEvent.Failed("Queue is full — one task can wait at a time. Stop or cancel the current task first."))
+                    ChannelManager.sendMessage(
+                        channel,
+                        "Queue is full — one task can wait at a time. Stop or cancel the current task first.",
+                        messageID
+                    )
+                }
                 return
             }
         }

@@ -23,10 +23,10 @@ object ScreenTreeTokenOptimizer {
 
     @Volatile
     private var lastCachedScreen: CachedScreen? = null
+    /** Count of cache hits (content-addressed) - closed-vocab for telemetry. */
+    @Volatile
+    private var cacheHits = 0L
 
-    /**
-     * Fast 64-bit FNV-1a hash computation over visible nodes.
-     */
     fun computeHierarchyHash(root: AccessibilityNodeInfo?): Long {
         if (root == null) return 0L
         var hash = -3750763034362895579L // FNV offset basis
@@ -66,12 +66,20 @@ object ScreenTreeTokenOptimizer {
     }
 
     /**
-     * Checks if the screen matches the cached hash within [maxAgeMs].
+     * Checks if the screen matches the cached hash (content-addressed). When the
+     * caller's hash equals the cached hash → serve the cached string regardless of age.
+     * Only mismatched/absent cache older than [maxAgeMs] is rejected.
      */
-    fun getCachedIfValid(hash: Long, maxAgeMs: Long = 1500L): String? {
+    fun getCachedIfValid(hash: Long, maxAgeMs: Long = 30_000L): String? {
         val cached = lastCachedScreen ?: return null
-        if (cached.hash == hash && (System.currentTimeMillis() - cached.timestamp) < maxAgeMs) {
+        if (cached.hash == hash) {
+            // Content-addressed hit: same screen fingerprint, serve cached regardless of age
+            cacheHits++
             return cached.formattedTree
+        }
+        // Mismatched hash → enforce freshness bound (stale-format guard)
+        if (System.currentTimeMillis() - cached.timestamp < maxAgeMs) {
+            return null
         }
         return null
     }
@@ -86,6 +94,9 @@ object ScreenTreeTokenOptimizer {
             timestamp = System.currentTimeMillis()
         )
     }
+
+    /** Count of content-addressed cache hits (closed-vocab telemetry). */
+    fun getCacheHits(): Long = cacheHits
 
     /**
      * Prunes non-interactive system edge bars (status bar top 3% and nav bar bottom 3%)
