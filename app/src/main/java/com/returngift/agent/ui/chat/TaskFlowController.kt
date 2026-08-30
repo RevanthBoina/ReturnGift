@@ -95,11 +95,7 @@ class TaskFlowController(
     /** Pending queue state (bounded to 1) — observed from TaskSessionStore. */
     val pendingTasks = androidx.compose.runtime.mutableStateOf<List<com.returngift.agent.TaskSessionStore.PendingTask>>(emptyList())
 
-    private val pendingFlowJob: kotlinx.coroutines.Job = kotlinx.coroutines.Dispatchers.Main.immediate.launch {
-        appViewModel.taskSessionStore.pendingFlow.collect { pending ->
-            pendingTasks.value = pending
-        }
-    }
+    private val pendingFlowJob = Job()
 
 
 
