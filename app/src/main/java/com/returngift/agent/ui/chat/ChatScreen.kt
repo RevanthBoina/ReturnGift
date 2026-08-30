@@ -69,6 +69,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
@@ -214,34 +215,58 @@ fun ChatScreen(
         selectedTab = if (isLocalModel) "local" else "cloud"
     }
 
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        val isWideScreen = maxWidth >= 720.dp
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = colors.surface,
-            ) {
-                SidebarContent(
-                    conversations = conversations,
-                    onNewChat = {
-                        scope.launch { drawerState.close() }
-                        onNewChat()
-                    },
-                    onSelectConversation = {
-                        scope.launch { drawerState.close() }
-                        onSelectConversation(it)
-                    },
-                    onDeleteConversation = onDeleteConversation,
-                    onRenameConversation = onRenameConversation,
-                    onSettings = {
-                        scope.launch { drawerState.close() }
-                        onOpenSettings()
-                    },
-                    onModels = {
-                        scope.launch { drawerState.close() }
-                        onOpenModels()
-                    },
-                    colors = colors,
-                )
+            // On wide screens, the drawer is always visible as a permanent sidebar.
+            // On narrow screens, it slides in as a modal drawer.
+            if (isWideScreen) {
+                PermanentDrawerSheet(
+                    drawerContainerColor = colors.surface,
+                    modifier = Modifier.width(280.dp)
+                ) {
+                    SidebarContent(
+                        conversations = conversations,
+                        onNewChat = { onNewChat() },
+                        onSelectConversation = { onSelectConversation(it) },
+                        onDeleteConversation = onDeleteConversation,
+                        onRenameConversation = onRenameConversation,
+                        onSettings = onOpenSettings,
+                        onModels = onOpenModels,
+                        colors = colors,
+                    )
+                }
+            } else {
+                ModalDrawerSheet(
+                    drawerContainerColor = colors.surface,
+                ) {
+                    SidebarContent(
+                        conversations = conversations,
+                        onNewChat = {
+                            scope.launch { drawerState.close() }
+                            onNewChat()
+                        },
+                        onSelectConversation = {
+                            scope.launch { drawerState.close() }
+                            onSelectConversation(it)
+                        },
+                        onDeleteConversation = onDeleteConversation,
+                        onRenameConversation = onRenameConversation,
+                        onSettings = {
+                            scope.launch { drawerState.close() }
+                            onOpenSettings()
+                        },
+                        onModels = {
+                            scope.launch { drawerState.close() }
+                            onOpenModels()
+                        },
+                        colors = colors,
+                    )
+                }
             }
         }
     ) {
@@ -413,6 +438,7 @@ fun ChatScreen(
             }
         }
     }
+    }
 
     // Monitor skill dialog
     if (showMonitorSheet) {
@@ -438,7 +464,6 @@ fun ChatScreen(
             colors = colors,
         )
     }
-}
 
 // ======================== TOP BAR ========================
 
@@ -895,7 +920,7 @@ private fun UserBubble(
 @Composable
 private fun MarkdownText(markdown: String, colors: ReturnGiftColors, modifier: Modifier = Modifier) {
     val blocks = remember(markdown) { MarkdownLite.parseBlocks(markdown) }
-    Column(modifier = modifier) {
+    Column(modifier = modifier.maxWidth(260.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MarkdownLite.Block.Heading -> Text(
@@ -2547,7 +2572,7 @@ private fun SidebarContent(
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .padding(top = 48.dp),
+            .padding(top = WindowInsets.statusBars.top),
     ) {
         // Title with logo
         Row(

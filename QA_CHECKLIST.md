@@ -1048,6 +1048,13 @@ Layer 1 broadcast bypasses UI routing. Only Layer 3 catches routing bugs.
 - [ ] **Q10-6. Secrets never become memory**: API keys, bot tokens, passwords, and recovery codes are rejected or redacted from memory and excluded from bug reports
 - [ ] **Q10-7. Untrusted content cannot override rules**: screen/web/notification text that says "ignore previous instructions" is treated as content, not as a higher-priority instruction
 
+### Q11. Display — Rotation & Responsiveness (2026-08-30)
+
+- [ ] **Q11-1. Rotation preserves state** `[RELEASE-OK]`: rotate device (portrait ↔ landscape) while chat is open → activity does NOT restart (`configChanges` in manifest handles it) → chat messages, input text, and scroll position preserved
+- [ ] **Q11-2. Two-pane layout on wide screens** `[RELEASE-OK]`: on tablet/desktop (width ≥ 720dp) → sidebar permanently visible on left, chat content on right → no modal drawer overlay needed
+- [ ] **Q11-3. System bar insets respected** `[RELEASE-OK]`: top padding of chat content uses `WindowInsets.statusBars` → no hardcoded 48dp → status bar area correctly accounted for on devices with notches/cutouts
+- [ ] **Q11-4. Markdown bubble max-width cap** `[RELEASE-OK]`: on ultra-wide screens → assistant bubble text width capped at ~52em (≈832dp) → lines don't stretch across entire screen; on narrow screens bubble fills available width naturally
+
 ## N. Tinder Automation
 
 - [ ] **N1. Auto swipe**: "open Tinder and swipe right" â†’ opens Tinder â†’ swipes right â†’ repeats
