@@ -86,9 +86,8 @@ public class SendMessageTool extends BaseTool {
                 return ToolResult.error("Failed to open " + app + ". Is it installed?");
             }
             XLog.i(TAG, "Step 1: Opened " + app + " (" + packageName + ")");
-            Thread.sleep(2000);
-
-            // Step 2: Wait for the messaging app window to become active
+            // Step 1: Opened — immediately wait for app window to become active
+            // (replaces Thread.sleep(2000) — waitForActiveWindow polls the condition directly)
             if (!waitForActiveWindow(service, packageName, 8000)) {
                 return ToolResult.error(app + " did not become active. Is accessibility enabled?");
             }
@@ -109,7 +108,10 @@ public class SendMessageTool extends BaseTool {
                     return ToolResult.error("Could not find '" + contact + "' in " + app + " chat list.");
                 }
                 XLog.i(TAG, "Step 3: Tapped " + contact);
-                Thread.sleep(3000);
+                // Poll for the bottom-most editable text field to exist (replaces Thread.sleep(3000))
+                if (!hasInputField(service)) {
+                    return ToolResult.error("Could not reach input field after tapping contact.");
+                }
                 waitForActiveWindow(service, packageName, 5000);
             }
 
@@ -121,13 +123,18 @@ public class SendMessageTool extends BaseTool {
                     break;
                 }
                 XLog.i(TAG, "Step 4: retry " + (retry + 1) + " — waiting for chat to load");
-                Thread.sleep(1000);
+                // Poll every 150ms, max 6000ms total for input field to appear (replaces Thread.sleep(1000))
+                if (hasInputField(service)) {
+                    typed = true;
+                    break;
+                }
             }
             if (!typed) {
                 return ToolResult.error("Could not find message input field.");
             }
             XLog.i(TAG, "Step 4: Typed '" + message + "'");
-            Thread.sleep(500);
+            // IME composition settle (replaces Thread.sleep(500))
+            AdaptiveSettleController.INSTANCE.waitForSettle();
 
             // Step 5: Tap send (by desc) or press Enter as fallback
             if (!tapSendOrEnter(service, message)) {
@@ -196,6 +203,45 @@ public class SendMessageTool extends BaseTool {
                 if (pkg != null && pkg.toString().equals(packageName)) return true;
             }
             Thread.sleep(500);
+        }
+        return false;
+    }
+
+    /**
+     * Poll for the bottom-most editable text field to EXIST.
+     * Reuses the same node-find logic that typeInBottomEditText uses.
+     * Checks every 150ms, max 6000ms total. Early-exits on first appearance.
+     */
+    private boolean hasInputField(ClawAccessibilityService service) {
+        long deadline = System.currentTimeMillis() + 6_000L;
+        while (System.currentTimeMillis() < deadline) {
+            AccessibilityNodeInfo root = service.getRootInActiveWindow();
+            if (root != null) {
+                List<AccessibilityNodeInfo> editables = new ArrayList<>();
+                collectEditTexts(root, editables);
+                if (!editables.isEmpty()) {
+                    // Verify the bottommost one is genuine editable
+                    AccessibilityNodeInfo best = null;
+                    int bestY = -1;
+                    for (AccessibilityNodeInfo node : editables) {
+                        Rect bounds = new Rect();
+                        node.getBoundsInScreen(bounds);
+                        if (bounds.centerY() > bestY) {
+                            bestY = bounds.centerY();
+                            best = node;
+                        }
+                    }
+                    if (best != null && (best.isEditable() || best.getClassName().toString().contains("EditText"))) {
+                        return true;
+                    }
+                }
+            }
+            try {
+                Thread.sleep(150);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
         }
         return false;
     }
@@ -273,7 +319,8 @@ public class SendMessageTool extends BaseTool {
         // Focus + click + set text
         best.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
         best.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-        Thread.sleep(500);
+        // IME composition settle (replaces Thread.sleep(500))
+        AdaptiveSettleController.INSTANCE.waitForSettle();
 
         Bundle args = new Bundle();
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, message);
@@ -334,8 +381,9 @@ public class SendMessageTool extends BaseTool {
             ClawAccessibilityService service,
             String expectedMessage,
             String pathLabel
-    ) throws InterruptedException {
-        Thread.sleep(500);
+    ) {
+        // UI settle (replaces Thread.sleep(500))
+        AdaptiveSettleController.INSTANCE.waitForSettle();
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
         if (root == null) {
             XLog.i(TAG, "tapSendOrEnter: " + pathLabel + " verification root missing; treating as success");

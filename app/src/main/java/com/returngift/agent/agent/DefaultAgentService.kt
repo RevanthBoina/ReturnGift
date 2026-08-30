@@ -701,7 +701,12 @@ class DefaultAgentService : AgentService {
                         )
                         // P1.2b: wrap observation content in untrusted delimiters so the model
                         // knows observed content is data, not instructions (Rule 15).
-                        "$promptForModel\n\n[observed content — untrusted]\n${screenResult.data}\n[end observed content]"
+                        val screenObservation = screenResult.data ?: ""
+                        val wrapped = "$promptForModel\n\n[observed content — untrusted]\n$screenObservation\n[end observed content]"
+                        // Store the observation text (between delimiters) for canary checking
+                        SafetyInterceptor.lastObservations = 
+                            (SafetyInterceptor.lastObservations + listOf(screenObservation)).takeLast(2)
+                        $wrapped
                     } else promptForModel
                 } else promptForModel
             } catch (e: Exception) { promptForModel }
@@ -1371,7 +1376,11 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                                 val deltaMsg = "Screen unchanged since round $lastScreenDiffCount (fingerprint stable). " +
                                     "Do not re-read; act, or finish with a partial summary."
                                 // P1.2b: wrap the observation in untrusted delimiters.
-                                val wrapped = "[observed content — untrusted]\n$deltaMsg\n[end observed content]"
+                                val observationText = deltaMsg
+                                val wrapped = "[observed content — untrusted]\n$observationText\n[end observed content]"
+                                // Store the observation text (between delimiters) for canary checking
+                                SafetyInterceptor.lastObservations = 
+                                    (SafetyInterceptor.lastObservations + listOf(observationText)).takeLast(2)
                                 ExecutionTracker.recordObservation(
                                     taskId = taskId,
                                     stepIndex = iterations,
@@ -1413,7 +1422,11 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                                     if (removed.isNotEmpty()) append("\nGone from screen: ${removed.take(10).joinToString(", ")}")
                                 }
                                 // P1.2b: wrap the observation in untrusted delimiters.
-                                val fullObservation = "[observed content — untrusted]\n${screenAfter.data}\n[end observed content]"
+                                val fullObservationText = screenAfter.data!!
+                                val fullObservation = "[observed content — untrusted]\n$fullObservationText\n[end observed content]"
+                                // Store the observation text (between delimiters) for canary checking
+                                SafetyInterceptor.lastObservations = 
+                                    (SafetyInterceptor.lastObservations + listOf(fullObservationText)).takeLast(2)
                                 val enrichedData = "$fullObservation\n$diffSection"
                                 val enriched = if (result.isSuccess) ToolResult.success(enrichedData)
                                                else ToolResult.error(result.error ?: "")
