@@ -155,7 +155,6 @@ object LearnedProcedureStore {
                 // P1.3b: Index the procedure pattern into the embedding store.
                 EmbeddingService.indexProcedure(newId, normalizedPattern)
             }
-            }
             cursor.close()
         } catch (e: Exception) {
             XLog.e(TAG, "Failed to extract/store procedure: ${e.message}", e)
