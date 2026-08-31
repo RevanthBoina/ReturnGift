@@ -1558,9 +1558,12 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
 
         if (cancelled.get()) {
             callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+            EngineHolder.releaseFast()
         } else {
             callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_max_iterations, maxIterations)), totalTokens)
+            EngineHolder.releaseFast()
         }
+        ExecutionTracker.endRound(commit = false)
     }
 
     // ==================== Structured Routine Path (two-layer executor) ====================
