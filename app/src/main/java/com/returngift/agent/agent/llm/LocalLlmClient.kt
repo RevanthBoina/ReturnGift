@@ -126,7 +126,7 @@ import java.util.concurrent.atomic.AtomicReference
                 // Fast/mechanical calls intentionally keep temperature = 0.3 for stable tool playback.
                 topK = config.generation.topK ?: 64,
                 topP = config.generation.topP ?: 0.95,
-                temperature = config.temperature
+                temperature = config.generation.temperature ?: config.temperature
             ),
             automaticToolCalling = false  // We handle execution in DefaultAgentService
         )
