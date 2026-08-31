@@ -67,7 +67,13 @@ class OmniRouteLlmClient(
             .apiKey(config.apiKey)
             .modelName(modelName)
             .temperature(config.temperature)
-            .baseUrl(baseUrl)
+        config.generation.topP?.let { builder.topP(it) }
+        config.generation.presencePenalty?.let { builder.presencePenalty(it) }
+        config.generation.frequencyPenalty?.let { builder.frequencyPenalty(it) }
+        config.generation.seed?.let { builder.seed(it.toInt()) }
+        config.generation.stopSequences?.let { builder.stop(it) }
+        config.generation.outputTokenLimit?.let { builder.maxTokens(it) }
+        builder.baseUrl(baseUrl)
         return builder.build()
     }
 
@@ -77,7 +83,13 @@ class OmniRouteLlmClient(
             .apiKey(config.apiKey)
             .modelName(modelName)
             .temperature(config.temperature)
-            .baseUrl(baseUrl)
+        config.generation.topP?.let { builder.topP(it) }
+        config.generation.presencePenalty?.let { builder.presencePenalty(it) }
+        config.generation.frequencyPenalty?.let { builder.frequencyPenalty(it) }
+        config.generation.seed?.let { builder.seed(it.toInt()) }
+        config.generation.stopSequences?.let { builder.stop(it) }
+        config.generation.outputTokenLimit?.let { builder.maxTokens(it) }
+        builder.baseUrl(baseUrl)
         return builder.build()
     }
 

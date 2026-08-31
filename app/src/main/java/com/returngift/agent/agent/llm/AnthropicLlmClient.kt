@@ -32,6 +32,10 @@ class AnthropicLlmClient(
             .apiKey(config.apiKey)
             .modelName(config.modelName)
             .temperature(config.temperature)
+        config.generation.topP?.let { builder.topP(it) }
+        config.generation.topK?.let { builder.topK(it) }
+        config.generation.stopSequences?.let { builder.stopSequences(it) }
+        config.generation.outputTokenLimit?.let { builder.maxTokens(it) }
         if (config.baseUrl.isNotEmpty()) {
             builder.baseUrl(config.baseUrl)
         }
@@ -44,6 +48,10 @@ class AnthropicLlmClient(
             .apiKey(config.apiKey)
             .modelName(config.modelName)
             .temperature(config.temperature)
+        config.generation.topP?.let { builder.topP(it) }
+        config.generation.topK?.let { builder.topK(it) }
+        config.generation.stopSequences?.let { builder.stopSequences(it) }
+        config.generation.outputTokenLimit?.let { builder.maxTokens(it) }
         if (config.baseUrl.isNotEmpty()) {
             builder.baseUrl(config.baseUrl)
         }

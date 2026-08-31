@@ -43,6 +43,7 @@ object LlmSessionManager {
         }
 
         XLog.d(TAG, "createCloudChatModel: provider=${cloud.providerName}, model=${cloud.modelName}, baseUrl=${cloud.resolvedBaseUrl}")
+        val generation = ModelConfigRepository.getGenerationConfig()
         return when (cloud.agentProvider) {
             com.returngift.agent.agent.LlmProvider.ANTHROPIC -> AnthropicChatModel.builder()
                 .httpClientBuilder(OkHttpClientBuilderAdapter())
@@ -50,6 +51,12 @@ object LlmSessionManager {
                 .modelName(cloud.modelName)
                 .baseUrl(cloud.resolvedBaseUrl)
                 .temperature(temperature)
+                .apply {
+                    generation.topP?.let { topP(it) }
+                    generation.topK?.let { topK(it) }
+                    generation.stopSequences?.let { stopSequences(it) }
+                    generation.outputTokenLimit?.let { maxTokens(it) }
+                }
                 .build()
 
             else -> OpenAiChatModel.builder()
@@ -58,6 +65,14 @@ object LlmSessionManager {
                 .modelName(cloud.modelName.ifEmpty { "gpt-4o-mini" })
                 .baseUrl(cloud.resolvedBaseUrl.ifEmpty { "https://api.openai.com/v1" })
                 .temperature(temperature)
+                .apply {
+                    generation.topP?.let { topP(it) }
+                    generation.presencePenalty?.let { presencePenalty(it) }
+                    generation.frequencyPenalty?.let { frequencyPenalty(it) }
+                    generation.seed?.let { seed(it.toInt()) }
+                    generation.stopSequences?.let { stop(it) }
+                    generation.outputTokenLimit?.let { maxTokens(it) }
+                }
                 .build()
         }
     }

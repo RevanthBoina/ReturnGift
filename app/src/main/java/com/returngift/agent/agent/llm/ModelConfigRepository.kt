@@ -8,6 +8,8 @@ import com.returngift.agent.agent.CloudProvider
 import com.returngift.agent.agent.LlmProvider
 import com.returngift.agent.utils.KVUtils
 import java.io.File
+import org.json.JSONArray
+import org.json.JSONObject
 
 enum class ActiveModelMode { LOCAL, CLOUD }
 
@@ -51,7 +53,8 @@ data class ResolvedModelConfig(
     fun toAgentConfig(
         temperature: Double,
         maxIterations: Int,
-        streaming: Boolean = false
+        streaming: Boolean = false,
+        generation: ModelGenerationConfig = ModelConfigRepository.getGenerationConfig()
     ): AgentConfig {
         // Inject persistent global instructions (#45) into systemPrompt.
         // This is the runtime construction path used by AppViewModel/AgentService,
@@ -67,7 +70,8 @@ data class ResolvedModelConfig(
                 maxIterations = maxIterations,
                 temperature = temperature,
                 provider = LlmProvider.LOCAL,
-                streaming = streaming
+                streaming = streaming,
+                generation = generation
             )
         } else {
             AgentConfig(
@@ -78,7 +82,8 @@ data class ResolvedModelConfig(
                 maxIterations = maxIterations,
                 temperature = temperature,
                 provider = activeCloud.agentProvider,
-                streaming = streaming
+                streaming = streaming,
+                generation = generation
             )
         }
     }
@@ -157,6 +162,55 @@ object ModelConfigRepository {
     }
 
     fun isLocalActive(): Boolean = snapshot().isLocalActive()
+
+    fun getGenerationConfig(): ModelGenerationConfig {
+        val raw = KVUtils.getGenerationProfileJson()
+        if (raw.isBlank()) return ModelGenerationConfig.DEFAULTS
+        return runCatching {
+            val json = JSONObject(raw)
+            ModelGenerationConfig.validate(ModelGenerationConfig(
+                temperature = json.optNullableDouble("temperature"),
+                topP = json.optNullableDouble("topP"),
+                topK = json.optNullableInt("topK"),
+                presencePenalty = json.optNullableDouble("presencePenalty"),
+                frequencyPenalty = json.optNullableDouble("frequencyPenalty"),
+                seed = json.optNullableLong("seed"),
+                stopSequences = json.optJSONArray("stopSequences")?.let { array ->
+                    buildList { for (i in 0 until array.length()) add(array.optString(i)) }
+                },
+                outputTokenLimit = json.optNullableInt("outputTokenLimit"),
+                minP = json.optNullableDouble("minP"),
+                repetitionPenalty = json.optNullableDouble("repetitionPenalty"),
+                contextWindowTokens = json.optNullableInt("contextWindowTokens"),
+                reasoningEffort = json.optString("reasoningEffort", "").takeIf { it.isNotBlank() }
+                    ?.let { runCatching { ReasoningEffort.valueOf(it) }.getOrNull() }
+            ))
+        }.getOrDefault(ModelGenerationConfig.DEFAULTS)
+    }
+
+    fun saveGenerationConfig(config: ModelGenerationConfig) {
+        val value = ModelGenerationConfig.validate(config)
+        val json = JSONObject()
+        value.temperature?.let { json.put("temperature", it) }
+        value.topP?.let { json.put("topP", it) }
+        value.topK?.let { json.put("topK", it) }
+        value.presencePenalty?.let { json.put("presencePenalty", it) }
+        value.frequencyPenalty?.let { json.put("frequencyPenalty", it) }
+        value.seed?.let { json.put("seed", it) }
+        value.stopSequences?.let { json.put("stopSequences", JSONArray(it)) }
+        value.outputTokenLimit?.let { json.put("outputTokenLimit", it) }
+        value.minP?.let { json.put("minP", it) }
+        value.repetitionPenalty?.let { json.put("repetitionPenalty", it) }
+        value.contextWindowTokens?.let { json.put("contextWindowTokens", it) }
+        value.reasoningEffort?.let { json.put("reasoningEffort", it.name) }
+        KVUtils.setGenerationProfileJson(json.toString())
+    }
+
+    fun resetGenerationConfig() = KVUtils.clearGenerationProfile()
+
+    private fun JSONObject.optNullableDouble(key: String): Double? = if (has(key) && !isNull(key)) optDouble(key) else null
+    private fun JSONObject.optNullableInt(key: String): Int? = if (has(key) && !isNull(key)) optInt(key) else null
+    private fun JSONObject.optNullableLong(key: String): Long? = if (has(key) && !isNull(key)) optLong(key) else null
 
     fun saveLocalDefault(modelPath: String, modelId: String, activateNow: Boolean) {
         KVUtils.setLocalModelPath(modelPath)

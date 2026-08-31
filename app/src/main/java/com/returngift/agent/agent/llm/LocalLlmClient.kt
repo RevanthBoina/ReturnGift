@@ -123,8 +123,9 @@ import java.util.concurrent.atomic.AtomicReference
             systemInstruction = Contents.of(systemPrompt),
             tools = nativeTools,
             samplerConfig = SamplerConfig(
-                topK = 64,
-                topP = 0.95,
+                // Fast/mechanical calls intentionally keep temperature = 0.3 for stable tool playback.
+                topK = config.generation.topK ?: 64,
+                topP = config.generation.topP ?: 0.95,
                 temperature = config.temperature
             ),
             automaticToolCalling = false  // We handle execution in DefaultAgentService
@@ -362,11 +363,11 @@ processedMessageCount = messages.size
          val convConfig = ConversationConfig(
              systemInstruction = Contents.of(systemPrompt),
              tools = nativeTools,
-             samplerConfig = SamplerConfig(
-                 topK = 64,
-                 topP = 0.95,
-                 temperature = 0.3  // Lower temperature for more deterministic output
-             ),
+            samplerConfig = SamplerConfig(
+                topK = config.generation.topK ?: 64,
+                topP = config.generation.topP ?: 0.95,
+                temperature = 0.3  // Fixed for deterministic mechanical-step playback.
+            ),
              automaticToolCalling = false  // We handle execution in DefaultAgentService
          )
 
