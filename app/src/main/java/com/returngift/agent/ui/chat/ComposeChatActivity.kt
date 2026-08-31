@@ -11,7 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.calculateWindowSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
@@ -163,9 +163,9 @@ ChatScreen(
                 messages = _messages,
                 modelStatus = _modelStatus.value,
                 needsPermission = _needsPermission.value,
-                isAwaitingReply = _isAwaitingReply.value,
-                isTaskRunning = _isTaskRunning.value,
-                inputEnabled = _inputEnabled.value,
+  isAwaitingReply = _isAwaitingReply.value,
+  inputEnabled = _inputEnabled.value,
+
                 isTaskRunning = _isTaskRunning.value,
                 isDownloading = _isDownloading.value,
                 downloadProgress = _downloadProgress.value,

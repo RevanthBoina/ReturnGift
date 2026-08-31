@@ -621,7 +621,7 @@ class SettingsActivity : BaseActivity() {
             }
             leaveStats.forEachIndexed { i, ((provider, model), stats) ->
                 privacyGroup.addMenuItem(
-                    leadingIcon = android.R.drawable.ic_upload,
+                    leadingIcon = android.R.drawable.ic_menu_info_details,
                     title = "$provider/$model",
                     onClick = {
                         android.app.AlertDialog.Builder(this)
@@ -634,7 +634,7 @@ class SettingsActivity : BaseActivity() {
                 ).apply {
                     val ratePerHour = if (stats.count > 0 && stats.firstEventTimestampMs > 0) {
                         val hours = (System.currentTimeMillis() - stats.firstEventTimestampMs) / (1000 * 60 * 60)
-                        if (hours > 0) stats.count / hours else 0.0
+                        if (hours > 0) stats.count.toDouble() / hours else 0.0
                     } else 0.0
                     setTrailingText("${stats.count} events (${"%.1f".format(ratePerHour)}/hr)")
                 }
@@ -1168,7 +1168,7 @@ class SettingsActivity : BaseActivity() {
             text = getString(R.string.lan_pairing_short_code, shortCode)
             setTextColor(getColor(R.color.colorTextPrimary))
             textSize = 16f
-            setTypeface(typeface, android.graphics.Typeface.MONOSPACE)
+            setTypeface(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.NORMAL)
         }
         val codeParams = android.widget.LinearLayout.LayoutParams(
             android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1215,7 +1215,7 @@ class SettingsActivity : BaseActivity() {
         resetBtn.layoutParams = resetParams
         container.addView(resetBtn)
 
-        AlertDialog.Builder(this)
+android.app.AlertDialog.Builder(this)
             .setView(container)
             .setNegativeButton(R.string.common_close, null)
             .show()

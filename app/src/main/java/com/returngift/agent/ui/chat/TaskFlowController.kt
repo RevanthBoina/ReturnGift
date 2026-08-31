@@ -37,6 +37,7 @@ import java.util.concurrent.ExecutorService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.launch
 
 data class TaskFlowUiState(
     val messages: SnapshotStateList<ChatMessage>,
@@ -93,7 +94,7 @@ class TaskFlowController(
     val pendingClarification = androidx.compose.runtime.mutableStateOf<ClarificationManager.PendingQuestion?>(null)
 
     /** Pending queue state (bounded to 1) — observed from TaskSessionStore. */
-    val pendingTasks = androidx.compose.runtime.mutableStateOf<List<com.returngift.agent.TaskSessionStore.PendingTask>>(emptyList())
+    val pendingTasks = androidx.compose.runtime.mutableStateOf<List<com.returngift.agent.PendingTask>>(emptyList())
 
     private val pendingFlowJob = Job()
 
@@ -677,6 +678,7 @@ class TaskFlowController(
                 is TaskEvent.TargetForegroundVerified -> {
                     XLog.i(TAG, "TargetForegroundVerified: ${event.packageName}")
                 }
+                is TaskEvent.Queued -> Unit
                 is TaskEvent.TokenUpdate, is TaskEvent.Thinking -> Unit
             }
         } catch (e: Exception) {

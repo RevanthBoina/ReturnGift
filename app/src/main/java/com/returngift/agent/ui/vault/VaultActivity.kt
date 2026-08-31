@@ -180,7 +180,7 @@ class VaultActivity : ComponentActivity() {
             }
         }
         // P3.3: Read provenance when file selection changes
-        provenance by produceState<String?>(initialValue = null, selected) {
+        val provenance by produceState<String?>(initialValue = null, selected) {
             val file = selected
             val prov = file?.let { KBManager.readFrontmatter(it.path)["provenance"] } ?: null
             prov

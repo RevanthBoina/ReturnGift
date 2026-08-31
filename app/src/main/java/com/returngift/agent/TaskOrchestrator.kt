@@ -19,7 +19,9 @@ import com.returngift.agent.floating.FloatingCircleManager
 import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.service.ForegroundService
 import com.returngift.agent.tool.ToolResult
+import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
+import kotlinx.coroutines.launch
 
 /**
  * Task orchestrator — manages agent lifecycle, task locking, pipeline routing, and execution.

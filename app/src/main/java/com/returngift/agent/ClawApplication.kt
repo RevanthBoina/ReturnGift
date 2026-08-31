@@ -10,7 +10,9 @@ import com.returngift.agent.channel.ChannelManager
 import com.returngift.agent.server.CloudDeepAgentManager
 import com.returngift.agent.server.ConfigServerManager
 import com.returngift.agent.tool.ToolRegistry
-import com.returngift.agent.task.TaskOrchestrator
+import com.returngift.agent.TaskOrchestrator
+import com.returngift.agent.channel.Channel
+import com.returngift.agent.service.ForegroundService
 import com.returngift.agent.utils.AppLogStore
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog

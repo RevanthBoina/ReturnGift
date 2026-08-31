@@ -458,7 +458,7 @@ class LlmConfigActivity : BaseActivity() {
         dialogView.addView(scrollView)
 
         models.forEach { model ->
-            val availability = LocalModelManager.availabilityForModel(this, resolvedConfig.local)
+            val availability = LocalModelManager.availabilityForModel(this, model)
             val downloaded = availability.isAvailable
             if (!downloaded) return@forEach
 
