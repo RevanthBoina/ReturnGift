@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent.llm
@@ -16,82 +16,82 @@ object LocalBackendHealth {
     private const val TAG = "LocalBackendHealth"
     private const val CRASH_MARKER_MAX_AGE_MS = 1000L * 60L * 60L * 24L * 30L
     private const val VERIFIED_GPU_CPU_SAFE_RETRY_COOLDOWN_MS = 1000L * 60L * 60L * 24L
-private const val ASSET_NAME = "local_backend_health.json"
+    private const val ASSET_NAME = "local_backend_health.json"
 
-// Hardcoded fallback values (first-boot safety net until JSON loads)
-private val HARDCODED_CONSERVATIVE_CPU_MANUFACTURERS = setOf(
-    "xiaomi",
-    "redmi",
-    "poco",
-)
-
-private val HARDCODED_CONSERVATIVE_CPU_MODELS = listOf(
-    "xiaomi 15",
-    "mi 15",
-    "galaxy z fold4",
-    "sm-f936",
-    "z flip7",
-    "sm-f766",
-)
-
-private val HARDCODED_CONSERVATIVE_CPU_HARDWARE_HINTS = listOf(
-    "mt",
-    "mediatek",
-    "dimensity",
-)
-
-// M5 fix: make conservative CPU lists externalizable via assets/local_backend_health.json.
-// Falls back to hardcoded defaults if the asset is absent or malformed.
-private val CONSERVATIVE_CPU_MANUFACTURERS: Set<String> by lazy {
-    loadConservativeSet(
-        "conservative_cpu_manufacturers",
-        HARDCODED_CONSERVATIVE_CPU_MANUFACTURERS,
+    // Hardcoded fallback values (first-boot safety net until JSON loads)
+    private val HARDCODED_CONSERVATIVE_CPU_MANUFACTURERS = setOf(
+        "xiaomi",
+        "redmi",
+        "poco",
     )
-}
 
-private val CONSERVATIVE_CPU_MODELS: List<String> by lazy {
-    loadConservativeList(
-        "conservative_cpu_models",
-        HARDCODED_CONSERVATIVE_CPU_MODELS,
+    private val HARDCODED_CONSERVATIVE_CPU_MODELS = listOf(
+        "xiaomi 15",
+        "mi 15",
+        "galaxy z fold4",
+        "sm-f936",
+        "z flip7",
+        "sm-f766",
     )
-}
 
-private val CONSERVATIVE_CPU_HARDWARE_HINTS: List<String> by lazy {
-    loadConservativeList(
-        "conservative_cpu_hardware_hints",
-        HARDCODED_CONSERVATIVE_CPU_HARDWARE_HINTS,
+    private val HARDCODED_CONSERVATIVE_CPU_HARDWARE_HINTS = listOf(
+        "mt",
+        "mediatek",
+        "dimensity",
     )
-}
 
-private fun loadConservativeSet(key: String, fallback: Set<String>): Set<String> {
-    return try {
-        val json = com.blankj.utilcode.util.Utils.getApp()
-            .assets
-            .open(ASSET_NAME)
-            .bufferedReader()
-            .use { it.readText() }
-
-        val node = com.google.gson.JsonParser.parseString(json).asJsonObject
-        node.getAsJsonArray(key)?.map { it.asString }?.toSet() ?: fallback
-    } catch (e: Exception) {
-        fallback
+    // M5 fix: make conservative CPU lists externalizable via assets/local_backend_health.json.
+    // Falls back to hardcoded defaults if the asset is absent or malformed.
+    private val CONSERVATIVE_CPU_MANUFACTURERS: Set<String> by lazy {
+        loadConservativeSet(
+            "conservative_cpu_manufacturers",
+            HARDCODED_CONSERVATIVE_CPU_MANUFACTURERS,
+        )
     }
-}
 
-private fun loadConservativeList(key: String, fallback: List<String>): List<String> {
-    return try {
-        val json = com.blankj.utilcode.util.Utils.getApp()
-            .assets
-            .open(ASSET_NAME)
-            .bufferedReader()
-            .use { it.readText() }
-
-        val node = com.google.gson.JsonParser.parseString(json).asJsonObject
-        node.getAsJsonArray(key)?.map { it.asString } ?: fallback
-    } catch (e: Exception) {
-        fallback
+    private val CONSERVATIVE_CPU_MODELS: List<String> by lazy {
+        loadConservativeList(
+            "conservative_cpu_models",
+            HARDCODED_CONSERVATIVE_CPU_MODELS,
+        )
     }
-}
+
+    private val CONSERVATIVE_CPU_HARDWARE_HINTS: List<String> by lazy {
+        loadConservativeList(
+            "conservative_cpu_hardware_hints",
+            HARDCODED_CONSERVATIVE_CPU_HARDWARE_HINTS,
+        )
+    }
+
+    private fun loadConservativeSet(key: String, fallback: Set<String>): Set<String> {
+        return try {
+            val json = com.blankj.utilcode.util.Utils.getApp()
+                .assets
+                .open(ASSET_NAME)
+                .bufferedReader()
+                .use { it.readText() }
+
+            val node = com.google.gson.JsonParser.parseString(json).asJsonObject
+            node.getAsJsonArray(key)?.map { it.asString }?.toSet() ?: fallback
+        } catch (e: Exception) {
+            fallback
+        }
+    }
+
+    private fun loadConservativeList(key: String, fallback: List<String>): List<String> {
+        return try {
+            val json = com.blankj.utilcode.util.Utils.getApp()
+                .assets
+                .open(ASSET_NAME)
+                .bufferedReader()
+                .use { it.readText() }
+
+            val node = com.google.gson.JsonParser.parseString(json).asJsonObject
+            node.getAsJsonArray(key)?.map { it.asString } ?: fallback
+        } catch (e: Exception) {
+            fallback
+        }
+    }
     // Runtime-loaded values (from JSON asset, cached in memory)
     @Volatile
     private var conservativeCpuManufacturers: Set<String>? = null

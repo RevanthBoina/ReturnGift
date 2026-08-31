@@ -107,7 +107,7 @@ for f in app/src/main/java/com/returngift/agent/agent/exec/*.kt \
   cls="$(basename "$f" .kt)"
   pkgdir="$(dirname "$f")"
   refs="$(grep -rl --include='*.kt' --include='*.java' "\b${cls}\b" app/src/main/java 2>/dev/null \
-          | grep -v "^${pkgdir}/" || true)"
+          | grep -v "^${pkgdir}/[^/]*$" || true)"
   if [ -z "$refs" ]; then
     orphans="${orphans}    ${cls} (declared in ${pkgdir}, referenced from NO runtime file outside its package)\n"
   fi
