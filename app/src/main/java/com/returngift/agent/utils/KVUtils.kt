@@ -292,6 +292,7 @@ object KVUtils {
     private const val KEY_PENDING_LOCAL_GPU_INIT_MODEL = "KEY_PENDING_LOCAL_GPU_INIT_MODEL"
     private const val KEY_PENDING_LOCAL_GPU_INIT_AT = "KEY_PENDING_LOCAL_GPU_INIT_AT"
     private const val KEY_PENDING_LOCAL_GPU_INIT_PID = "KEY_PENDING_LOCAL_GPU_INIT_PID"
+    private const val KEY_FAST_LOCAL_MODEL_PATH = "KEY_FAST_LOCAL_MODEL_PATH"
 
     fun getLlmApiKey(): String = getString(KEY_LLM_API_KEY, "")
     fun setLlmApiKey(value: String) = putString(KEY_LLM_API_KEY, value)
@@ -311,6 +312,10 @@ object KVUtils {
     fun setLocalModelPath(value: String) = putString(KEY_LOCAL_MODEL_PATH, value)
     fun getLocalBackendPreference(): String = getString(KEY_LOCAL_BACKEND_PREFERENCE, "")
     fun setLocalBackendPreference(value: String) = putString(KEY_LOCAL_BACKEND_PREFERENCE, value)
+
+    /** Fast model (mechanical-step routing) — separate from the primary local model. */
+    fun getFastLocalModelPath(): String = getString(KEY_FAST_LOCAL_MODEL_PATH, "")
+    fun setFastLocalModelPath(value: String) = putString(KEY_FAST_LOCAL_MODEL_PATH, value)
     fun getLocalCpuSafeDevice(): String = getString(KEY_LOCAL_CPU_SAFE_DEVICE, "")
     fun setLocalCpuSafeDevice(value: String) = putString(KEY_LOCAL_CPU_SAFE_DEVICE, value)
     fun getLocalCpuSafeReason(): String = getString(KEY_LOCAL_CPU_SAFE_REASON, "")

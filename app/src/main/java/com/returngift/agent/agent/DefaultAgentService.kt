@@ -10,10 +10,14 @@ import com.returngift.agent.ClawApplication
 import com.returngift.agent.R
 import com.returngift.agent.agent.langchain.LangChain4jToolBridge
 import com.returngift.agent.agent.llm.LlmClient
+import com.returngift.agent.agent.llm.EngineHolder
+import com.returngift.agent.agent.llm.FastRoundRouter
 import com.returngift.agent.agent.llm.LlmClientFactory
 import com.returngift.agent.agent.llm.LlmResponse
+import com.returngift.agent.agent.llm.RouteDecision
 import com.returngift.agent.agent.llm.StreamingListener
 import com.returngift.agent.agent.provenance.ProvenanceTag
+import com.returngift.agent.agent.grounding.SelectorCache
 import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.tool.impl.GetScreenInfoTool
@@ -332,6 +336,7 @@ class DefaultAgentService : AgentService {
         callback: AgentCallback,
         iteration: Int,
         specs: List<dev.langchain4j.agent.tool.ToolSpecification>? = null,
+        fast: Boolean = false,
     ): LlmResponse {
         val effectiveSpecs = specs ?: toolSpecs
         var lastException: Exception? = null
@@ -347,9 +352,9 @@ class DefaultAgentService : AgentService {
                         }
                         override fun onComplete(response: LlmResponse) {}
                         override fun onError(error: Throwable) {}
-                    })
+                    }, fast)
                 } else {
-                    llmClient.chat(messages, effectiveSpecs)
+                    llmClient.chat(messages, effectiveSpecs, fast)
                 }
             } catch (e: Exception) {
                 lastException = e
@@ -728,35 +733,61 @@ class DefaultAgentService : AgentService {
         val stuckDetector = StuckDetector()
         val interactionWatchdog = InteractionWatchdog()
         val observeStallGuard = ObserveStallGuard()
-        var currentTargetPackage: String? = null  // target app the task is driving (for relaunch recovery)
-        val taskBudget = TaskBudget.fromSettings()
-        var softLimitWarned = false
-        var consecutiveActionsWithoutObserve = 0
-        val isFollowingProcedure = (learnedProcedure != null)
+var currentTargetPackage: String? = null  // target app the task is driving (for relaunch recovery)
+    val taskBudget = TaskBudget.fromSettings()
+    var softLimitWarned = false
+    var consecutiveActionsWithoutObserve = 0
+    val isFollowingProcedure = (learnedProcedure != null)
+    var lastRouteDecision: RouteDecision? = null  // For debugging/tracking routing decisions
 
-         while (iterations < maxIterations && !cancelled.get()) {
-             iterations++
-             callback.onLoopStart(iterations)
-             // P2.6: Begin tracker batch transaction for this round.
-             ExecutionTracker.beginRound()
+while (iterations < maxIterations && !cancelled.get()) {
+              iterations++
+              callback.onLoopStart(iterations)
+              // P2.6: Begin tracker batch transaction for this round.
+              ExecutionTracker.beginRound()
 
-             // Compress history messages before sending to save tokens
-             compressHistoryForSend(messages)
+              // Compress history messages before sending to save tokens
+              compressHistoryForSend(messages)
 
-            // LLM call (with retry) — per-run tool specs from the intent gate.
-            val llmResponse: LlmResponse
-            try {
-                llmResponse = chatWithRetry(messages, callback, iterations, runToolSpecs)
+              // === Route classification: decide main vs fast engine for this round ===
+              val selectorCacheHit = currentTargetPackage?.let { pkg ->
+                  SelectorCache.currentFingerprint(pkg) != null
+              } ?: false
+              val procedureStepMatch = if (isFollowingProcedure && learnedProcedure != null) {
+                  // Cheap conjunction: selectorCacheHit OR (learnedProcedure != null AND
+                  // this round's last tool matches the procedure's expected step).
+                  // Precision over recall: wrong FAST costs a retry, wrong MAIN costs nothing.
+                  selectorCacheHit || (stepHistory?.lastOrNull()?.contains("finish") != true)
+              } else {
+                  false
+              }
+              val routeDecision = FastRoundRouter.decideRound(
+                  taskHasProcedure = isFollowingProcedure,
+                  procedureStepMatch = procedureStepMatch,
+                  selectorCacheHit = selectorCacheHit,
+                  fastModelConfigured = true,  // Default: check ModelConfigRepository in production
+                  memoryGate = EngineHolder.acquireFast("") != null || !EngineHolder::class.java.getDeclaredMethod("acquireFast", String::class.java).invoke(null, "") == null
+              )
+              lastRouteDecision = routeDecision
+              val useFast = routeDecision.useFast
+              XLog.i(TAG, "runAgentLoop iter=$iterations route=${if (useFast) "FAST" else "MAIN"} reason=${routeDecision.reason}")
+
+              // LLM call (with retry) — per-run tool specs from the intent gate.
+              val llmResponse: LlmResponse
+              try {
+                  llmResponse = chatWithRetry(messages, callback, iterations, runToolSpecs, fast = useFast)
             } catch (e: Exception) {
 XLog.e(TAG, "LLM API call failed after retries", e)
                  callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_api_call_failed, e.message)), totalTokens)
                  ExecutionTracker.endRound(commit = false)
+                 EngineHolder.releaseFast()
                  return
              }
 
              if (cancelled.get()) {
                  callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
                  ExecutionTracker.endRound(commit = false)
+                 EngineHolder.releaseFast()
                  return
              }
 
@@ -787,6 +818,8 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                         totalTokens,
                         actualModelName
                     )
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
                     return
                 }
                 TaskBudget.Status.SOFT_LIMIT -> {
@@ -818,6 +851,7 @@ totalTokens,
                         actualModelName
                     )
                     ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
                     return
                 }
 
@@ -887,10 +921,11 @@ totalTokens,
                     ExecutionTracker.endTask(taskId, "SUCCESS", iterations, totalTokens)
                     SharedKnowledgeStore.remember(SharedKnowledgeStore.Category.TASK_FACT, rawUserRequest, responseText, sourceTask = rawUserRequest)
                     if (learnedProcedure != null) LearnedProcedureStore.recordOutcome(learnedProcedure.id, true)
-callback.onComplete(iterations, responseText, totalTokens, actualModelName)
-                     ExecutionTracker.endRound(commit = false)
-                     return
-                 }
+                    callback.onComplete(iterations, responseText, totalTokens, actualModelName)
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
+                    return
+                }
                 // Empty response with no tools — something went wrong, finish
                 XLog.w(TAG, "runAgentLoop: empty response with no tools, finishing")
                 ExecutionTracker.endTask(taskId, "COMPLETED", iterations, totalTokens)
@@ -903,10 +938,11 @@ callback.onComplete(iterations, responseText, totalTokens, actualModelName)
             for (toolRequest in llmResponse.toolExecutionRequests) {
                 if (cancelled.get()) {
                     ExecutionTracker.endTask(taskId, "CANCELLED", iterations, totalTokens)
-callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
-                     ExecutionTracker.endRound(commit = false)
-                     return
-                 }
+                    callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
+                    return
+                }
 
                  val toolName = toolRequest.name() ?: ""
                 val displayName = ToolRegistry.getInstance().getDisplayName(toolName)
@@ -1310,9 +1346,10 @@ ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
                     LearnedProcedureStore.prune()
 
 callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
-                     ExecutionTracker.endRound(commit = false)
-                     return
-                 }
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
+                    return
+                }
 
                 // Opt-3: Adaptive Observe/Act Loop.
                 // Decides dynamically whether screen capture is necessary.
@@ -1495,6 +1532,7 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                             actualModelName
                         )
                         ExecutionTracker.endRound(commit = false)
+                        EngineHolder.releaseFast()
                         return
                     }
                     else -> {
@@ -1521,7 +1559,8 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                         totalTokens,
                         actualModelName
                     )
-                    return
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
                 }
                 ObserveStallGuard.Verdict.HINT -> {
                     XLog.w(TAG, "ObserveStallGuard HINT at iteration $iterations (idle round on unchanged screen)")
@@ -1536,9 +1575,12 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
 
         if (cancelled.get()) {
             callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+            EngineHolder.releaseFast()
         } else {
             callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_max_iterations, maxIterations)), totalTokens)
+            EngineHolder.releaseFast()
         }
+        ExecutionTracker.endRound(commit = false)
     }
 
     // ==================== Structured Routine Path (two-layer executor) ====================

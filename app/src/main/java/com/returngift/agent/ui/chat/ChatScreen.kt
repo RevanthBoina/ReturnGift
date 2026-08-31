@@ -23,7 +23,8 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
+import androidx.activity.compose.calculateWindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -67,6 +68,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
@@ -143,6 +145,7 @@ fun ChatScreen(
     isDownloading: Boolean = false,
     downloadProgress: Int = 0,
     isLocalModel: Boolean = true,
+    wsc: WindowSizeClass? = null,
     sessionTokens: Int = 0,
     sessionCost: Double = 0.0,
     onSendChat: (String) -> Unit,
@@ -212,37 +215,421 @@ fun ChatScreen(
         selectedTab = if (isLocalModel) "local" else "cloud"
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = colors.surface,
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        val isWideScreen = maxWidth >= 720.dp
+        val chatColumnWidth = if (isWideScreen) 720.dp else maxWidth
+        val extraPad = ((maxWidth - chatColumnWidth).coerceAtLeast(0f)) / 2f
+        val horizontalPad = if (isWideScreen) extraPad else 0.dp
+        if (isWideScreen) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                PermanentDrawerSheet(
+                    drawerContainerColor = colors.surface,
+                    modifier = Modifier.width(280.dp)
+                ) {
+                    SidebarContent(
+                        conversations = conversations,
+                        onNewChat = { onNewChat() },
+                        onSelectConversation = { onSelectConversation(it) },
+                        onDeleteConversation = onDeleteConversation,
+                        onRenameConversation = onRenameConversation,
+                        onSettings = onOpenSettings,
+                        onModels = onOpenModels,
+                        colors = colors,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .wrapContentWidth()
+                        .align(Alignment.CenterVertically)
+                        .width(chatColumnWidth)
+                        .padding(horizontal = horizontalPad)
+                ) {
+                    Scaffold(
+                        containerColor = colors.background,
+                        topBar = {
+                            Column(
+                                modifier = Modifier.dismissKeyboardOnBackgroundTap(dismissKeyboard)
+                            ) {
+                                ChatTopBar(
+                                    modelStatus = modelStatus,
+                                    sessionTokens = sessionTokens,
+                                    sessionCost = sessionCost,
+                                    isLocalModel = isLocalModel,
+                                    selectedTab = selectedTab,
+                                    onTabChange = { tab ->
+                                        selectedTab = tab
+                                        val kvUtils = com.returngift.agent.utils.KVUtils
+                                        if (tab == "cloud") {
+                                            if (kvUtils.hasDefaultCloudModel()) {
+                                                val modelId = kvUtils.getDefaultCloudModel()
+                                                val provider = com.returngift.agent.agent.CloudProvider.fromName(
+                                                    kvUtils.getDefaultCloudProvider().ifBlank { kvUtils.getLlmProvider() }
+                                                )
+                                                val displayName = provider.models.find { it.id == modelId }?.displayName ?: modelId
+                                                onModelSwitch(modelId, displayName)
+                                            } else {
+                                                com.returngift.agent.utils.XLog.i("ChatScreen", "Cloud tab: no default cloud model configured")
+                                                onModelSwitch("NONE", "")
+                                            }
+                                        } else {
+                                            if (kvUtils.hasDefaultLocalModel()) {
+                                                val localPath = kvUtils.getLocalModelPath()
+                                                val name = java.io.File(localPath).nameWithoutExtension
+                                                    .replace("-", " ").replace("_", " ")
+                                                onModelSwitch("LOCAL", name)
+                                            } else {
+                                                com.returngift.agent.utils.XLog.i("ChatScreen", "Local tab: no default local model configured")
+                                                onModelSwitch("NONE", "")
+                                            }
+                                        }
+                                    },
+                                    onMenuClick = { /* no-op: sidebar always visible on wide */ },
+                                    onSettings = onOpenSettings,
+                                    onOpenVault = onOpenVault,
+                                    onModelSwitch = onModelSwitch,
+                                    colors = colors,
+                                )
+                                if (activeTasks.isNotEmpty()) {
+                                    ActiveTaskBar(
+                                        tasks = activeTasks,
+                                        onStopTask = onStopTask,
+                                        onStopAll = onStopAllTasks,
+                                        colors = colors,
+                                    )
+                                }
+                            }
+                        },
+                        bottomBar = {
+                            if (!isDownloading) {
+                                Column(
+                                    modifier = Modifier
+                                        .imePadding()
+                                        .width(chatColumnWidth)
+                                        .padding(horizontal = horizontalPad)
+                                ) {
+                                    QuickTasksPanel(
+                                        isLocalModel = isLocalUI,
+                                        onFillTask = { text ->
+                                            prefillText = text
+                                            prefillIsTask = true
+                                            if (isLocalUI) isTaskMode = true
+                                        },
+                                        onMonitorClick = { showMonitorSheet = true },
+                                        monitorActive = activeTasks.isNotEmpty(),
+                                        colors = colors,
+                                    )
+
+                                    pendingClarification?.let { question ->
+                                        ClarificationCard(
+                                            question = question,
+                                            onAnswer = onClarificationAnswer,
+                                            onStop = onStopAllTasks,
+                                            colors = colors,
+                                        )
+                                    }
+
+                                    previewPlan?.let { plan ->
+                                        PreviewPlanCard(
+                                            plan = plan,
+                                            onExecute = onExecutePreviewPlan,
+                                            onDismiss = onDismissPreviewPlan,
+                                            colors = colors,
+                                        )
+                                    }
+
+                                    pendingTasks.forEach { pending ->
+                                        PendingTaskCard(
+                                            pending = pending,
+                                            colors = colors,
+                                            isTaskRunning = isTaskRunning,
+                                            onDismiss = onCancelQueue,
+                                            onStartNow = { onStartNow(pending) },
+                                        )
+                                    }
+
+                                    ChatInputBar(
+                                        isAwaitingReply = isAwaitingReply,
+                                        isTaskRunning = isTaskRunning,
+                                        clarificationPending = pendingClarification != null,
+                                        inputEnabled = inputEnabled,
+                                        isTaskMode = isTaskMode,
+                                        isLocalModel = isLocalUI,
+                                        onTaskModeChange = { isTaskMode = it },
+                                        onSendChat = onSendChat,
+                                        onSendTask = onSendTask,
+                                        onStopAll = onStopAllTasks,
+                                        onAttach = onAttach,
+                                        colors = colors,
+                                        prefillText = prefillText,
+                                        prefillIsTask = prefillIsTask,
+                                        onPrefillConsumed = { prefillText = "" },
+                                    )
+                                }
+                            }
+                        }
+                    ) { padding ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(padding)
+                                .dismissKeyboardOnBackgroundTap(dismissKeyboard)
+                        ) {
+                            if (!isDownloading) {
+                                val userMessages = messages.filter { it.role != ChatMessage.Role.SYSTEM }
+                                if (userMessages.isEmpty()) {
+                                    EmptyStateWithPrompts(
+                                        isLocalModel = isLocalUI,
+                                        onSelectPrompt = { text, task ->
+                                            prefillText = text
+                                            prefillIsTask = task
+                                            if (task && isLocalUI) isTaskMode = true
+                                        },
+                                        colors = colors,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                } else {
+                                    MessageList(
+                                        messages = messages,
+                                        colors = colors,
+                                        isTaskRunning = isTaskRunning,
+                                        onBackgroundTap = dismissKeyboard,
+                                        onEditMessage = onEditMessage,
+                                        onResumeCheckpoint = { onSendTask("resume") },
+                                        onContinueNewChat = onContinueNewChat,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = horizontalPad),
+                                    ) {
+                                        Text(
+                                            message = it,
+                                            color = if (it.role == ChatMessage.Role.AI) colors.aiText else colors.userText,
+                                            fontSize = 14.sp,
+                                            maxLines = Int.MAX_VALUE,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = LocalTextStyle.current
+                                                .copy(fontFamily = FontFamily.Default,
+                                                    fontWeight = if (it.role == ChatMessage.Role.AI) FontWeight.Normal else FontWeight.Bold),
+                                        )
+                                    }
+                                }
+                            }
+                            if (isDownloading) {
+                                DownloadOverlay(progress = downloadProgress, colors = colors)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                drawerContent = {
+                    ModalDrawerSheet(
+                        drawerContainerColor = colors.surface,
+                    ) {
+                        SidebarContent(
+                            conversations = conversations,
+                            onNewChat = {
+                                scope.launch { drawerState.close() }
+                                onNewChat()
+                            },
+                            onSelectConversation = {
+                                scope.launch { drawerState.close() }
+                                onSelectConversation(it)
+                            },
+                            onDeleteConversation = onDeleteConversation,
+                            onRenameConversation = onRenameConversation,
+                            onSettings = {
+                                scope.launch { drawerState.close() }
+                                onOpenSettings()
+                            },
+                            onModels = {
+                                scope.launch { drawerState.close() }
+                                onOpenModels()
+                            },
+                            colors = colors,
+                        )
+                    }
+                }
             ) {
-                SidebarContent(
-                    conversations = conversations,
-                    onNewChat = {
-                        scope.launch { drawerState.close() }
-                        onNewChat()
+                Scaffold(
+                    containerColor = colors.background,
+                    topBar = {
+                        Column(
+                            modifier = Modifier.dismissKeyboardOnBackgroundTap(dismissKeyboard)
+                        ) {
+                            ChatTopBar(
+                                modelStatus = modelStatus,
+                                sessionTokens = sessionTokens,
+                                sessionCost = sessionCost,
+                                isLocalModel = isLocalModel,
+                                selectedTab = selectedTab,
+                                onTabChange = { tab ->
+                                    selectedTab = tab
+                                    val kvUtils = com.returngift.agent.utils.KVUtils
+                                    if (tab == "cloud") {
+                                        if (kvUtils.hasDefaultCloudModel()) {
+                                            val modelId = kvUtils.getDefaultCloudModel()
+                                            val provider = com.returngift.agent.agent.CloudProvider.fromName(
+                                                kvUtils.getDefaultCloudProvider().ifBlank { kvUtils.getLlmProvider() }
+                                            )
+                                            val displayName = provider.models.find { it.id == modelId }?.displayName ?: modelId
+                                            onModelSwitch(modelId, displayName)
+                                        } else {
+                                            com.returngift.agent.utils.XLog.i("ChatScreen", "Cloud tab: no default cloud model configured")
+                                            onModelSwitch("NONE", "")
+                                        }
+                                    } else {
+                                        if (kvUtils.hasDefaultLocalModel()) {
+                                            val localPath = kvUtils.getLocalModelPath()
+                                            val name = java.io.File(localPath).nameWithoutExtension
+                                                .replace("-", " ").replace("_", " ")
+                                            onModelSwitch("LOCAL", name)
+                                        } else {
+                                            com.returngift.agent.utils.XLog.i("ChatScreen", "Local tab: no default local model configured")
+                                            onModelSwitch("NONE", "")
+                                        }
+                                    }
+                                },
+                                onMenuClick = { scope.launch { drawerState.open() } },
+                                onSettings = onOpenSettings,
+                                onOpenVault = onOpenVault,
+                                onModelSwitch = onModelSwitch,
+                                colors = colors,
+                            )
+                            if (activeTasks.isNotEmpty()) {
+                                ActiveTaskBar(
+                                    tasks = activeTasks,
+                                    onStopTask = onStopTask,
+                                    onStopAll = onStopAllTasks,
+                                    colors = colors,
+                                )
+                            }
+                        }
                     },
-                    onSelectConversation = {
-                        scope.launch { drawerState.close() }
-                        onSelectConversation(it)
-                    },
-                    onDeleteConversation = onDeleteConversation,
-                    onRenameConversation = onRenameConversation,
-                    onSettings = {
-                        scope.launch { drawerState.close() }
-                        onOpenSettings()
-                    },
-                    onModels = {
-                        scope.launch { drawerState.close() }
-                        onOpenModels()
-                    },
-                    colors = colors,
-                )
+                    bottomBar = {
+                        if (!isDownloading) {
+                            Column(
+                                modifier = Modifier.imePadding()
+                                .padding(horizontal = horizontalPad)
+                            ) {
+                                QuickTasksPanel(
+                                    isLocalModel = isLocalUI,
+                                    onFillTask = { text ->
+                                        prefillText = text
+                                        prefillIsTask = true
+                                        if (isLocalUI) isTaskMode = true
+                                    },
+                                    onMonitorClick = { showMonitorSheet = true },
+                                    monitorActive = activeTasks.isNotEmpty(),
+                                    colors = colors,
+                                )
+
+                                pendingClarification?.let { question ->
+                                    ClarificationCard(
+                                        question = question,
+                                        onAnswer = onClarificationAnswer,
+                                        onStop = onStopAllTasks,
+                                        colors = colors,
+                                    )
+                                }
+
+                                previewPlan?.let { plan ->
+                                    PreviewPlanCard(
+                                        plan = plan,
+                                        onExecute = onExecutePreviewPlan,
+                                        onDismiss = onDismissPreviewPlan,
+                                        colors = colors,
+                                    )
+                                }
+
+                                pendingTasks.forEach { pending ->
+                                    PendingTaskCard(
+                                        pending = pending,
+                                        colors = colors,
+                                        isTaskRunning = isTaskRunning,
+                                        onDismiss = onCancelQueue,
+                                        onStartNow = { onStartNow(pending) },
+                                    )
+                                }
+
+                                ChatInputBar(
+                                    isAwaitingReply = isAwaitingReply,
+                                    isTaskRunning = isTaskRunning,
+                                    clarificationPending = pendingClarification != null,
+                                    inputEnabled = inputEnabled,
+                                    isTaskMode = isTaskMode,
+                                    isLocalModel = isLocalUI,
+                                    onTaskModeChange = { isTaskMode = it },
+                                    onSendChat = onSendChat,
+                                    onSendTask = onSendTask,
+                                    onStopAll = onStopAllTasks,
+                                    onAttach = onAttach,
+                                    colors = colors,
+                                    prefillText = prefillText,
+                                    prefillIsTask = prefillIsTask,
+                                    onPrefillConsumed = { prefillText = "" },
+                                )
+                            }
+                        }
+                    }
+                ) { padding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .dismissKeyboardOnBackgroundTap(dismissKeyboard)
+                    ) {
+                        if (!isDownloading) {
+                            val userMessages = messages.filter { it.role != ChatMessage.Role.SYSTEM }
+                            if (userMessages.isEmpty()) {
+                                EmptyStateWithPrompts(
+                                    isLocalModel = isLocalUI,
+                                    onSelectPrompt = { text, task ->
+                                        prefillText = text
+                                        prefillIsTask = task
+                                        if (task && isLocalUI) isTaskMode = true
+                                    },
+                                    colors = colors,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                MessageList(
+                                    messages = messages,
+                                    colors = colors,
+                                    isTaskRunning = isTaskRunning,
+                                    onBackgroundTap = dismissKeyboard,
+                                    onEditMessage = onEditMessage,
+                                    onResumeCheckpoint = { onSendTask("resume") },
+                                    onContinueNewChat = onContinueNewChat,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = horizontalPad),
+                                ) {
+                                    Text(
+                                        message = it,
+                                        color = if (it.role == ChatMessage.Role.AI) colors.aiText else colors.userText,
+                                        fontSize = 14.sp,
+                                        maxLines = Int.MAX_VALUE,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = LocalTextStyle.current
+                                            .copy(fontFamily = FontFamily.Default,
+                                                fontWeight = if (it.role == ChatMessage.Role.AI) FontWeight.Normal else FontWeight.Bold),
+                                    )
+                                }
+                            }
+                        }
+                        if (isDownloading) {
+                            DownloadOverlay(progress = downloadProgress, colors = colors)
+                        }
+                    }
+                }
             }
         }
-    ) {
+    }
         Scaffold(
             containerColor = colors.background,
             topBar = {
@@ -423,6 +810,7 @@ fun ChatScreen(
             }
         }
     }
+    }
 
     // Monitor skill dialog
     if (showMonitorSheet) {
@@ -448,7 +836,6 @@ fun ChatScreen(
             colors = colors,
         )
     }
-}
 
 // ======================== TOP BAR ========================
 
@@ -975,7 +1362,7 @@ private fun UserBubble(
 @Composable
 private fun MarkdownText(markdown: String, colors: ReturnGiftColors, modifier: Modifier = Modifier) {
     val blocks = remember(markdown) { MarkdownLite.parseBlocks(markdown) }
-    Column(modifier = modifier) {
+    Column(modifier = modifier.maxWidth(260.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MarkdownLite.Block.Heading -> Text(
@@ -2627,7 +3014,7 @@ private fun SidebarContent(
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .padding(top = 48.dp),
+            .padding(top = WindowInsets.statusBars.top),
     ) {
         // Title with logo
         Row(

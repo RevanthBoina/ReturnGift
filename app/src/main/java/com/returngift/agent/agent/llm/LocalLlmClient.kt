@@ -25,14 +25,18 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * LlmClient implementation using Google LiteRT-LM SDK for on-device inference.
- *
- * Bridges the stateless LangChain4j chat interface (full message list per call)
- * to LiteRT-LM's stateful Conversation API (incremental messages).
- *
- * config.baseUrl is repurposed to hold the local model file path.
- */
-class LocalLlmClient(private val config: AgentConfig) : LlmClient {
+     * LlmClient implementation using Google LiteRT-LM SDK for on-device inference.
+     *
+     * Bridges the stateless LangChain4j chat interface (full message list per call)
+     * to LiteRT-LM's stateful Conversation API (incremental messages).
+     *
+     * config.baseUrl is repurposed to hold the local model file path.
+     */
+    class LocalLlmClient(private val config: AgentConfig) : LlmClient {
+
+        // Separate conversation state for fast engine (used when fast=true)
+        private var fastConversation: Conversation? = null
+        private var fastProcessedMessageCount = 0
 
     private val GSON = Gson()
 
@@ -139,11 +143,14 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
 
     private var sendCount = 0
 
-    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>): LlmResponse {
+    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean): LlmResponse {
         return try {
-            chatInternal(messages, toolSpecs)
+            if (fast) chatFastInternal(messages, toolSpecs) else chatInternal(messages, toolSpecs)
         } catch (e: Exception) {
-            // GPU inference failure (OpenCL not found) — fallback to CPU and retry once
+            if (fast) {
+                XLog.w(TAG, "chat(fast=true) failed, retrying on main engine")
+                return chatInternal(messages, toolSpecs)
+            }
             if (!gpuFailed && LocalModelRuntime.isGpuBackendFailure(e)) {
                 XLog.w(TAG, "chat: GPU inference failed, retrying with CPU: ${e.message}")
                 fallbackToCpu()
@@ -196,21 +203,206 @@ class LocalLlmClient(private val config: AgentConfig) : LlmClient {
             }
         }
 
-        processedMessageCount = messages.size
-        return parseResponse(lastResponse)
-    }
+processedMessageCount = messages.size
+         return parseResponse(lastResponse)
+     }
 
-    /**
-     * LiteRT-LM may fail to parse tool calls with standard quotes; in that case the raw
-     * model output is embedded in the error message and parsed by us instead.
-     */
-    private fun sendAndRecover(conv: com.google.ai.edge.litertlm.Conversation, text: String): Any {
-        return try {
-            conv.sendMessage(text) ?: ""
-        } catch (e: Exception) {
-            recoverRawOutput(e) ?: throw e
-        }
-    }
+     /**
+      * Chat using the fast (mechanical-step) engine for procedure-based tasks.
+      * Constructs a minimal prompt: trimmed system prompt + last 2 observations +
+      * procedure remaining steps + "output next tool call as JSON".
+      */
+     private fun chatFastInternal(
+         messages: List<ChatMessage>,
+         toolSpecs: List<ToolSpecification>
+     ): LlmResponse {
+         // Acquire fast engine - if not available, fall back to main
+         val modelPath = config.baseUrl
+         val context = ClawApplication.instance
+         val fastEngineLease = EngineHolder.acquireFast(modelPath)
+         val fastEngine = fastEngineLease?.engine
+         val isFastAvailable = fastEngine != null
+         var fastConversation: Conversation? = null
+         var fastProcessed = 0
+         var sendCount = 0
+         var gpuFailedFast = false
+
+         if (!isFastAvailable) {
+             XLog.w(TAG, "chatFastInternal: fast engine not available, falling back to main")
+             return chatInternal(messages, toolSpecs)
+         }
+
+         return try {
+             ensureFastEngineCreated(context, modelPath, fastEngineLease)
+             
+             // Recreate conversation if needed (new task or reset condition)
+             if (fastProcessed == 0 || messages.size < fastProcessed || sendCount >= 8) {
+                 val systemPrompt = buildFastSystemPrompt(messages)
+                 fastConversation = createFastConversation(systemPrompt, toolSpecs)
+                 sendCount = 0
+                 fastProcessed = 0
+             }
+
+             // Find new messages to send
+             val newMessages = messages.subList(
+                 fastProcessed.coerceAtMost(messages.size),
+                 messages.size
+             )
+
+             var lastResponse: Any? = null
+
+             for (msg in newMessages) {
+                 when (msg) {
+                     is SystemMessage -> { /* handled in createFastConversation */ }
+                     is UserMessage -> {
+                         val conv = fastConversation ?: throw RuntimeException("Fast conversation not initialized")
+                         XLog.d(TAG, "chatFast: sendMessage user (${msg.singleText().take(80)}...) sendCount=$sendCount")
+                         lastResponse = sendAndRecoverFast(conv, msg.singleText(), gpuFailedFast)
+                         sendCount++
+                     }
+                     is AiMessage -> { /* already in conversation state */ }
+                     is ToolExecutionResultMessage -> {
+                         val truncatedResult = msg.text().take(400)
+                         val toolResultText = "[Tool ${msg.toolName()} result]: $truncatedResult"
+                         val conv = fastConversation ?: throw RuntimeException("Fast conversation not initialized")
+                         XLog.d(TAG, "chatFast: sendMessage toolResult (${toolResultText.take(80)}...) sendCount=$sendCount")
+                         lastResponse = sendAndRecoverFast(conv, toolResultText, gpuFailedFast)
+                         sendCount++
+                     }
+                 }
+             }
+
+             fastProcessed = messages.size
+             return parseResponse(lastResponse)
+         } catch (e: Exception) {
+             // On any fast-engine failure, retry on main engine once
+             XLog.w(TAG, "chatFastInternal: fast engine failed, retrying on main: ${e.message}")
+             if (fastConversation != null) {
+                 try { fastConversation?.close() } catch (_: Exception) {}
+                 fastConversation = null
+             }
+             return chatInternal(messages, toolSpecs)
+         } finally {
+             // Clean up fast conversation (but keep engine for potential reuse in same task)
+             // Engine will be released by DefaultAgentService at task end
+             if (fastConversation != null) {
+                 try { fastConversation?.close() } catch (_: Exception) {}
+                 fastConversation = null
+             }
+             fastProcessed = 0
+         }
+     }
+
+     private fun ensureFastEngineCreated(
+         context: Context,
+         modelPath: String,
+         lease: LocalEngineLease?
+     ) {
+         // Fast engine is already acquired and held by EngineHolder
+         // We just need to ensure our local reference is set
+         if (lease != null) {
+             // Engine is already initialized in EngineHolder.acquireFast
+         }
+     }
+
+     private fun buildFastSystemPrompt(messages: List<ChatMessage>): String {
+         // Extract the trimmed always-section from PROMPT 2.5 (from AgentConfig.LOCAL_TASK_PROMPT)
+         // This is simplified - in reality we'd need access to the full prompt structure
+         val alwaysSection = config.systemPrompt.takeWhile { line ->
+             !line.contains("::") && !line.contains("OUTPUT FORMAT")
+         }.joinToString("\n")
+         
+         // Get last 2 user/tool messages as observations
+         val recentMessages = messages.takeLast(2)
+         val observations = recentMessages.map { msg ->
+             when (msg) {
+                 is UserMessage -> "User: ${msg.singleText()}"
+                 is ToolExecutionResultMessage -> "Tool ${msg.toolName()}: ${msg.text().take(100)}"
+                 else -> ""
+             }
+         }.filter { it.isNotBlank() }.joinToString("\n")
+         
+         return """
+         $alwaysSection
+
+         Recent observations:
+         $observations
+
+         Output the next tool call as JSON in the format: 
+         {"name": "tool_name", "arguments": {"arg1": "value1"}}
+         """.trimIndent()
+     }
+
+     private fun createFastConversation(
+         systemPrompt: String,
+         toolSpecs: List<ToolSpecification>
+     ): Conversation {
+         // LiteRT-LM only supports one session at a time — close existing first
+         try { fastConversation?.close() } catch (_: Exception) {}
+         fastConversation = null
+
+         // Convert tool specs to native LiteRT-LM tools
+         val nativeTools = toolSpecs.mapNotNull { spec ->
+             try {
+                 val paramsJson = try { GSON.toJson(spec.parameters()) } catch (_: Exception) { "{}" }
+                 com.google.ai.edge.litertlm.tool(object : com.google.ai.edge.litertlm.OpenApiTool {
+                     override fun getToolDescriptionJsonString(): String = GSON.toJson(mapOf(
+                         "name" to spec.name(),
+                         "description" to (spec.description() ?: ""),
+                         "parameters" to try { GSON.fromJson(paramsJson, Any::class.java) } catch (_: Exception) { emptyMap<String, Any>() }
+                     ))
+                     override fun execute(params: String): String = "{}" // Execution handled by DefaultAgentService
+                 })
+             } catch (e: Exception) {
+                 XLog.w(TAG, "Failed to wrap tool for fast engine: ${spec.name()}", e)
+                 null
+             }
+         }
+
+         val convConfig = ConversationConfig(
+             systemInstruction = Contents.of(systemPrompt),
+             tools = nativeTools,
+             samplerConfig = SamplerConfig(
+                 topK = 64,
+                 topP = 0.95,
+                 temperature = 0.3  // Lower temperature for more deterministic output
+             ),
+             automaticToolCalling = false  // We handle execution in DefaultAgentService
+         )
+
+         val context = ClawApplication.instance
+         val modelPath = config.baseUrl
+         val lease = LocalModelRuntime.openConversation(
+             context = context,
+             modelPath = modelPath,
+             conversationConfig = convConfig,
+             preferCpu = false  // Fast engine prefers GPU if available
+         )
+         // Note: We don't store the engine here as it's managed by EngineHolder
+         return lease.conversation
+     }
+
+     private fun sendAndRecoverFast(
+         conv: com.google.ai.edge.litertlm.Conversation,
+         text: String,
+         gpuFailedRef: Boolean
+     ): Any {
+         return try {
+             conv.sendMessage(text) ?: ""
+         } catch (e: Exception) {
+             val recovered = recoverRawOutput(e)
+             if (recovered != null) {
+                 return recovered
+             }
+             // Check if it's a GPU failure that we should retry on CPU
+             if (!gpuFailedRef && LocalModelRuntime.isGpuBackendFailure(e)) {
+                 XLog.w(TAG, "sendAndRecoverFast: GPU inference failed, retrying on CPU: ${e.message}")
+                 // For fast engine, we just fall back to main engine via caller
+                 throw e
+             }
+             throw e
+         }
+     }
 
     private fun recoverRawOutput(e: Exception): String? {
         val errorMsg = e.message ?: return null

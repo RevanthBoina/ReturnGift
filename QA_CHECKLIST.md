@@ -579,6 +579,10 @@ Do **not** rerun the entire world after every refactor. Rerun the right bundle f
   - `Q3-1`, `Q5-1`, `Q5-1b`
   - `LQ1-LQ13`
   - one real Local UI send smoke using live bounds from the current `uiautomator dump`
+- **Fast model / round routing changes (FastRoundRouter, EngineHolder dual-engine, LocalLlmClient fast flag)**
+  - `F5-device-a` through `F5-device-g`
+  - `LQ1-LQ13` (regression: no fast model set → single-engine behavior unchanged)
+  - one real Local task with a learned procedure and fast model configured → verify per-round latency drop + `EngineHolder.releaseFast` at task end
 - **Chat history / bubble metadata changes**
   - `P7-1`, `P7-2`, `P7-3`
   - `Q3-1`
@@ -735,6 +739,13 @@ When in doubt, rerun the smaller bundle first, then expand only if something dri
 - [ ] **F3. Floating button during task**: while task runs in another app â†’ floating circle shows pill with step/tokens + "Tap to stop"
 - [ ] **F4. Floating button stop**: tap floating button during task â†’ task cancels
 - [ ] **F5. Second task works**: complete task 1 â†’ start task 2 â†’ floating button, top bar, stop button all work
+- [ ] **F5-device-a. Fast model unset: zero behavior change** `[RELEASE-OK] [LLM-LOCAL]`: LlmConfigActivity → confirm "Routing disabled" trailing label appears in Local tab. Run a known mechanical task (battery query) with fast model NOT configured → per-round latency and total task time are statistically identical to the no-fast-model baseline (no regression in tool call sequence, no fast-engine log line). PASS = `FastRoundRouter.decideRound → MAIN` (or absent entirely) for every round; no `acquireFast` log.
+- [ ] **F5-device-b. Fast model set + procedure-matched task: latency drops, no quality regression** `[RELEASE-OK] [LLM-LOCAL]`: LlmConfigActivity → tap fast model card → pick a downloaded small model (e.g. Gemma-4 E2B) → Save. Run a procedure-matched task (e.g. a previously learned workflow like "send hi to Girlfriend on WhatsApp") → logcat shows `FastRoundRouter.decideRound → FAST` for at least one round; per-round latency on the fast-engine rounds drops ~40–60% vs the main-engine baseline; total task time drops correspondingly; the final answer/tool sequence is identical to the no-fast-model run (no output quality regression). PASS = logcat contains both `EngineHolder.acquireFast` (non-null lease) and `EngineHolder.releaseFast` exactly once at task end; dumpsys meminfo delta before/after ≈ 0 post-release on a 4GB device.
+- [ ] **F5-device-c. Fast model set + non-matched task: no fast engine loaded** `[RELEASE-OK] [LLM-LOCAL]`: with fast model configured, run a task with NO learned procedure (e.g. a novel first-time query) → every round routes to MAIN; no `acquireFast` log line appears; no second engine resident in dumpsys meminfo during the task. PASS = zero fast-engine load attempts.
+- [ ] **F5-device-d. Memory gate blocks fast engine on low-RAM device** `[RELEASE-OK] [LLM-LOCAL]`: on a device where `LocalBackendHealth.canRunSecondEngine()` returns false (or force the gate closed via a test hook), with fast model configured + procedure-matched task → every round routes to MAIN; task still completes normally with the main engine; single closed-vocab log line records the gate failure. PASS = task completes; no `acquireFast` log; no crash.
+- [ ] **F5-device-e. Fast engine failure falls back to main, task survives** `[RELEASE-OK] [LLM-LOCAL]`: with fast model configured + procedure-matched task, inject a fast-engine failure (simulated via a debug hook that makes the fast Conversation return an error) → the SAME round is retried on the main engine exactly once; task completes with the same final answer as the no-failure run. PASS = logcat shows `LocalLlmClient.fast-failover → main` exactly once for the failed round; no `Task failed` terminal event.
+- [ ] **F5-device-f. Fast engine released at all terminal paths** `[RELEASE-OK] [LLM-LOCAL]`: with fast model configured + procedure-matched task, terminate the task at each of the 7 terminal outcomes (LLM API failure after retries, user cancel, hard budget limit, text-only completion, system dialog blocked, finish tool, stuck-detector AUTO_KILL, observe-stall ABORT) → `EngineHolder.releaseFast` is called exactly once in each case; dumpsys meminfo shows no fast-engine leak. PASS = 7/7 terminal paths release the fast engine.
+- [ ] **F5-device-g. LlmConfigActivity UI preview renders without layout regression** `[RELEASE-OK]`: open LlmConfigActivity → Local tab → confirm the new "Fast model (mechanical steps)" card renders below "Default local model" with the ⚡ icon, correct trailing label ("Routing disabled" when unset, model display name when set), and the chevron "›"; scroll the full settings screen → no overlapping text, no clipped rows, no crash. Tapping the card opens the fast-model picker dialog with the Disable option + list of downloaded models; selecting a model persists and the trailing label updates on next open.
 - [ ] **F6. No stuck typing indicator**: after task completes â†’ "..." is replaced by answer or removed
 - [ ] **F7. Device-automation task minimizes ReturnGift** `[LOGCAT-DEBUG]`: send a task that opens another app (e.g. "Open WhatsApp") â†’ ReturnGift chat moves to background (`TaskFlowController: minimizeToBackground: moveTaskToBack=true` in logcat) â†’ floating pill visible â†’ agent's first `get_screen_info` after `open_app` returns the TARGET app's tree, NOT ReturnGift's own chat UI
 - [ ] **F8. Info/chat tasks stay foreground**: send a pure chat or device-data query (e.g. "What's my battery level?") â†’ ReturnGift stays foreground (no `moveTaskToBack` log) â†’ answer renders in chat
@@ -1047,6 +1058,13 @@ Layer 1 broadcast bypasses UI routing. Only Layer 3 catches routing bugs.
 - [ ] **Q10-5. Manual memory lifecycle**: user explicitly saves a memory â†’ it survives relaunch â†’ user deletes it â†’ it no longer appears in later model context
 - [ ] **Q10-6. Secrets never become memory**: API keys, bot tokens, passwords, and recovery codes are rejected or redacted from memory and excluded from bug reports
 - [ ] **Q10-7. Untrusted content cannot override rules**: screen/web/notification text that says "ignore previous instructions" is treated as content, not as a higher-priority instruction
+
+### Q11. Display — Rotation & Responsiveness (2026-08-30)
+
+- [ ] **Q11-1. Rotation preserves state** `[RELEASE-OK]`: rotate device (portrait ↔ landscape) while chat is open → activity does NOT restart (`configChanges` in manifest handles it) → chat messages, input text, and scroll position preserved
+- [ ] **Q11-2. Two-pane layout on wide screens** `[RELEASE-OK]`: on tablet/desktop (width ≥ 720dp) → sidebar permanently visible on left, chat content on right → no modal drawer overlay needed
+- [ ] **Q11-3. System bar insets respected** `[RELEASE-OK]`: top padding of chat content uses `WindowInsets.statusBars` → no hardcoded 48dp → status bar area correctly accounted for on devices with notches/cutouts
+- [ ] **Q11-4. Markdown bubble max-width cap** `[RELEASE-OK]`: on ultra-wide screens → assistant bubble text width capped at ~52em (≈832dp) → lines don't stretch across entire screen; on narrow screens bubble fills available width naturally
 
 ## N. Tinder Automation
 

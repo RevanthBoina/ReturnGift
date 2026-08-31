@@ -194,6 +194,33 @@ object ModelConfigRepository {
         }
     }
 
+    /**
+     * Get the persisted fast model configuration (separate from the primary local model).
+     * Returns null if no fast model is configured (routing disabled by default).
+     */
+    fun getFastModelConfig(): LocalModelConfig? {
+        val fastModelPath = KVUtils.getFastLocalModelPath()
+        if (fastModelPath.isBlank()) return null
+        val matchedLocalModel = LocalModelManager.AVAILABLE_MODELS.find { fastModelPath.endsWith(it.fileName) }
+        val fastModelId = matchedLocalModel?.id
+            ?: fastModelPath.let { File(it).nameWithoutExtension }
+        val fastDisplayName = matchedLocalModel?.displayName
+            ?: fastModelPath.let { File(it).nameWithoutExtension }
+        return LocalModelConfig(
+            modelPath = fastModelPath,
+            modelId = fastModelId,
+            displayName = fastDisplayName,
+            backendPreference = "CPU"  // Fast engine uses CPU
+        )
+    }
+
+    /**
+     * Save the fast model configuration. Pass empty modelPath to disable routing.
+     */
+    fun saveFastModelConfig(modelPath: String) {
+        KVUtils.setFastLocalModelPath(modelPath)
+    }
+
     fun activateCloudSelection(
         modelId: String,
         explicitProviderName: String? = null,
