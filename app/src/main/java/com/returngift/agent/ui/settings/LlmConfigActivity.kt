@@ -349,6 +349,50 @@ class LlmConfigActivity : BaseActivity() {
 
         // Cloud LLM — Provider tabs + model cards
         setupCloudLlm(tc)
+        setupAdvancedGeneration()
+    }
+
+    private fun setupAdvancedGeneration() {
+        val parent = findViewById<LinearLayout>(R.id.layoutModelList)?.parent as? LinearLayout ?: return
+        val current = ModelConfigRepository.getGenerationConfig()
+        val card = CardView(this).apply {
+            radius = dp(12).toFloat()
+            cardElevation = dp(2).toFloat()
+            setContentPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(TextView(this).apply { text = "Advanced Generation"; textSize = 18f; setTextColor(ThemeManager.getColors().aiText) })
+        fun field(label: String, value: String, onSave: (String) -> Unit) {
+            content.addView(TextView(this).apply { text = label; setTextColor(ThemeManager.getColors().aiText) })
+            content.addView(EditText(this).apply {
+                setText(value)
+                setSingleLine(true)
+                setOnFocusChangeListener { _, focused -> if (!focused) onSave(text.toString()) }
+            })
+        }
+        field("Temperature (0–2)", current.temperature?.toString() ?: "") { raw ->
+            ModelConfigRepository.saveGenerationConfig(ModelConfigRepository.getGenerationConfig().copy(temperature = raw.toDoubleOrNull()))
+        }
+        field("Top-p (0–1)", current.topP?.toString() ?: "") { raw ->
+            ModelConfigRepository.saveGenerationConfig(ModelConfigRepository.getGenerationConfig().copy(topP = raw.toDoubleOrNull()))
+        }
+        field("Top-k", current.topK?.toString() ?: "") { raw ->
+            ModelConfigRepository.saveGenerationConfig(ModelConfigRepository.getGenerationConfig().copy(topK = raw.toIntOrNull()))
+        }
+        field("Output token limit", current.outputTokenLimit?.toString() ?: "") { raw ->
+            ModelConfigRepository.saveGenerationConfig(ModelConfigRepository.getGenerationConfig().copy(outputTokenLimit = raw.toIntOrNull()))
+        }
+        field("Stop sequences (comma-separated)", current.stopSequences?.joinToString(", ") ?: "") { raw ->
+            ModelConfigRepository.saveGenerationConfig(ModelConfigRepository.getGenerationConfig().copy(stopSequences = raw.split(',').map(String::trim)))
+        }
+        content.addView(TextView(this).apply {
+            text = "Reset generation defaults"
+            setTextColor(getColor(R.color.colorBrandPrimary))
+            setPadding(0, dp(12), 0, dp(4))
+            setOnClickListener { ModelConfigRepository.resetGenerationConfig(); recreate() }
+        })
+        card.addView(content)
+        parent.addView(card)
     }
 
     private fun updateStorageInfo() {

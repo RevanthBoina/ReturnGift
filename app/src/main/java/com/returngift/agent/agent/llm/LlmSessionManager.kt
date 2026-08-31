@@ -50,7 +50,7 @@ object LlmSessionManager {
                 .apiKey(cloud.apiKey)
                 .modelName(cloud.modelName)
                 .baseUrl(cloud.resolvedBaseUrl)
-                .temperature(temperature)
+                .temperature(generation.temperature ?: temperature)
                 .apply {
                     generation.topP?.let { topP(it) }
                     generation.topK?.let { topK(it) }
@@ -64,7 +64,7 @@ object LlmSessionManager {
                 .apiKey(cloud.apiKey)
                 .modelName(cloud.modelName.ifEmpty { "gpt-4o-mini" })
                 .baseUrl(cloud.resolvedBaseUrl.ifEmpty { "https://api.openai.com/v1" })
-                .temperature(temperature)
+                .temperature(generation.temperature ?: temperature)
                 .apply {
                     generation.topP?.let { topP(it) }
                     generation.presencePenalty?.let { presencePenalty(it) }
