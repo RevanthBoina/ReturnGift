@@ -344,6 +344,9 @@ class LlmConfigActivity : BaseActivity() {
         // Storage info
         updateStorageInfo()
 
+        // Fast model — mechanical-step routing selector
+        setupFastModel(tc)
+
         // Cloud LLM — Provider tabs + model cards
         setupCloudLlm(tc)
     }
@@ -365,6 +368,145 @@ class LlmConfigActivity : BaseActivity() {
         findViewById<TextView>(R.id.tvStorageInfo).text = "$count model${if (count != 1) "s" else ""} · ${mbUsed} MB"
         findViewById<ProgressBar>(R.id.progressStorage).progress = pct
         findViewById<TextView>(R.id.tvStorageDetail).text = "${mbUsed} MB of ${allocated} MB allocated"
+    }
+
+    private fun setupFastModel(tc: ThemeManager.ChatColors) {
+        val tvFastModelLabel = findViewById<TextView>(R.id.tvFastModelLabel)
+        val tvFastModelStatus = findViewById<TextView>(R.id.tvFastModelStatus)
+        val tvFastModelDesc = findViewById<TextView>(R.id.tvFastModelDesc)
+        val layoutFastModel = findViewById<View>(R.id.layoutFastModel)
+
+        tvFastModelLabel?.setTextColor(tc.aiText)
+
+        val fastConfig = ModelConfigRepository.getFastModelConfig()
+        if (fastConfig != null && fastConfig.isConfigured) {
+            tvFastModelStatus?.text = fastConfig.displayName
+            tvFastModelStatus?.setTextColor(getColor(R.color.colorSuccessPrimary))
+            tvFastModelDesc?.text = "Fast model enabled — routing is active for mechanical steps"
+        } else {
+            tvFastModelStatus?.text = "Routing disabled"
+            tvFastModelStatus?.setTextColor(Color.parseColor("#8b949e"))
+            tvFastModelDesc?.text = "Enable a fast model to speed up mechanical task steps"
+        }
+
+        layoutFastModel?.setOnClickListener {
+            showFastModelPickerDialog(tc)
+        }
+    }
+
+    private fun showFastModelPickerDialog(tc: ThemeManager.ChatColors) {
+        val dialogView = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(24), dp(16), dp(24), dp(16))
+            setBackgroundColor(tc.bg)
+        }
+
+        val title = android.widget.TextView(this).apply {
+            text = "Fast Model (Mechanical Steps)"
+            textSize = 18f
+            setTextColor(tc.aiText)
+            gravity = Gravity.CENTER
+        }
+        dialogView.addView(title)
+
+        val subtitle = android.widget.TextView(this).apply {
+            text = "Select a small, fast model for routine mechanical steps.\nRouting is active only when a learned procedure matches."
+            textSize = 12f
+            setTextColor(Color.parseColor("#8b949e"))
+            setPadding(0, dp(8), 0, dp(16))
+        }
+        dialogView.addView(subtitle)
+
+        val models = LocalModelManager.AVAILABLE_MODELS + listOfNotNull(LocalModelManager.customModel())
+        val resolvedConfig = ModelConfigRepository.snapshot()
+        val currentFastPath = ModelConfigRepository.getFastModelConfig()?.modelPath ?: ""
+
+        // Disable option
+        val disableRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setBackgroundColor(if (currentFastPath.isEmpty()) Color.parseColor("#2A1F1A") else Color.TRANSPARENT)
+            setOnClickListener {
+                ModelConfigRepository.saveFastModelConfig("")
+                Toast.makeText(this@LlmConfigActivity, "Routing disabled", Toast.LENGTH_SHORT).show()
+                recreate()
+            }
+        }
+        disableRow.addView(android.widget.TextView(this).apply {
+            text = if (currentFastPath.isEmpty()) "◉ " else "○ "
+            textSize = 16f
+            setTextColor(if (currentFastPath.isEmpty()) getColor(R.color.colorBrandPrimary) else Color.parseColor("#8b949e"))
+        })
+        disableRow.addView(android.widget.TextView(this).apply {
+            text = "Disabled (use main model)"
+            textSize = 14f
+            setTextColor(tc.aiText)
+        })
+        dialogView.addView(disableRow)
+
+        val scrollView = android.widget.ScrollView(this).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(300)
+            )
+        }
+        val modelContainer = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+        }
+        scrollView.addView(modelContainer)
+        dialogView.addView(scrollView)
+
+        models.forEach { model ->
+            val availability = LocalModelManager.availabilityForModel(this, resolvedConfig.local)
+            val downloaded = availability.isAvailable
+            if (!downloaded) return@forEach
+
+            val resolvedPath = LocalModelManager.getModelPath(this, model)
+            val isSelected = resolvedPath == currentFastPath
+
+            val row = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                if (isSelected) setBackgroundColor(Color.parseColor("#2A1F1A"))
+                setOnClickListener {
+                    if (resolvedPath != null) {
+                        ModelConfigRepository.saveFastModelConfig(resolvedPath)
+                        Toast.makeText(this@LlmConfigActivity, "Fast model set: ${model.displayName}", Toast.LENGTH_SHORT).show()
+                        recreate()
+                    }
+                }
+            }
+
+            row.addView(android.widget.TextView(this).apply {
+                text = if (isSelected) "◉ " else "○ "
+                textSize = 16f
+                setTextColor(if (isSelected) getColor(R.color.colorBrandPrimary) else Color.parseColor("#8b949e"))
+            })
+            val infoCol = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            infoCol.addView(android.widget.TextView(this).apply {
+                text = model.displayName
+                textSize = 14f
+                setTextColor(tc.aiText)
+            })
+            infoCol.addView(android.widget.TextView(this).apply {
+                text = "${model.sizeBytes / 1_000_000} MB"
+                textSize = 12f
+                setTextColor(Color.parseColor("#8b949e"))
+            })
+            row.addView(infoCol)
+            modelContainer.addView(row)
+        }
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.show()
     }
 
     private fun setupCloudLlm(tc: ThemeManager.ChatColors) {
