@@ -35,7 +35,7 @@ jobs:
           file app/src/main/java/com/returngift/agent/agent/skill/YamlSkillLoader.kt
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5.7.0
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
