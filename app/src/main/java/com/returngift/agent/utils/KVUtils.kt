@@ -292,9 +292,10 @@ object KVUtils {
     private const val KEY_PENDING_LOCAL_GPU_INIT_MODEL = "KEY_PENDING_LOCAL_GPU_INIT_MODEL"
     private const val KEY_PENDING_LOCAL_GPU_INIT_AT = "KEY_PENDING_LOCAL_GPU_INIT_AT"
     private const val KEY_PENDING_LOCAL_GPU_INIT_PID = "KEY_PENDING_LOCAL_GPU_INIT_PID"
-    private const val KEY_FAST_LOCAL_MODEL_PATH = "KEY_FAST_LOCAL_MODEL_PATH"
-
-    fun getLlmApiKey(): String = getString(KEY_LLM_API_KEY, "")
+  private const val KEY_FAST_LOCAL_MODEL_PATH = "KEY_FAST_LOCAL_MODEL_PATH"
+  const val KEY_GENERATION_PROFILE_V1 = "KEY_GENERATION_PROFILE_V1"
+  
+  fun getLlmApiKey(): String = getString(KEY_LLM_API_KEY, "")
     fun setLlmApiKey(value: String) = putString(KEY_LLM_API_KEY, value)
 
     /** Per-provider API key storage — allows users to save keys for multiple providers simultaneously. */
@@ -307,8 +308,11 @@ object KVUtils {
     fun getLlmModelName(): String = getString(KEY_LLM_MODEL_NAME, "")
     fun setLlmModelName(value: String) = putString(KEY_LLM_MODEL_NAME, value)
     fun getLlmProvider(): String = getString(KEY_LLM_PROVIDER, "OPENAI")
-    fun setLlmProvider(value: String) = putString(KEY_LLM_PROVIDER, value)
-    fun getLocalModelPath(): String = getString(KEY_LOCAL_MODEL_PATH, "")
+  fun setLlmProvider(value: String) = putString(KEY_LLM_PROVIDER, value)
+  fun getGenerationProfileJson(): String = getString(KEY_GENERATION_PROFILE_V1, "")
+  fun setGenerationProfileJson(value: String) = putString(KEY_GENERATION_PROFILE_V1, value)
+  fun clearGenerationProfile() = remove(KEY_GENERATION_PROFILE_V1)
+  fun getLocalModelPath(): String = getString(KEY_LOCAL_MODEL_PATH, "")
     fun setLocalModelPath(value: String) = putString(KEY_LOCAL_MODEL_PATH, value)
     fun getLocalBackendPreference(): String = getString(KEY_LOCAL_BACKEND_PREFERENCE, "")
     fun setLocalBackendPreference(value: String) = putString(KEY_LOCAL_BACKEND_PREFERENCE, value)

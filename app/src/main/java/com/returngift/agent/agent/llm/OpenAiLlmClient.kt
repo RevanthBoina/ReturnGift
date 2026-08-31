@@ -32,6 +32,12 @@ class OpenAiLlmClient(
             .apiKey(config.apiKey.ifEmpty { "ollama" })
             .modelName(config.modelName)
             .temperature(config.temperature)
+        config.generation.topP?.let { builder.topP(it) }
+        config.generation.presencePenalty?.let { builder.presencePenalty(it) }
+        config.generation.frequencyPenalty?.let { builder.frequencyPenalty(it) }
+        config.generation.seed?.let { builder.seed(it.toInt()) }
+        config.generation.stopSequences?.let { builder.stop(it) }
+        config.generation.outputTokenLimit?.let { builder.maxTokens(it) }
         if (config.baseUrl.isNotEmpty()) {
             builder.baseUrl(config.baseUrl)
         }
@@ -44,6 +50,12 @@ class OpenAiLlmClient(
             .apiKey(config.apiKey.ifEmpty { "ollama" })
             .modelName(config.modelName)
             .temperature(config.temperature)
+        config.generation.topP?.let { builder.topP(it) }
+        config.generation.presencePenalty?.let { builder.presencePenalty(it) }
+        config.generation.frequencyPenalty?.let { builder.frequencyPenalty(it) }
+        config.generation.seed?.let { builder.seed(it.toInt()) }
+        config.generation.stopSequences?.let { builder.stop(it) }
+        config.generation.outputTokenLimit?.let { builder.maxTokens(it) }
         if (config.baseUrl.isNotEmpty()) {
             builder.baseUrl(config.baseUrl)
         }
