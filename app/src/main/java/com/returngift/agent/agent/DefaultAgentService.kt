@@ -775,12 +775,14 @@ while (iterations < maxIterations && !cancelled.get()) {
 XLog.e(TAG, "LLM API call failed after retries", e)
                  callback.onError(iterations, RuntimeException(ClawApplication.instance.getString(R.string.agent_api_call_failed, e.message)), totalTokens)
                  ExecutionTracker.endRound(commit = false)
+                 EngineHolder.releaseFast()
                  return
              }
 
              if (cancelled.get()) {
                  callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
                  ExecutionTracker.endRound(commit = false)
+                 EngineHolder.releaseFast()
                  return
              }
 
@@ -811,6 +813,8 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                         totalTokens,
                         actualModelName
                     )
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
                     return
                 }
                 TaskBudget.Status.SOFT_LIMIT -> {
@@ -842,6 +846,7 @@ totalTokens,
                         actualModelName
                     )
                     ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
                     return
                 }
 
@@ -911,10 +916,11 @@ totalTokens,
                     ExecutionTracker.endTask(taskId, "SUCCESS", iterations, totalTokens)
                     SharedKnowledgeStore.remember(SharedKnowledgeStore.Category.TASK_FACT, rawUserRequest, responseText, sourceTask = rawUserRequest)
                     if (learnedProcedure != null) LearnedProcedureStore.recordOutcome(learnedProcedure.id, true)
-callback.onComplete(iterations, responseText, totalTokens, actualModelName)
-                     ExecutionTracker.endRound(commit = false)
-                     return
-                 }
+                    callback.onComplete(iterations, responseText, totalTokens, actualModelName)
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
+                    return
+                }
                 // Empty response with no tools — something went wrong, finish
                 XLog.w(TAG, "runAgentLoop: empty response with no tools, finishing")
                 ExecutionTracker.endTask(taskId, "COMPLETED", iterations, totalTokens)
@@ -927,10 +933,11 @@ callback.onComplete(iterations, responseText, totalTokens, actualModelName)
             for (toolRequest in llmResponse.toolExecutionRequests) {
                 if (cancelled.get()) {
                     ExecutionTracker.endTask(taskId, "CANCELLED", iterations, totalTokens)
-callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
-                     ExecutionTracker.endRound(commit = false)
-                     return
-                 }
+                    callback.onComplete(iterations, ClawApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
+                    return
+                }
 
                  val toolName = toolRequest.name() ?: ""
                 val displayName = ToolRegistry.getInstance().getDisplayName(toolName)
@@ -1334,9 +1341,10 @@ ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
                     LearnedProcedureStore.prune()
 
 callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
-                     ExecutionTracker.endRound(commit = false)
-                     return
-                 }
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
+                    return
+                }
 
                 // Opt-3: Adaptive Observe/Act Loop.
                 // Decides dynamically whether screen capture is necessary.
@@ -1507,6 +1515,7 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                             actualModelName
                         )
                         ExecutionTracker.endRound(commit = false)
+                        EngineHolder.releaseFast()
                         return
                     }
                     else -> {
@@ -1533,7 +1542,8 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                         totalTokens,
                         actualModelName
                     )
-                    return
+                    ExecutionTracker.endRound(commit = false)
+                    EngineHolder.releaseFast()
                 }
                 ObserveStallGuard.Verdict.HINT -> {
                     XLog.w(TAG, "ObserveStallGuard HINT at iteration $iterations (idle round on unchanged screen)")
