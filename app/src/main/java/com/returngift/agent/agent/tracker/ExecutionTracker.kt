@@ -607,37 +607,6 @@ object ExecutionTracker {
     }
 
     /**
-     * Count observations per package (for P3.4 privacy dashboard).
-     * Returns a map of package name → observation count, sorted by count desc.
-     */
-    fun observationCountsByPackage(limit: Int = 10): List<Pair<String, Int>> {
-        return try {
-            val db = getDb()
-            val cursor = db.query(
-                TABLE_EVENTS,
-                arrayOf("app_package", "COUNT(*) as cnt"),
-                "event_type = ? AND app_package IS NOT NULL",
-                arrayOf(EventType.OBSERVE.name),
-                "app_package",
-                null,
-                "cnt DESC",
-                limit.toString()
-            )
-            val result = mutableListOf<Pair<String, Int>>()
-            while (cursor.moveToNext()) {
-                val pkg = cursor.getString(0) ?: continue
-                val count = cursor.getInt(1)
-                result.add(pkg to count)
-            }
-            cursor.close()
-            result
-        } catch (e: Exception) {
-            XLog.e(TAG, "observationCountsByPackage failed: ${e.message}", e)
-            emptyList()
-        }
-    }
-
-    /**
      * P3.4: Count observations per package (for P3.4 privacy dashboard).
      * Returns a map of package name → observation count, sorted by count desc.
      */

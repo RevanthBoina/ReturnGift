@@ -141,7 +141,7 @@ fun ChatScreen(
     needsPermission: Boolean,
     isAwaitingReply: Boolean,
     isTaskRunning: Boolean,
-    pendingTasks: List<com.returngift.agent.TaskSessionStore.PendingTask> = emptyList(),
+    pendingTasks: List<com.returngift.agent.PendingTask> = emptyList(),
     isDownloading: Boolean = false,
     downloadProgress: Int = 0,
     isLocalModel: Boolean = true,
@@ -809,7 +809,6 @@ fun ChatScreen(
                 }
             }
         }
-    }
     }
 
     // Monitor skill dialog
@@ -1763,7 +1762,7 @@ private fun ContinueNewChatCard(content: String, colors: ReturnGiftColors, onCon
  */
 @Composable
 private fun PendingTaskCard(
-    pending: com.returngift.agent.TaskSessionStore.PendingTask,
+    pending: com.returngift.agent.PendingTask,
     colors: ReturnGiftColors,
     isTaskRunning: Boolean,
     onDismiss: () -> Unit,
