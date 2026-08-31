@@ -19,7 +19,11 @@ import fi.iki.elonen.NanoHTTPD
 /**
  * LAN HTTP configuration server
  * Provides an H5 page for configuring channel keys in a desktop browser
- * Requires pairing token for all /api/* endpoints.
+ * Requires a pairing token for every /api/ endpoint.
+ *
+ * Note: do not write a `/api/<star>` glob in a block comment here — Kotlin block
+ * comments NEST, so the `/` + `*` sequence opens a comment level that never closes
+ * and silently swallows the rest of the file.
  */
 class ConfigServer(
     private val context: Context,
@@ -36,7 +40,7 @@ class ConfigServer(
     private val gson = Gson()
 
     /**
-     * Verify the pairing token against requests to /api/* endpoints.
+     * Verify the pairing token against requests to any /api/ endpoint.
      * Token is accepted via query param `token` or header `X-Server-Token`.
      */
     private fun verifyToken(session: IHTTPSession): Boolean {

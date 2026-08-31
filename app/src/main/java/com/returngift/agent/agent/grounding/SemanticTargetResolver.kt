@@ -157,32 +157,6 @@ object SemanticTargetResolver {
         return nearest
     }
 
-    private fun findNearestToPoint(root: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
-        var best: AccessibilityNodeInfo? = null
-        var bestDist = Int.MAX_VALUE
-        val stack = ArrayDeque<AccessibilityNodeInfo>()
-        stack.addLast(root)
-        while (stack.isNotEmpty()) {
-            val node = stack.removeLast()
-            if (node.isVisibleToUser) {
-                val b = Rect()
-                node.getBoundsInScreen(b)
-                val dx = b.centerX() - x
-                val dy = b.centerY() - y
-                val d = dx * dx + dy * dy
-                if (d < bestDist) {
-                    bestDist = d
-                    best?.let { runCatching { it.recycle() } }
-                    best = AccessibilityNodeInfo.obtain(node)
-                }
-            }
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { stack.addLast(it) }
-            }
-        }
-        return best
-    }
-
     private fun buildCacheKey(target: TargetDescription): String {
         val parts = mutableListOf<String>()
         if (!target.resourceId.isNullOrEmpty()) parts.add("rid:${target.resourceId}")

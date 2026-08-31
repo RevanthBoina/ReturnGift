@@ -81,6 +81,46 @@ audit_missing_import "com.returngift.agent.tool.ToolResult" "ToolResult"
 audit_missing_import "com.returngift.agent.tool.BaseTool" "BaseTool"
 audit_missing_import "com.returngift.agent.tool.ToolParameter" "ToolParameter"
 
+# Structural guard (lexer-based, NOT grep): unbalanced braces, unterminated strings /
+# nested block comments, and conflicting overloads. Three separate incidents shipped a
+# tree that could not compile because grep cannot see brace structure — in each case the
+# compiler reported ~100 errors and the real defect was ONE brace, far from the noise.
+if command -v python3 >/dev/null 2>&1; then
+  if python3 scripts/kotlin-structure-check.py; then
+    :
+  else
+    red "PREFLIGHT FAIL [kotlin-structure]: source is structurally broken (see above)."
+    fail=1
+  fi
+else
+  red "PREFLIGHT WARN [kotlin-structure]: python3 not found — structural check SKIPPED."
+fi
+
+# Orphaned-safety-component guard: every class under agent/exec/ and agent/guardrail/
+# must be referenced from outside its own package. A restore-from-older-commit once
+# deleted 664 lines of DefaultAgentService and silently unwired eight guards; the unit
+# tests stayed green because they tested the classes directly, so nothing caught it.
+orphans=""
+for f in app/src/main/java/com/returngift/agent/agent/exec/*.kt \
+         app/src/main/java/com/returngift/agent/agent/guardrail/*.kt; do
+  [ -e "$f" ] || continue
+  cls="$(basename "$f" .kt)"
+  pkgdir="$(dirname "$f")"
+  refs="$(grep -rl --include='*.kt' --include='*.java' "\b${cls}\b" app/src/main/java 2>/dev/null \
+          | grep -v "^${pkgdir}/" || true)"
+  if [ -z "$refs" ]; then
+    orphans="${orphans}    ${cls} (declared in ${pkgdir}, referenced from NO runtime file outside its package)\n"
+  fi
+done
+if [ -n "$orphans" ]; then
+  red "PREFLIGHT FAIL [no-orphaned-safety-components]: safety components exist but are not wired into any runtime path."
+  printf '%b' "$orphans"
+  red "    Either wire them into the agent loop or delete them — dead guards give false confidence."
+  fail=1
+else
+  grn "OK no-orphaned-safety-components"
+fi
+
 # Skill-source drift guard: root skill_library/skills/ is the source of truth for the
 # Python lifecycle; app/src/main/assets/skill_library/skills/ is what ships in the APK.
 # scripts/update-skill-registry.sh syncs them — fail fast if they drift apart.
