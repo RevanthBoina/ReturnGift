@@ -50,7 +50,7 @@ object SemanticTargetResolver {
      * @param exactText    if true, require exact text match (default true)
      * @param exactDesc    if true, require exact content-desc match (default true)
      */
-    data class TargetDescription(
+    data class TargetDescription @JvmOverloads constructor(
         val text: String? = null,
         val contentDesc: String? = null,
         val resourceId: String? = null,

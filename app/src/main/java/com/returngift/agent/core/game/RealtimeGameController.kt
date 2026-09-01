@@ -109,6 +109,7 @@ object RealtimeGameController {
     /**
      * Stops the controller and releases all touch inputs.
      */
+    @JvmStatic
     fun stop(service: ClawAccessibilityService?) {
         isRunning.set(false)
         controllerThread?.interrupt()
@@ -116,6 +117,12 @@ object RealtimeGameController {
         TouchInputLayer.releaseAllPointers(service)
     }
 
+    @JvmStatic
+    fun releaseAll(service: ClawAccessibilityService? = null) {
+        stop(service)
+    }
+
+    @JvmStatic
     fun isActive(): Boolean = isRunning.get()
 
     private fun executePhysicsStep(service: ClawAccessibilityService, policy: GameControlPolicy) {
