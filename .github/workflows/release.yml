@@ -28,8 +28,18 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest
+        run: |
+          ./gradlew testDebugUnitTest --stacktrace --info 2>&1 | tee test.log || {
+            echo "## Unit Tests Failed" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 120 test.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
 
       - name: Run Android Lint
         run: ./gradlew lintDebug
