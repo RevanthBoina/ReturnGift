@@ -32,6 +32,7 @@ object VisualGroundingFallbackEngine {
     /**
      * Inspects if visual fallback is needed.
      */
+    @JvmStatic
     fun isFallbackNeeded(semanticNodes: List<SemanticNodeFlattener.SemanticNode>): Boolean {
         if (semanticNodes.isEmpty()) return true
         val actionableCount = semanticNodes.count { it.isClickable || it.isEditable || it.isScrollable }
@@ -41,6 +42,7 @@ object VisualGroundingFallbackEngine {
     /**
      * Generates visual targets from the current screen when accessibility nodes are absent.
      */
+    @JvmStatic
     fun extractVisualTargets(
         service: ClawAccessibilityService,
         nodeIdMap: ConcurrentHashMap<String, IntArray>,
@@ -84,6 +86,7 @@ object VisualGroundingFallbackEngine {
         return targets
     }
 
+    @JvmStatic
     fun formatVisualTargets(targets: List<VisualTarget>): String {
         val sb = StringBuilder()
         sb.append("[Visual Fallback Active — SurfaceView / Canvas detected]\n")

@@ -111,7 +111,7 @@ jobs:
         env:
           RETURNGIFT_VERSION_NAME: ${{ steps.ver.outputs.version_name }}
           RETURNGIFT_VERSION_CODE: ${{ steps.ver.outputs.version_code }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Generate release checksums and rename APK
         run: |

@@ -48,6 +48,7 @@ object DynamicIMEInjector {
      * Such fields must never receive text via the shared clipboard (readable by other
      * apps / clipboard managers).
      */
+    @JvmStatic
     fun isSensitiveField(node: AccessibilityNodeInfo?): Boolean {
         if (node == null) return false
         if (node.isPassword) return true
@@ -65,6 +66,8 @@ object DynamicIMEInjector {
     /**
      * Injects text into a target node or focused field with multi-strategy fallback and verification.
      */
+    @JvmStatic
+    @JvmOverloads
     fun injectText(
         service: ClawAccessibilityService,
         text: String,

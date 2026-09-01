@@ -34,6 +34,7 @@ object TerminalBufferExtractor {
     /**
      * Records text from accessibility events emitted by terminal emulators.
      */
+    @JvmStatic
     fun onAccessibilityEventText(packageName: String, textList: List<CharSequence>) {
         if (!TERMINAL_PACKAGES.contains(packageName)) return
 
@@ -51,6 +52,7 @@ object TerminalBufferExtractor {
     /**
      * Reconstructs terminal screen buffer from active accessibility root.
      */
+    @JvmStatic
     fun extractTerminalBuffer(service: ClawAccessibilityService): TerminalState {
         val root = service.rootInActiveWindow
         val pkg = root?.packageName?.toString() ?: ""

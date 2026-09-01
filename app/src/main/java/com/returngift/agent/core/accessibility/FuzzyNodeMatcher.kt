@@ -22,6 +22,8 @@ object FuzzyNodeMatcher {
     /**
      * Finds the best matching SemanticNode for a given query text.
      */
+    @JvmStatic
+    @JvmOverloads
     fun findBestMatch(
         nodes: List<SemanticNodeFlattener.SemanticNode>,
         query: String,

@@ -25,6 +25,7 @@ object OcclusionDetector {
      * Inspects a list of SemanticNodes against overlay windows on screen.
      * Returns a filtered list where substantially occluded nodes are excluded or marked.
      */
+    @JvmStatic
     fun filterOccludedNodes(
         nodes: List<SemanticNodeFlattener.SemanticNode>,
         service: ClawAccessibilityService?
@@ -42,6 +43,7 @@ object OcclusionDetector {
     /**
      * Checks whether a single bounding box is occluded by any known overlay window.
      */
+    @JvmStatic
     fun checkOcclusion(targetBounds: Rect, overlayBoundsList: List<Rect>): OcclusionResult {
         val targetArea = targetBounds.width() * targetBounds.height()
         if (targetArea <= 0) return OcclusionResult(isOccluded = false)

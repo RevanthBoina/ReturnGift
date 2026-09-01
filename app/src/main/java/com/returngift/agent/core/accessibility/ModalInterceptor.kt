@@ -39,6 +39,7 @@ object ModalInterceptor {
     /**
      * Inspects the current window hierarchy for modal dialogs.
      */
+    @JvmStatic
     fun checkModal(root: AccessibilityNodeInfo?): ModalCheckResult {
         if (root == null) return ModalCheckResult(false, false, false)
 
@@ -62,15 +63,16 @@ object ModalInterceptor {
             }
         }
 
-        // Only auto-dismiss if this is a genuine modal dialog/bottom sheet/popup or compact dialog
-        if (dismissCandidates.isNotEmpty() && (isExplicitDialogContainer[0] || root.childCount <= 12)) {
+        // Check if benign transient dismissible
+        if (dismissCandidates.isNotEmpty() && (isExplicitDialogContainer[0] || dismissCandidates.size <= 2)) {
             val candidate = dismissCandidates.first()
+            val text = candidate.text?.toString() ?: candidate.contentDescription?.toString() ?: "Dismiss"
             return ModalCheckResult(
                 isModalDetected = true,
                 isBenignTransient = true,
                 isSecuritySensitive = false,
                 dismissNode = candidate,
-                title = "Transient Dialog"
+                title = "Transient Dismissible Dialog ($text)"
             )
         }
 
@@ -80,6 +82,7 @@ object ModalInterceptor {
     /**
      * Tries to auto-dismiss a benign modal dialog. Returns true if dismissed.
      */
+    @JvmStatic
     fun tryAutoDismiss(service: ClawAccessibilityService): Boolean {
         val root = service.rootInActiveWindow ?: return false
         val check = checkModal(root)

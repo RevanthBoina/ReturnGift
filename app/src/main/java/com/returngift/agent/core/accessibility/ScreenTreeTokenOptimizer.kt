@@ -27,6 +27,7 @@ object ScreenTreeTokenOptimizer {
     @Volatile
     private var cacheHits = 0L
 
+    @JvmStatic
     fun computeHierarchyHash(root: AccessibilityNodeInfo?): Long {
         if (root == null) return 0L
         var hash = -3750763034362895579L // FNV offset basis
@@ -70,6 +71,8 @@ object ScreenTreeTokenOptimizer {
      * caller's hash equals the cached hash → serve the cached string regardless of age.
      * Only mismatched/absent cache older than [maxAgeMs] is rejected.
      */
+    @JvmStatic
+    @JvmOverloads
     fun getCachedIfValid(hash: Long, maxAgeMs: Long = 30_000L): String? {
         val cached = lastCachedScreen ?: return null
         if (cached.hash == hash) {
@@ -87,6 +90,7 @@ object ScreenTreeTokenOptimizer {
     /**
      * Updates the cache with newly computed tree formatting.
      */
+    @JvmStatic
     fun updateCache(hash: Long, formattedTree: String) {
         lastCachedScreen = CachedScreen(
             hash = hash,
@@ -96,12 +100,14 @@ object ScreenTreeTokenOptimizer {
     }
 
     /** Count of content-addressed cache hits (closed-vocab telemetry). */
+    @JvmStatic
     fun getCacheHits(): Long = cacheHits
 
     /**
      * Prunes non-interactive system edge bars (status bar top 3% and nav bar bottom 3%)
      * if screen height is known, reducing token clutter.
      */
+    @JvmStatic
     fun filterSystemBars(
         nodes: List<SemanticNodeFlattener.SemanticNode>,
         screenHeight: Int

@@ -35,6 +35,7 @@ object TouchInputLayer {
     /**
      * Presses and holds a touch at (x, y) for a specified duration in milliseconds.
      */
+    @JvmStatic
     fun holdTouch(service: ClawAccessibilityService, x: Int, y: Int, durationMs: Long): Boolean {
         if (durationMs <= 0) return false
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
@@ -46,6 +47,7 @@ object TouchInputLayer {
     /**
      * Starts a continuous touch down at (x, y) with a given pointer ID.
      */
+    @JvmStatic
     fun touchDown(service: ClawAccessibilityService, pointerId: Int, x: Int, y: Int): Boolean {
         activePointers[pointerId] = ActivePointer(
             pointerId = pointerId,
@@ -68,6 +70,7 @@ object TouchInputLayer {
     /**
      * Releases a previously pressed touch pointer.
      */
+    @JvmStatic
     fun touchUp(service: ClawAccessibilityService, pointerId: Int): Boolean {
         val pointer = activePointers.remove(pointerId) ?: return false
         pointer.isDown = false
@@ -81,6 +84,7 @@ object TouchInputLayer {
     /**
      * Dispatches simultaneous multi-pointer touches (e.g. holding accelerator while tapping jump/nitro).
      */
+    @JvmStatic
     fun dispatchMultiPointer(
         service: ClawAccessibilityService,
         touches: List<Triple<Int, Int, Long>> // x, y, durationMs
@@ -103,6 +107,7 @@ object TouchInputLayer {
     /**
      * Emergency cleanup: releases all active pointers and resets touch state.
      */
+    @JvmStatic
     fun releaseAllPointers(service: ClawAccessibilityService?) {
         if (activePointers.isEmpty()) return
         XLog.i(TAG, "Emergency release of ${activePointers.size} pointers")

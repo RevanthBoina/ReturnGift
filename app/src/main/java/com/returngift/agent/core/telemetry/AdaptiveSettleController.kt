@@ -21,6 +21,7 @@ object AdaptiveSettleController {
     /**
      * Records an incoming accessibility event timestamp.
      */
+    @JvmStatic
     fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val type = event.eventType
@@ -36,6 +37,8 @@ object AdaptiveSettleController {
      * Waits until the UI becomes quiet (no layout/scroll events for [quietWindowMs]),
      * or until [maxTimeoutMs] elapses.
      */
+    @JvmStatic
+    @JvmOverloads
     fun waitForSettle(
         quietWindowMs: Long = DEFAULT_QUIET_WINDOW_MS,
         maxTimeoutMs: Long = MAX_SETTLE_TIMEOUT_MS

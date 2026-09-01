@@ -30,6 +30,7 @@ object AppLifecycleManager {
      * Deterministically launches an app by package name, handling stale stacks,
      * verifying that it actually transitions to the foreground.
      */
+    @JvmStatic
     fun launchAndVerify(context: Context, packageName: String): LaunchResult {
         val pm = context.packageManager
         val launchIntent = pm.getLaunchIntentForPackage(packageName)

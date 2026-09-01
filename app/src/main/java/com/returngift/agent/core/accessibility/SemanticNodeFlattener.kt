@@ -45,6 +45,8 @@ object SemanticNodeFlattener {
     /**
      * Flattens the accessibility node tree into a list of SemanticNode instances.
      */
+    @JvmStatic
+    @JvmOverloads
     fun flatten(
         root: AccessibilityNodeInfo?,
         nodeIdMap: ConcurrentHashMap<String, IntArray>,
@@ -154,6 +156,8 @@ object SemanticNodeFlattener {
     /**
      * Formats semantic nodes into the standard compact representation for AI.
      */
+    @JvmStatic
+    @JvmOverloads
     fun formatToString(nodes: List<SemanticNode>, maxNodes: Int = 500): String {
         val sb = StringBuilder()
         for (node in nodes) {

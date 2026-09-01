@@ -65,7 +65,7 @@ jobs:
 
       - name: Build debug APK
         run: |
-          ./gradlew assembleDebug --no-build-cache --rerun-tasks
+          ./gradlew assembleDebug --no-build-cache --rerun-tasks --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

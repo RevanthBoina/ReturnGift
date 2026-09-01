@@ -25,6 +25,7 @@ object DirectActionDispatcher {
     /**
      * Executes a fast tap on a node ID or coordinates.
      */
+    @JvmStatic
     fun performFastTap(
         service: ClawAccessibilityService,
         nodeId: String?,

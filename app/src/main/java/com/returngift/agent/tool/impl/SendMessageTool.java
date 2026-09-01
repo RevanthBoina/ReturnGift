@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import com.returngift.agent.ClawApplication;
+import com.returngift.agent.core.telemetry.AdaptiveSettleController;
 import com.returngift.agent.service.ClawAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
