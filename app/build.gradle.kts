@@ -11,7 +11,7 @@ plugins {
 
 fun readLocalOrEnvString(key: String, defaultValue: String = ""): String {
     val props = Properties().apply {
-        File("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
     }
     return System.getenv(key)?.takeIf { it.isNotBlank() }
         ?: props.getProperty(key, defaultValue).trim()
@@ -23,6 +23,8 @@ fun readLocalOrEnvInt(key: String, defaultValue: Int): Int {
 
 android {
     namespace = "com.returngift.agent"
+    println("APP PROJECT DIR: " + projectDir.absolutePath)
+    println("APP BUILD DIR: " + layout.buildDirectory.asFile.get().absolutePath)
     
     lint {
         abortOnError = false
@@ -284,25 +286,23 @@ tasks.named("preBuild") { dependsOn("injectBuildFingerprint") }
 androidComponents {
     onVariants { variant ->
         variant.outputs.forEach { output ->
-            if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
-                val versionName = android.defaultConfig.versionName ?: "0.0.0"
-                val baseName = if (variant.buildType == "release") {
-                    "ReturnGift-release"
-                } else {
-                    "ReturnGift_v${versionName}_${getDateTime()}"
-                }
-                // Use filter suffix for split APKs, plain name for universal
-                val filterName = output.filters
-                    .firstOrNull { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }
-                    ?.identifier
-                val fileName = if (filterName != null) {
-                    "${baseName}-${filterName}.apk"
-                } else {
-                    "${baseName}.apk"
-                }
-                println("output file name: $fileName")
-                output.outputFileName.set(fileName)
+            val versionName = android.defaultConfig.versionName ?: "0.0.0"
+            val baseName = if (variant.buildType == "release") {
+                "ReturnGift-release"
+            } else {
+                "ReturnGift_v${versionName}_${getDateTime()}"
             }
+            // Use filter suffix for split APKs, plain name for universal
+            val filterName = output.filters
+                .firstOrNull { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }
+                ?.identifier
+            val fileName = if (filterName != null) {
+                "${baseName}-${filterName}.apk"
+            } else {
+                "${baseName}.apk"
+            }
+            println("output file name: $fileName")
+            output.outputFileName.set(fileName)
         }
     }
 }

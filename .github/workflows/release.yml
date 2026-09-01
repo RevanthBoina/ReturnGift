@@ -23,16 +23,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest || echo "Unit tests passed or not configured"
+        run: ./gradlew testDebugUnitTest
 
       - name: Run Android Lint
-        run: ./gradlew lintDebug || echo "Lint check completed"
+        run: ./gradlew lintDebug
 
       - name: Check Detekt
         run: |
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -111,7 +111,14 @@ jobs:
         env:
           RETURNGIFT_VERSION_NAME: ${{ steps.ver.outputs.version_name }}
           RETURNGIFT_VERSION_CODE: ${{ steps.ver.outputs.version_code }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log || {
+            echo "## Release Build Failed" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 100 build.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
 
       - name: Generate release checksums and rename APK
         run: |
