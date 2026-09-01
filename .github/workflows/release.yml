@@ -9,6 +9,8 @@ on:
   push:
     tags:
       - 'v*'
+      - '3.0.0'
+      - '[0-9]+.[0-9]+.[0-9]+*'
 
 permissions:
   contents: write
@@ -95,26 +97,14 @@ jobs:
             echo "Using production release keystore from GitHub Secrets"
             KEYSTORE_PATH="$RUNNER_TEMP/returngift-release.keystore"
             echo "$ANDROID_KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
-            cat > local.properties <<EOF
-            KEYSTORE_FILE=$KEYSTORE_PATH
-            KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
-            KEY_ALIAS=$ANDROID_KEY_ALIAS
-            KEY_PASSWORD=$ANDROID_KEY_PASSWORD
-            RETURNGIFT_VERSION_NAME=$RETURNGIFT_VERSION_NAME
-            RETURNGIFT_VERSION_CODE=$RETURNGIFT_VERSION_CODE
-            EOF
+            printf "KEYSTORE_FILE=%s\nKEYSTORE_PASSWORD=%s\nKEY_ALIAS=%s\nKEY_PASSWORD=%s\nRETURNGIFT_VERSION_NAME=%s\nRETURNGIFT_VERSION_CODE=%s\n" \
+              "$KEYSTORE_PATH" "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD" "$RETURNGIFT_VERSION_NAME" "$RETURNGIFT_VERSION_CODE" > local.properties
           else
             echo "GitHub Secrets not set: generating stable CI release keystore"
             KEYSTORE_PATH="$RUNNER_TEMP/returngift-ci.keystore"
             keytool -genkeypair -v -keystore "$KEYSTORE_PATH" -alias returngift -keyalg RSA -keysize 2048 -validity 10000 -storepass returngift -keypass returngift -dname "CN=ReturnGift CI, OU=Android, O=ReturnGift, L=Default, S=Default, C=US"
-            cat > local.properties <<EOF
-            KEYSTORE_FILE=$KEYSTORE_PATH
-            KEYSTORE_PASSWORD=returngift
-            KEY_ALIAS=returngift
-            KEY_PASSWORD=returngift
-            RETURNGIFT_VERSION_NAME=$RETURNGIFT_VERSION_NAME
-            RETURNGIFT_VERSION_CODE=$RETURNGIFT_VERSION_CODE
-            EOF
+            printf "KEYSTORE_FILE=%s\nKEYSTORE_PASSWORD=returngift\nKEY_ALIAS=returngift\nKEY_PASSWORD=returngift\nRETURNGIFT_VERSION_NAME=%s\nRETURNGIFT_VERSION_CODE=%s\n" \
+              "$KEYSTORE_PATH" "$RETURNGIFT_VERSION_NAME" "$RETURNGIFT_VERSION_CODE" > local.properties
           fi
 
       - name: Build signed release APK
