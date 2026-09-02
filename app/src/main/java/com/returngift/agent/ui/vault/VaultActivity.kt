@@ -167,7 +167,6 @@ class VaultActivity : ComponentActivity() {
         var refreshTick by remember { mutableStateOf(0) }
         var selected by remember { mutableStateOf<KBManager.VaultFile?>(null) }
         var pendingDelete by remember { mutableStateOf<KBManager.VaultFile?>(null) }
-        var provenance by remember { mutableStateOf<String?>(null) }
 
         val files by produceState<List<KBManager.VaultFile>>(initialValue = emptyList(), refreshTick) {
             value = withContext(Dispatchers.IO) { KBManager.listAllFiles() }

@@ -619,7 +619,8 @@ class SettingsActivity : BaseActivity() {
             ).apply {
                 setTrailingText("${leaveStats.size} providers")
             }
-            leaveStats.forEachIndexed { i, ((provider, model), stats) ->
+            leaveStats.entries.toList().forEachIndexed { i, (key, stats) ->
+                val (provider, model) = key
                 privacyGroup.addMenuItem(
                     leadingIcon = android.R.drawable.ic_menu_info_details,
                     title = "$provider/$model",
