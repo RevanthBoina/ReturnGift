@@ -145,7 +145,21 @@ jobs:
       - name: Build signed release APK
         run: |
           set -eo pipefail
-          ./gradlew assembleRelease --no-build-cache --rerun-tasks --stacktrace
+          ./gradlew assembleRelease --no-build-cache --rerun-tasks --stacktrace 2>&1 | tee assemble-release.log || {
+            echo "## Build signed release APK Failed" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 200 assemble-release.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assemble-release-log
+          path: assemble-release.log
+          retention-days: 14
 
       - name: Generate release checksums and rename APK
         run: |
