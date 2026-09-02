@@ -47,16 +47,23 @@ android {
 
     signingConfigs {
         create("release") {
-            val props = Properties().apply {
-                rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
-            }
             fun readSigningValue(key: String): String {
-                return System.getenv(key)?.takeIf { it.isNotBlank() }
-                    ?: props.getProperty(key, "").trim()
+                val envVal = System.getenv(key)
+                if (!envVal.isNullOrBlank()) return envVal.trim()
+                val rootProps = Properties().apply {
+                    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+                }
+                val rootVal = rootProps.getProperty(key)
+                if (!rootVal.isNullOrBlank()) return rootVal.trim()
+                val appProps = Properties().apply {
+                    file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+                }
+                return appProps.getProperty(key, "").trim()
             }
             val keystorePath = readSigningValue("KEYSTORE_FILE")
             if (keystorePath.isNotEmpty()) {
-                storeFile = file(keystorePath)
+                val kFile = File(keystorePath)
+                storeFile = if (kFile.isAbsolute) kFile else rootProject.file(keystorePath)
                 storePassword = readSigningValue("KEYSTORE_PASSWORD")
                 keyAlias = readSigningValue("KEY_ALIAS")
                 keyPassword = readSigningValue("KEY_PASSWORD")

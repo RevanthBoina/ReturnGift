@@ -10,15 +10,6 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-  push:
-    branches: [main]
-    # Skip docs and release workflow changes to avoid unnecessary runs
-    paths-ignore:
-      - '**.md'
-      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 jobs:
