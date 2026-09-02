@@ -140,23 +140,33 @@ jobs:
       - name: Generate release checksums and rename APK
         run: |
           set -e
-          OUT=app/build/outputs/apk/release
-          ls -la "$OUT" || true
-          # The release variant builds a single universal APK (splits are disabled).
-          APK_PATH=$(find "$OUT" -maxdepth 1 -name "*.apk" | head -1)
+          echo "=== Locating generated release APK across workspace ==="
+          find . -name "*.apk" || true
+          # Search for release APK in build outputs or any directory
+          APK_PATH=$(find . -path "*/outputs/apk/*" -name "*.apk" | grep -i "release" | head -1)
           if [ -z "$APK_PATH" ]; then
-            echo "::error::No APK found in $OUT"
+            APK_PATH=$(find . -name "*release*.apk" | head -1)
+          fi
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find . -path "*/build/*" -name "*.apk" | head -1)
+          fi
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find . -name "*.apk" | head -1)
+          fi
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No APK found in repository after assembleRelease"
             exit 1
           fi
-          echo "Source APK: $APK_PATH"
-          # Ensure the canonical names exist for the README badge and UpdateChecker.
-          for CANONICAL in ReturnGift-release.apk ReturnGift.apk; do
-            if [ "$(basename "$APK_PATH")" != "$CANONICAL" ]; then
-              cp "$APK_PATH" "$OUT/$CANONICAL"
-            fi
-          done
-          ( cd "$OUT" && sha256sum *.apk > SHA256SUMS.txt )
-          echo "Published APKs:" && ls -la "$OUT"/*.apk
+          echo "=== Source APK found: $APK_PATH ==="
+          mkdir -p release-artifacts
+          cp "$APK_PATH" release-artifacts/ReturnGift-release.apk
+          cp "$APK_PATH" release-artifacts/ReturnGift.apk
+          ( cd release-artifacts && sha256sum *.apk > SHA256SUMS.txt )
+          echo "=== Published release artifacts ==="
+          ls -la release-artifacts/
+          # Also populate app/build/outputs/apk/release for backwards compatibility
+          mkdir -p app/build/outputs/apk/release
+          cp release-artifacts/* app/build/outputs/apk/release/ || true
 
       - name: Extract release notes from README
         env:
@@ -199,8 +209,8 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           files: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/release/SHA256SUMS.txt
+            release-artifacts/*.apk
+            release-artifacts/SHA256SUMS.txt
           body_path: release-notes.md
           draft: false
           prerelease: false
