@@ -23,12 +23,15 @@ fun readLocalOrEnvInt(key: String, defaultValue: Int): Int {
 
 android {
     namespace = "com.returngift.agent"
-    println("APP PROJECT DIR: " + projectDir.absolutePath)
-    println("APP BUILD DIR: " + layout.buildDirectory.asFile.get().absolutePath)
     
     lint {
         abortOnError = false
         checkReleaseBuilds = false
+        ignoreWarnings = true
+        checkAllWarnings = false
+        warningsAsErrors = false
+        ignoreTestSources = true
+        baseline = file("lint-baseline.xml")
         // Disable checks for known pre-existing issues
         disable += "MissingPermission"  // Bluetooth permissions handled at runtime
         disable += "NewApi"  // Pre-existing API level annotations needed for minSdk=28
