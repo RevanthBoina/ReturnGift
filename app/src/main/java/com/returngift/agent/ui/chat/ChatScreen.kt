@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import com.returngift.agent.R
+import com.returngift.agent.PendingTask
 import com.returngift.agent.agent.skill.Skill
 import com.returngift.agent.agent.skill.SkillCategory
 import com.returngift.agent.agent.clarify.ClarificationManager
@@ -141,7 +142,7 @@ fun ChatScreen(
     needsPermission: Boolean,
     isAwaitingReply: Boolean,
     isTaskRunning: Boolean,
-    pendingTasks: List<com.returngift.agent.PendingTask> = emptyList(),
+    pendingTasks: List<PendingTask> = emptyList(),
     isDownloading: Boolean = false,
     downloadProgress: Int = 0,
     isLocalModel: Boolean = true,
@@ -1762,7 +1763,7 @@ private fun ContinueNewChatCard(content: String, colors: ReturnGiftColors, onCon
  */
 @Composable
 private fun PendingTaskCard(
-    pending: com.returngift.agent.PendingTask,
+    pending: PendingTask,
     colors: ReturnGiftColors,
     isTaskRunning: Boolean,
     onDismiss: () -> Unit,
