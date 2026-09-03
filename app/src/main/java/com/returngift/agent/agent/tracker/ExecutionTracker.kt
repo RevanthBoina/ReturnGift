@@ -742,6 +742,20 @@ object ExecutionTracker {
         })
         XLog.d(TAG, "LEAVE event recorded: provider=$provider model=$model outputTokens=$outputTokens")
     }
+
+    /**
+     * Delete all events associated with a given app package (privacy cleanup).
+     * Returns the count of deleted rows.
+     */
+    fun forgetApp(packageName: String): Int {
+        return try {
+            val db = getDb()
+            db.delete(TABLE_EVENTS, "app_package = ?", arrayOf(packageName))
+        } catch (e: Exception) {
+            XLog.e(TAG, "forgetApp failed for $packageName", e)
+            0
+        }
+    }
 }
 
 /** Returns the String value of a column that may not exist on a v1 schema mid-upgrade. */

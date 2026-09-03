@@ -93,7 +93,7 @@ class OmniRouteLlmClient(
         return builder.build()
     }
 
-    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>): LlmResponse {
+    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean): LlmResponse {
         val request = ChatRequest.builder()
             .messages(messages)
             .toolSpecifications(toolSpecs)
@@ -105,7 +105,8 @@ class OmniRouteLlmClient(
     override fun chatStreaming(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean
     ): LlmResponse {
         val request = ChatRequest.builder()
             .messages(messages)

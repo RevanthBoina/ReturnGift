@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent.llm
@@ -14,4 +14,5 @@ data class LlmResponse(
     val modelName: String? = null
 ) {
     fun hasToolExecutionRequests(): Boolean = toolExecutionRequests.isNotEmpty()
+    val tokenCount: Int get() = tokenUsage?.outputTokenCount() ?: 0
 }

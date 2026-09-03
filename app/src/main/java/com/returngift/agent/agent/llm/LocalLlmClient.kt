@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent.llm
@@ -7,6 +7,7 @@ import com.returngift.agent.ClawApplication
 import com.returngift.agent.agent.AgentConfig
 import com.returngift.agent.utils.XLog
 import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.MessageCallback
@@ -383,6 +384,21 @@ processedMessageCount = messages.size
          return lease.conversation
      }
 
+     private fun sendAndRecover(
+         conv: Conversation,
+         text: String
+     ): Any {
+         return try {
+             conv.sendMessage(text) ?: ""
+         } catch (e: Exception) {
+             val recovered = recoverRawOutput(e)
+             if (recovered != null) {
+                 return recovered
+             }
+             throw e
+         }
+     }
+
      private fun sendAndRecoverFast(
          conv: com.google.ai.edge.litertlm.Conversation,
          text: String,
@@ -456,7 +472,8 @@ processedMessageCount = messages.size
     override fun chatStreaming(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean
     ): LlmResponse {
         return try {
             chatStreamingInternal(messages, toolSpecs, listener)

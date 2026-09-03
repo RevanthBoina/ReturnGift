@@ -3,6 +3,12 @@
 
 package com.returngift.agent.agent.llm
 
+import com.returngift.agent.agent.llm.RouteDecision.Companion.REASON_UNCONFIGURED
+import com.returngift.agent.agent.llm.RouteDecision.Companion.REASON_MEMORY
+import com.returngift.agent.agent.llm.RouteDecision.Companion.REASON_NO_PROCEDURE
+import com.returngift.agent.agent.llm.RouteDecision.Companion.REASON_MECHANICAL
+import com.returngift.agent.agent.llm.RouteDecision.Companion.REASON_PLANNING
+
 /**
  * Represents the decision to use either the main (slower, more capable) model
  * or a fast (smaller, specialized) model for a given reasoning round.

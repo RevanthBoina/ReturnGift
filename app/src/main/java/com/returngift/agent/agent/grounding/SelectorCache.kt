@@ -55,7 +55,9 @@ object SelectorCache {
         val centerY: Int,
         val method: SemanticTargetResolver.ResolutionMethod,
         val resolvedAt: Long,
-    )
+    ) {
+        val bounds: Rect get() = Rect(centerX - 10, centerY - 10, centerX + 10, centerY + 10)
+    }
 
     // key = "packageName|description"
     private val cache = mutableMapOf<String, CachedEntry>()

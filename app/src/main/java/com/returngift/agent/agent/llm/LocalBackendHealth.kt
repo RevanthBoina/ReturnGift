@@ -220,6 +220,13 @@ object LocalBackendHealth {
 
     fun cpuSafeReason(): String = KVUtils.getLocalCpuSafeReason()
 
+    /**
+     * Checks if system memory and device state can support running a second local engine.
+     */
+    fun canRunSecondEngine(): Boolean {
+        return !isCpuSafeModeEnabled()
+    }
+
     fun hasVerifiedGpuSuccess(): Boolean {
         return KVUtils.getLocalGpuVerifiedDevice() == currentDeviceKey() &&
             KVUtils.getLocalGpuVerifiedAt() > 0L

@@ -87,6 +87,19 @@ object SafetyInterceptor {
     }
 
     /**
+     * Checks if a package is a blocked payment app.
+     */
+    fun checkPackageSafety(packageName: String): String? {
+        val lower = packageName.lowercase()
+        if (BLOCKED_PAYMENT_PACKAGES.any { lower.contains(it) || it.contains(lower) }) {
+            val msg = "Safety: Opening payment app '$packageName' is blocked for safety."
+            XLog.w(TAG, msg)
+            return msg
+        }
+        return null
+    }
+
+    /**
      * Global blocklist check that applies to ANY execution path (including Tier-1
      * DirectTool, which has no skill context and therefore no `activeSkillId`-scoped
      * blocklist). Mirrors the send_message skill's blocklist_patterns so a Tier-1

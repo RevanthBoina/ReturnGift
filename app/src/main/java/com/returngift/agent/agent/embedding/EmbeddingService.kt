@@ -1,5 +1,7 @@
 // EmbeddingService.kt
 
+package com.returngift.agent.agent.embedding
+
 import com.returngift.agent.utils.XLog
 import java.nio.ByteBuffer
 import kotlin.math.sqrt

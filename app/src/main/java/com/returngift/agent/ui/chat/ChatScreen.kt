@@ -700,7 +700,7 @@ fun ChatScreen(
                         val d3Surface = pendingClarification?.surface ?: "generic"
                         // Observe remainingMs using collectAsState for proper compose integration
                         val remainingMs by ClarificationManager.remainingMs.collectAsState()
-                        ClarificationChip(
+                        ConfirmCountdownChip(
                             isD3 = d3Surface == "d3_send_confirm",
                             remainingMs = remainingMs,
                             onConfirm = { onClarificationAnswer("Send") },

@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent.llm
@@ -58,7 +58,7 @@ class AnthropicLlmClient(
         return builder.build()
     }
 
-    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>): LlmResponse {
+    override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean): LlmResponse {
         val request = ChatRequest.builder()
             .messages(messages)
             .toolSpecifications(toolSpecs)
@@ -70,7 +70,8 @@ class AnthropicLlmClient(
     override fun chatStreaming(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean
     ): LlmResponse {
         val request = ChatRequest.builder()
             .messages(messages)
