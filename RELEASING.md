@@ -39,7 +39,7 @@ The tag-based release workflow expects these repo secrets:
 base64 -w 0 "$KEYSTORE_FILE"
 ```
 
-Without these secrets, `.github/workflows/release.yml` will fail closed and refuse to publish a public APK.
+**Important**: If these secrets are not set, the workflow will generate a stable CI fallback keystore instead of failing. However, APKs signed with the CI keystore will NOT be compatible with in-place upgrades from production releases. Always set these secrets for production releases.
 
 ## 3. Prepare a release
 
@@ -58,7 +58,7 @@ sha256sum app/build/outputs/apk/release/*.apk
 
 ```bash
 git tag -a vX.Y.Z -m "vX.Y.Z"
-git push returngift vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 The GitHub Actions workflow will then create the GitHub Release, upload the signed APK, and attach `SHA256SUMS.txt`.
@@ -68,8 +68,8 @@ The GitHub Actions workflow will then create the GitHub Release, upload the sign
 To verify that the next public build can upgrade in place over the current signed build, create a temporary local build with the same key and a higher version:
 
 ```bash
-export ReturnGift_vERSION_CODE=15
-export ReturnGift_vERSION_NAME=0.5.1-upgrade-test
+export RETURNGIFT_VERSION_CODE=15
+export RETURNGIFT_VERSION_NAME=0.5.1-upgrade-test
 ./gradlew --no-daemon :app:assembleRelease -x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease
 ```
 
