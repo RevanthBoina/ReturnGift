@@ -404,18 +404,7 @@ fun ChatScreen(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(horizontal = horizontalPad),
-                                    ) {
-                                        Text(
-                                            message = it,
-                                            color = if (it.role == ChatMessage.Role.AI) colors.aiText else colors.userText,
-                                            fontSize = 14.sp,
-                                            maxLines = Int.MAX_VALUE,
-                                            overflow = TextOverflow.Ellipsis,
-                                            style = LocalTextStyle.current
-                                                .copy(fontFamily = FontFamily.Default,
-                                                    fontWeight = if (it.role == ChatMessage.Role.AI) FontWeight.Normal else FontWeight.Bold),
-                                        )
-                                    }
+                                    )
                                 }
                             }
                             if (isDownloading) {
@@ -610,18 +599,7 @@ fun ChatScreen(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .padding(horizontal = horizontalPad),
-                                ) {
-                                    Text(
-                                        message = it,
-                                        color = if (it.role == ChatMessage.Role.AI) colors.aiText else colors.userText,
-                                        fontSize = 14.sp,
-                                        maxLines = Int.MAX_VALUE,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = LocalTextStyle.current
-                                            .copy(fontFamily = FontFamily.Default,
-                                                fontWeight = if (it.role == ChatMessage.Role.AI) FontWeight.Normal else FontWeight.Bold),
-                                    )
-                                }
+                                )
                             }
                         }
                         if (isDownloading) {
@@ -811,7 +789,6 @@ fun ChatScreen(
                 }
             }
         }
-    }
 
     // Monitor skill dialog
     if (showMonitorSheet) {
@@ -837,6 +814,7 @@ fun ChatScreen(
             colors = colors,
         )
     }
+}
 
 // ======================== TOP BAR ========================
 
@@ -1038,7 +1016,7 @@ private fun ConfirmCountdownChip(
     onCancel: () -> Unit,
     colors: ReturnGiftColors,
 ) {
-    if (!isD3 || remainingMs <= 0) return@ConfirmCountdownChip
+    if (!isD3 || remainingMs <= 0) return
 
     val digit = kotlin.math.min(5, (remainingMs + 999) / 1000)
     val digitString = digit.toString()
@@ -1363,7 +1341,7 @@ private fun UserBubble(
 @Composable
 private fun MarkdownText(markdown: String, colors: ReturnGiftColors, modifier: Modifier = Modifier) {
     val blocks = remember(markdown) { MarkdownLite.parseBlocks(markdown) }
-    Column(modifier = modifier.maxWidth(260.dp)) {
+    Column(modifier = modifier.widthIn(max = 260.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MarkdownLite.Block.Heading -> Text(
@@ -3015,7 +2993,7 @@ private fun SidebarContent(
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .padding(top = WindowInsets.statusBars.top),
+            .windowInsetsPadding(WindowInsets.statusBars),
     ) {
         // Title with logo
         Row(

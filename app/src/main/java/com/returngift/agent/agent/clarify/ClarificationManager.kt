@@ -14,6 +14,14 @@ import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Suspend/resume bridge for the ask_user tool — the keystone of the
@@ -66,6 +74,35 @@ data class PendingQuestion(
 
     @Volatile
     private var cancelled: Boolean = false
+
+    private val _remainingMs = MutableStateFlow(0L)
+    val remainingMs: StateFlow<Long> = _remainingMs.asStateFlow()
+
+    private var tickerJob: Job? = null
+    private val tickerScope = CoroutineScope(Dispatchers.Default)
+
+    internal val remainingMsFlow = object {
+        fun startTicker(deadlineMs: Long) {
+            tickerJob?.cancel()
+            tickerJob = tickerScope.launch {
+                while (true) {
+                    val rem = deadlineMs - System.currentTimeMillis()
+                    if (rem <= 0) {
+                        _remainingMs.value = 0L
+                        break
+                    }
+                    _remainingMs.value = rem
+                    delay(200L)
+                }
+            }
+        }
+
+        fun stopTicker() {
+            tickerJob?.cancel()
+            tickerJob = null
+            _remainingMs.value = 0L
+        }
+    }
 
     private val listeners = CopyOnWriteArrayList<(PendingQuestion?) -> Unit>()
     private val mainHandler = Handler(Looper.getMainLooper())
