@@ -17,7 +17,7 @@ on:
       keep_per_workflow:
         description: 'Completed runs to keep per workflow file (newest first)'
         required: false
-        default: '5'
+        default: '30'
 
 permissions:
   actions: write
@@ -37,7 +37,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const keep = parseInt('${{ inputs.keep_per_workflow || '5' }}', 10) || 5;
+            const keep = parseInt('${{ inputs.keep_per_workflow || '30' }}', 10) || 30;
             core.info(`Keeping newest ${keep} completed runs per workflow.`);
 
             const owner = context.repo.owner;
@@ -52,6 +52,11 @@ jobs:
 
             let totalDeleted = 0;
             for (const wf of workflows) {
+              // Never purge release workflow runs - they contain release evidence
+              if (wf.name === 'Release APK') {
+                core.info(`Skipping workflow "${wf.name}" (id=${wf.id}) - release evidence preserved`);
+                continue;
+              }
               // Page through completed runs newest-first; skip the first `keep`,
               // delete the rest. Only completed runs can be deleted.
               const runs = await github.paginate(

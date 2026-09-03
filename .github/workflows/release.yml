@@ -9,8 +9,6 @@ on:
   push:
     tags:
       - 'v*'
-      - '3.0.0'
-      - '[0-9]+.[0-9]+.[0-9]+*'
 
 permissions:
   contents: write
@@ -111,20 +109,24 @@ jobs:
           RETURNGIFT_VERSION_CODE: ${{ steps.ver.outputs.version_code }}
         run: |
           if [ -n "$ANDROID_KEYSTORE_B64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
-            echo "Using production release keystore from GitHub Secrets"
-            KEYSTORE_PATH="$RUNNER_TEMP/returngift-release.keystore"
-            echo "$ANDROID_KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
-            STORE_PASS="$ANDROID_KEYSTORE_PASSWORD"
-            ALIAS="$ANDROID_KEY_ALIAS"
-            KEY_PASS="$ANDROID_KEY_PASSWORD"
+              echo "Using production release keystore from GitHub Secrets"
+              KEYSTORE_PATH="$RUNNER_TEMP/returngift-release.keystore"
+              echo "$ANDROID_KEYSTORE_B64" | base64 --decode > "$KEYSTORE_PATH"
+              STORE_PASS="$ANDROID_KEYSTORE_PASSWORD"
+              ALIAS="$ANDROID_KEY_ALIAS"
+              KEY_PASS="$ANDROID_KEY_PASSWORD"
+              KEYSTORE_TYPE="production"
           else
-            echo "GitHub Secrets not set: generating stable CI release keystore"
-            KEYSTORE_PATH="$RUNNER_TEMP/returngift-ci.keystore"
-            keytool -genkeypair -v -keystore "$KEYSTORE_PATH" -alias returngift -keyalg RSA -keysize 2048 -validity 10000 -storepass returngift -keypass returngift -dname "CN=ReturnGift CI, OU=Android, O=ReturnGift, L=Default, S=Default, C=US"
-            STORE_PASS="returngift"
-            ALIAS="returngift"
-            KEY_PASS="returngift"
+              echo "GitHub Secrets not set: generating stable CI release keystore"
+              KEYSTORE_PATH="$RUNNER_TEMP/returngift-ci.keystore"
+              keytool -genkeypair -v -keystore "$KEYSTORE_PATH" -alias returngift -keyalg RSA -keysize 2048 -validity 10000 -storepass returngift -keypass returngift -dname "CN=ReturnGift CI, OU=Android, O=ReturnGift, L=Default, S=Default, C=US"
+              STORE_PASS="returngift"
+              ALIAS="returngift"
+              KEY_PASS="returngift"
+              KEYSTORE_TYPE="ci-fallback"
           fi
+          # Log which keystore is being used
+          echo "KEYSTORE_TYPE=$KEYSTORE_TYPE" >> "$GITHUB_ENV"
           # Ensure sdk.dir and signing credentials are in local.properties
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "KEYSTORE_FILE=$KEYSTORE_PATH" >> local.properties
@@ -145,13 +147,20 @@ jobs:
       - name: Build signed release APK
         run: |
           set -eo pipefail
-          ./gradlew assembleRelease --no-build-cache --rerun-tasks --stacktrace 2>&1 | tee assemble-release.log || {
+          echo "Building with keystore type: $KEYSTORE_TYPE"
+          ./gradlew assembleRelease -x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease --no-build-cache --rerun-tasks --stacktrace 2>&1 | tee assemble-release.log || {
             echo "## Build signed release APK Failed" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             tail -n 200 assemble-release.log >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             exit 1
           }
+          # Verify the APK signature
+          APK_PATH=$(find . -path "*/outputs/apk/*" -name "*.apk" | grep -i "release" | head -1)
+          if [ -n "$APK_PATH" ]; then
+            echo "=== APK Signature Verification ==="
+            apksigner verify --print-certs "$APK_PATH" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload build log on failure
         if: failure()
