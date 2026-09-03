@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent
@@ -536,7 +536,7 @@ class TaskOrchestrator(
                             XLog.i(TAG, "Redirected skill ${skill.id} failed, falling back to agent loop")
                             // C3: typed escalation for redirected skill failures too
                             val fallbackGoal = skill.fallbackGoal
-                                .let { v -> route.params.entries.fold(v) { acc, (k, v2) -> acc.replace("{$k}", v2) } }
+                                .let { v -> emptyMap<String, String>().entries.fold(v) { acc, (k, v2) -> acc.replace("{$k}", v2) } }
                             taskEventCallback?.invoke(TaskEvent.Progress(0, "Retrying with AI agent"))
                             val override = buildString {
                                 append("GOAL: ").append(fallbackGoal).append('\n')

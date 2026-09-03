@@ -39,8 +39,8 @@ class ObserveStallGuard(
      * @param screenHash fingerprint of the current screen content; 0 = unknown
      */
     fun recordRound(madeAction: Boolean, screenHash: Long): Verdict {
-        val screenChanged = screenHash != 0 && screenHash != lastScreenHash
-        if (screenHash != 0) lastScreenHash = screenHash
+        val screenChanged = screenHash != 0L && screenHash != lastScreenHash
+        if (screenHash != 0L) lastScreenHash = screenHash
 
         if (madeAction || screenChanged) {
             consecutiveIdleRounds = 0

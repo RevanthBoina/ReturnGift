@@ -9,10 +9,10 @@ import com.returngift.agent.tool.impl.*
 import com.returngift.agent.tool.impl.mobile.*
 import com.returngift.agent.tool.impl.tv.*
 import com.returngift.agent.utils.XLog
-import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -145,7 +145,7 @@ object ToolRegistry {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    private val JSON = MediaType.get("application/json; charset=utf-8")
+    private val JSON = "application/json; charset=utf-8".toMediaType()
 
     /**
      * P3.2: Execute a tool on a companion device.
@@ -191,7 +191,7 @@ object ToolRegistry {
 
         val request = Request.Builder()
             .url("http://${device.address}/hands")
-            .post(RequestBody.create(requestBody, JSON))
+            .post(requestBody.toRequestBody(JSON))
             .build()
 
         return try {
@@ -228,7 +228,7 @@ object ToolRegistry {
 
         val request = Request.Builder()
             .url(testServerUrl)
-            .post(RequestBody.create(requestBody, JSON))
+            .post(requestBody.toRequestBody(JSON))
             .build()
 
         return try {

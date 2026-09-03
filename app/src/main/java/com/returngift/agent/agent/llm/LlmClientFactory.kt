@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent.llm
@@ -74,9 +74,12 @@ class LlmClientLeaveTracker(
     private val model: String
 ) : LlmClient by delegate {
 
-    override fun chat(messages: List<dev.langchain4j.data.message.ChatMessage>,
-                      toolSpecs: List<dev.langchain4j.agent.tool.ToolSpecification>): LlmResponse {
-        val response = delegate.chat(messages, toolSpecs)
+    override fun chat(
+        messages: List<dev.langchain4j.data.message.ChatMessage>,
+        toolSpecs: List<dev.langchain4j.agent.tool.ToolSpecification>,
+        fast: Boolean
+    ): LlmResponse {
+        val response = delegate.chat(messages, toolSpecs, fast)
 
         // Record LEAVE event: one row per response
         ExecutionTracker.recordLeave(
@@ -102,9 +105,10 @@ class LlmClientLeaveTracker(
     override fun chatStreaming(
         messages: List<dev.langchain4j.data.message.ChatMessage>,
         toolSpecs: List<dev.langchain4j.agent.tool.ToolSpecification>,
-        listener: StreamingListener
+        listener: StreamingListener,
+        fast: Boolean
     ): LlmResponse {
-        val response = delegate.chatStreaming(messages, toolSpecs, listener)
+        val response = delegate.chatStreaming(messages, toolSpecs, listener, fast)
 
         // Record LEAVE event after streaming completes
         ExecutionTracker.recordLeave(

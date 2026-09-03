@@ -1,4 +1,4 @@
-﻿// Copyright 2026 ReturnGift Project. All rights reserved.
+// Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
 package com.returngift.agent.agent
@@ -127,7 +127,7 @@ class StuckDetector(private val windowSize: Int = 8) {
     private fun checkZeroDiff(): Signal? {
         if (screenDiffCounts.size < 3) return null
         val last3 = screenDiffCounts.toList().takeLast(3)
-        return if (last3.all { it == 0 }) {
+        return if (last3.all { it == 0L }) {
             Signal.ZeroDiff(3)
         } else null
     }

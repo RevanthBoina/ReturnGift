@@ -3,6 +3,7 @@
 
 package com.returngift.agent.agent.llm
 
+import android.content.Context
 import com.returngift.agent.ClawApplication
 import com.returngift.agent.agent.AgentConfig
 import com.returngift.agent.utils.XLog
@@ -288,7 +289,7 @@ processedMessageCount = messages.size
              // Clean up fast conversation (but keep engine for potential reuse in same task)
              // Engine will be released by DefaultAgentService at task end
              if (fastConversation != null) {
-                 try { fastConversation?.close() } catch (_: Exception) {}
+                 try { fastConversation?.close() } catch (e: Exception) {}
                  fastConversation = null
              }
              fastProcessed = 0
@@ -310,7 +311,7 @@ processedMessageCount = messages.size
      private fun buildFastSystemPrompt(messages: List<ChatMessage>): String {
          // Extract the trimmed always-section from PROMPT 2.5 (from AgentConfig.LOCAL_TASK_PROMPT)
          // This is simplified - in reality we'd need access to the full prompt structure
-         val alwaysSection = config.systemPrompt.takeWhile { line ->
+         val alwaysSection = config.systemPrompt.lines().takeWhile { line ->
              !line.contains("::") && !line.contains("OUTPUT FORMAT")
          }.joinToString("\n")
          
