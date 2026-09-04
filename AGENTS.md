@@ -223,6 +223,17 @@ GitHub code engine — MUST NOT reintroduce them.
    a11y node). Accessibility-side sensitivity signals that DO exist:
    `isPassword()`, `isAccessibilityDataSensitive()` (API 34+), `hintText` (API 26+).
 
+7. **Java cannot use Kotlin default arguments or call an `object` method as a static.**
+   Release tag `v3.0.9` (2026-09-04) failed at `:app:compileReleaseJavaWithJavac` because
+   `WebFetchTool.java` called `new ProvenanceTag(kind, origin)` even though the JVM
+   constructor is `(Kind, String, long)`, called `ProvenanceHelper.addToFrontmatter(...)`
+   instead of `ProvenanceHelper.INSTANCE.addToFrontmatter(...)`, and referenced
+   `ClawApplication` without importing it; `AskUserTool.java` likewise called the
+   five-argument `ClarificationManager.request(...)` with four args. Pass every parameter
+   explicitly from Java, use `object.INSTANCE`, and import `ClawApplication` in tool files.
+   ENFORCED by preflight `no-static-kotlin-object-call-from-java` +
+   `missing-import-ClawApplication`.
+
 The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
 semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnitTest` +

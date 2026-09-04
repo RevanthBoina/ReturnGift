@@ -3807,3 +3807,24 @@ P2.6 bounds the `ExecutionTracker` per-task write storm: events accumulate in me
     - AppSessionManager state for package is cleared
     - Vault UI no longer shows the deleted files
     - Privacy dashboard no longer shows the app in observation counts
+
+---
+
+## RC — Release Compile Interop Fix (2026-09-04)
+
+Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotlin error. The build log identified Java/Kotlin interop issues in two tool files.
+
+### RC.1 — WebFetchTool imports and provenance call compile from Java (CI)
+- **Act**: run `bash scripts/ci-preflight.sh`, then after merge tag a release that runs `Release APK -> Build & Release`.
+- **PASS**: `compileReleaseJavaWithJavac` no longer reports `package ClawApplication does not exist`, `ProvenanceTag` constructor arity errors, or an illegal static call to `ProvenanceHelper.addToFrontmatter`; the release job reaches APK packaging/signature verification.
+
+### RC.2 — AskUserTool passes the explicit clarification surface (CI)
+- **Act**: same Release APK workflow after merge.
+- **PASS**: `compileReleaseJavaWithJavac` no longer reports `ClarificationManager.request` arity mismatch; `ask_user` still blocks/clarifies through the generic surface at runtime.
+
+### RC.3 — Guard against recurrence (LOCAL)
+- **Act**: intentionally reintroduce a direct `ProvenanceHelper.addToFrontmatter(...)` Java call in a scratch checkout, run `bash scripts/ci-preflight.sh`, then restore.
+- **PASS**: preflight fails fast with `no-static-kotlin-object-call-from-java`; the restored tree passes preflight.
+
+### QA Debug Changelog — release compile interop
+- `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.1-RC.3]` fixed missing `ClawApplication` import, passed the explicit `ProvenanceTag` timestamp + `ProvenanceHelper.INSTANCE` call from Java, passed the explicit `surface` argument to `ClarificationManager.request`, and added preflight guards for static Kotlin-object calls plus missing `ClawApplication` imports. Local Gradle compilation is not available in this sandbox; release verification requires the next tagged GitHub Actions run.

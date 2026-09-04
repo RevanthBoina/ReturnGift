@@ -75,7 +75,8 @@ public class AskUserTool extends BaseTool {
         if (choices.isEmpty()) allowFreeText = true;
 
         String answer = ClarificationManager.INSTANCE.request(
-                question.trim(), choices, allowFreeText, ClarificationManager.DEFAULT_TIMEOUT_MS);
+                question.trim(), choices, allowFreeText, ClarificationManager.DEFAULT_TIMEOUT_MS,
+                "generic");
 
         if (answer == null || answer.trim().isEmpty()) {
             return ToolResult.error("The user did not answer within " +
