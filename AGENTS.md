@@ -240,6 +240,14 @@ GitHub code engine — MUST NOT reintroduce them.
    via Kotlin's default imports (or use explicit `import kotlin.OptIn`).
    ENFORCED by preflight `no-compose-runtime-optin-import`.
 
+9. **Do not catch checked exceptions the enclosing `try` cannot throw.** Release tag
+   `v3.0.11` (2026-09-04) failed at `:app:compileReleaseJavaWithJavac` because
+   `InputTextTool.verifyEnteredText` caught `InterruptedException` after replacing the
+   sleep with `AdaptiveSettleController.waitForSettle()`, whose Java-visible signature
+   throws no checked exception. When a blocking call is replaced by a state-based
+   controller, remove the now-unreachable checked-exception catch or re-interrupt only
+   around calls that still declare the exception.
+
 The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
 semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnitTest` +
