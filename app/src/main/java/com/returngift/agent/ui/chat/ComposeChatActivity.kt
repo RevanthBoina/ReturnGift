@@ -1,6 +1,8 @@
 // Copyright 2026 ReturnGift Project. All rights reserved.
 // Licensed under the Apache License, Version 2.0.
 
+@file:OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+
 package com.returngift.agent.ui.chat
 
 import com.returngift.agent.AppCapabilityCoordinator
@@ -30,8 +32,6 @@ import com.returngift.agent.ui.settings.SettingsActivity
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.Executors
-
-@file:OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 
 /**
  * ReturnGift Chat Activity — Compose shell for the chat screen.
