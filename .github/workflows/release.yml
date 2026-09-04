@@ -148,7 +148,7 @@ jobs:
         run: |
           set -eo pipefail
           echo "Building with keystore type: $KEYSTORE_TYPE"
-          ./gradlew assembleRelease -x lintVitalRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease --no-build-cache --rerun-tasks --stacktrace 2>&1 | tee assemble-release.log || {
+          ./gradlew assembleRelease --no-build-cache --rerun-tasks --stacktrace 2>&1 | tee assemble-release.log || {
             echo "## Build signed release APK Failed" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             tail -n 200 assemble-release.log >> "$GITHUB_STEP_SUMMARY"
