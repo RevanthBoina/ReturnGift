@@ -171,7 +171,7 @@ ChatScreen(
                 isDownloading = _isDownloading.value,
                 downloadProgress = _downloadProgress.value,
                 isLocalModel = _isLocalModelActive.value,
-                wsc = ExperimentalMaterial3WindowSizeClassApi.calculateWindowSizeClass(this),
+                wsc = calculateWindowSizeClass(this),
                 sessionTokens = _sessionTokens.value,
                 sessionCost = _sessionCost.value,
                 onSendChat = { sendChat(it) },
