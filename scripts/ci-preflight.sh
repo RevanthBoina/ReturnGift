@@ -51,6 +51,14 @@ run_check "no-kotlin-result-from-java" \
   'kotlin\.Result<' \
   "kotlin.Result is a value class — Java cannot call Kotlin functions returning it (JVM name mangling). Use a Boolean/*FromJava wrapper (see KBManager.writeFromJava)." "--include=*.java"
 
+# Pitfall 7 (release v3.0.9, 2026-09-04): Java cannot use Kotlin default arguments and
+# cannot call an `object` method as a static. ProvenanceTag has (kind, origin, ts) with
+# ts defaulted, and ProvenanceHelper is an object — Java must pass all three constructor
+# args and call ProvenanceHelper.INSTANCE.addToFrontmatter(...).
+run_check "no-static-kotlin-object-call-from-java" \
+  'ProvenanceHelper\.addToFrontmatter\(' \
+  "ProvenanceHelper is a Kotlin object — Java must call ProvenanceHelper.INSTANCE.addToFrontmatter(...), not the class name." "--include=*.java"
+
 # Pitfall 3 (pre-existing on main, surfaced 2026-08-18): Java tool files that use a type
 # from com.returngift.agent.tool without importing it. The tv/* tools live in a sub-package
 # (com.returngift.agent.tool.impl.tv), so same-package rules do NOT apply — they must import
@@ -80,6 +88,29 @@ audit_missing_import() {
 audit_missing_import "com.returngift.agent.tool.ToolResult" "ToolResult"
 audit_missing_import "com.returngift.agent.tool.BaseTool" "BaseTool"
 audit_missing_import "com.returngift.agent.tool.ToolParameter" "ToolParameter"
+
+# ClawApplication lives in com.returngift.agent (not com.returngift.agent.tool), so it
+# needs a dedicated audit rather than audit_missing_import's hardcoded tool package.
+audit_missing_clawapplication_import() {
+  local hits=""
+  while IFS= read -r f; do
+    if grep -qE '^package com\.returngift\.agent;' "$f"; then
+      continue
+    fi
+    if grep -q '\bClawApplication\b' "$f" && \
+       ! grep -q 'import com.returngift.agent.ClawApplication;' "$f"; then
+      hits="${hits}    ${f} (uses ClawApplication, no import)\n"
+    fi
+  done < <(grep -rl --include='*.java' '\bClawApplication\b' app/src/main/java 2>/dev/null || true)
+  if [ -n "$hits" ]; then
+    red "PREFLIGHT FAIL [missing-import-ClawApplication]: Java file uses com.returngift.agent.ClawApplication without importing it."
+    printf '%b' "$hits"
+    fail=1
+  else
+    grn "OK missing-import-ClawApplication"
+  fi
+}
+audit_missing_clawapplication_import
 
 # Structural guard (lexer-based, NOT grep): unbalanced braces, unterminated strings /
 # nested block comments, and conflicting overloads. Three separate incidents shipped a
