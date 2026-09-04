@@ -222,7 +222,7 @@ fun ChatScreen(
     ) {
         val isWideScreen = maxWidth >= 720.dp
         val chatColumnWidth = if (isWideScreen) 720.dp else maxWidth
-        val extraPad = ((maxWidth - chatColumnWidth).coerceAtLeast(0f)) / 2f
+        val extraPad = ((maxWidth - chatColumnWidth).coerceAtLeast(0.dp)) / 2f
         val horizontalPad = if (isWideScreen) extraPad else 0.dp
         if (isWideScreen) {
             Row(modifier = Modifier.fillMaxSize()) {
@@ -1000,7 +1000,8 @@ private fun ChatTopBar(
                                             Text("✓", fontSize = 12.sp, color = colors.accent)
                                         }
                                     }
-                                }
+                                },
+                                onClick = { showModelMenu = false; onModelSwitch(model.id, model.displayName) }
                             )
                         }
                     }
@@ -1078,14 +1079,6 @@ private fun ConfirmCountdownChip(
             }
         }
     }
-                                    }
-                                },
-                                onClick = {
-                                    showModelMenu = false
-                                    onModelSwitch(model.id, model.displayName)
-                                },
-                            )
-                        }
                     } else {
                         // No API key configured
                         DropdownMenuItem(

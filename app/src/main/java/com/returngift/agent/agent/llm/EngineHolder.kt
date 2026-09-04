@@ -9,7 +9,7 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import android.content.ComponentCallbacks2
 import android.os.Build
-import com.returngift.agent.agent.llm.LocalModelRuntime.LocalEngineLease
+import com.returngift.agent.agent.llm.LocalEngineLease
 
 /**
  * Process-wide singleton that keeps a single LiteRT-LM Engine alive across
