@@ -998,7 +998,16 @@ private fun ChatTopBar(
                                         if (model.id == currentModel && !isLocalModel) {
                                             Spacer(Modifier.width(6.dp))
                                             Text("✓", fontSize = 12.sp, color = colors.accent)
-}
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ======================== D3 SEND CONFIRM COUNTDOWN CHIP ========================

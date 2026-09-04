@@ -27,7 +27,7 @@ object ServerTokenStore {
         val stored = getToken()
         if (stored == null) return false
         val storedBytes = stored.toByteArray(StandardCharsets.UTF_8)
-        val providedBytes = provided.toByteArray(StandardCharsets.UTF_8)
+        val providedBytes = provided!!.toByteArray(StandardCharsets.UTF_8)
         return MessageDigest.isEqual(storedBytes, providedBytes)
     }
 

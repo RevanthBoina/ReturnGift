@@ -322,7 +322,7 @@ class DeterministicUiExecutor(
             return null
         }
         val tree = try { service.getScreenTree() } catch (_: Exception) { null } ?: return null
-        readGate.recordRead(tree.hashCode())
+        readGate.recordRead(tree.hashCode().toLong())
         return tree
     }
 

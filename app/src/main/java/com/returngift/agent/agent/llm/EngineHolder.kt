@@ -184,7 +184,7 @@ object EngineHolder {
             fastModelPath = modelPath
             fastBackendLabel = "CPU"
             XLog.i(TAG, "acquireFast: fast engine ready for $modelPath")
-            LocalEngineLease(engine = newEngine, backendLabel = fastBackendLabel)
+            LocalEngineLease(engine = newEngine, backendLabel = fastBackendLabel!!)
         } catch (e: Exception) {
             fastEngine = null
             fastModelPath = null
