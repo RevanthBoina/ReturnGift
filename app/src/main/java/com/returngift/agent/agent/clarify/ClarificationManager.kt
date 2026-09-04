@@ -81,27 +81,25 @@ data class PendingQuestion(
     private var tickerJob: Job? = null
     private val tickerScope = CoroutineScope(Dispatchers.Default)
 
-    internal val remainingMsFlow = object {
-        fun startTicker(deadlineMs: Long) {
-            tickerJob?.cancel()
-            tickerJob = tickerScope.launch {
-                while (true) {
-                    val rem = deadlineMs - System.currentTimeMillis()
-                    if (rem <= 0) {
-                        _remainingMs.value = 0L
-                        break
-                    }
-                    _remainingMs.value = rem
-                    delay(200L)
+    fun startTicker(deadlineMs: Long) {
+        tickerJob?.cancel()
+        tickerJob = tickerScope.launch {
+            while (true) {
+                val rem = deadlineMs - System.currentTimeMillis()
+                if (rem <= 0) {
+                    _remainingMs.value = 0L
+                    break
                 }
+                _remainingMs.value = rem
+                delay(200L)
             }
         }
+    }
 
-        fun stopTicker() {
-            tickerJob?.cancel()
-            tickerJob = null
-            _remainingMs.value = 0L
-        }
+    fun stopTicker() {
+        tickerJob?.cancel()
+        tickerJob = null
+        _remainingMs.value = 0L
     }
 
     private val listeners = CopyOnWriteArrayList<(PendingQuestion?) -> Unit>()
@@ -224,7 +222,7 @@ data class PendingQuestion(
         val activeLatch = latch
         val deadline = System.currentTimeMillis() + timeoutMs
         // Start the remaining-ms ticker so the UI can show a countdown chip
-        remainingMsFlow.startTicker(deadline)
+        startTicker(deadline)
         while (true) {
             val remaining = deadline - System.currentTimeMillis()
             if (remaining <= 0) {
@@ -285,7 +283,7 @@ data class PendingQuestion(
             lastResolvedAtMs = System.currentTimeMillis()
         }
         // Stop the remaining-ms ticker so the UI countdown chip vanishes
-        remainingMsFlow.stopTicker()
+        stopTicker()
         persistHook(null)
         notifyListeners(null)
         headsUpDismissHook()

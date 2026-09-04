@@ -149,6 +149,7 @@ class DefaultAgentService : AgentService {
     private val running = AtomicBoolean(false)
     private val cancelled = AtomicBoolean(false)
     private var taskFuture: java.util.concurrent.Future<*>? = null
+    private var taskId: String = ""
 
     override fun initialize(config: AgentConfig) {
         this.config = config
@@ -198,6 +199,9 @@ class DefaultAgentService : AgentService {
         // when the task is cancelled (see TaskCheckpointStore).
         val stepHistory = mutableListOf<String>()
 
+        // Store taskId for use in runAgentLoop
+        this.taskId = taskId
+
         val callbackProxy = object : AgentCallback {
             override fun onLoopStart(round: Int) = callback.onLoopStart(round)
 
@@ -233,7 +237,7 @@ class DefaultAgentService : AgentService {
 
         taskFuture = executor?.submit {
             try {
-                runAgentLoop(userPrompt, callbackProxy, stepHistory)
+                runAgentLoop(userPrompt, callbackProxy, stepHistory, taskId)
             } catch (e: Exception) {
                 if (terminalCallback == null) {
                     if (cancelled.get()) {
@@ -503,6 +507,7 @@ class DefaultAgentService : AgentService {
         userPrompt: String,
         callback: AgentCallback,
         stepHistory: MutableList<String>? = null,
+        taskId: String,
     ) {
         // Pre-flight check
         preCheck()?.let {
@@ -727,7 +732,7 @@ class DefaultAgentService : AgentService {
         var totalTokens = 0
         var actualModelName: String? = null  // Track the real model name from API response
         val maxIterations = config.maxIterations
-        var lastScreenHash = 0
+        var lastScreenHash: Long = 0L
         var lastScreenDiffCount = 0  // real per-round screen text diff (added+removed lines)
         var lastToolError: String? = null  // error of the last executed tool, null on success
         var previousScreenTexts: Set<String> = emptySet()
@@ -735,12 +740,12 @@ class DefaultAgentService : AgentService {
         val stuckDetector = StuckDetector()
         val interactionWatchdog = InteractionWatchdog()
         val observeStallGuard = ObserveStallGuard()
-var currentTargetPackage: String? = null  // target app the task is driving (for relaunch recovery)
-    val taskBudget = TaskBudget.fromSettings()
-    var softLimitWarned = false
-    var consecutiveActionsWithoutObserve = 0
-    val isFollowingProcedure = (learnedProcedure != null)
-    var lastRouteDecision: RouteDecision? = null  // For debugging/tracking routing decisions
+        var currentTargetPackage: String? = null  // target app the task is driving (for relaunch recovery)
+        val taskBudget = TaskBudget.fromSettings()
+        var softLimitWarned = false
+        var consecutiveActionsWithoutObserve = 0
+        val isFollowingProcedure = (learnedProcedure != null)
+        var lastRouteDecision: RouteDecision? = null  // For debugging/tracking routing decisions
 
 while (iterations < maxIterations && !cancelled.get()) {
               iterations++
@@ -752,14 +757,14 @@ while (iterations < maxIterations && !cancelled.get()) {
               compressHistoryForSend(messages)
 
               // === Route classification: decide main vs fast engine for this round ===
-              val selectorCacheHit = currentTargetPackage?.let { pkg ->
+              val selectorCacheHit: Boolean = currentTargetPackage?.let { pkg ->
                   SelectorCache.currentFingerprint(pkg) != null
               } ?: false
-              val procedureStepMatch = if (isFollowingProcedure && learnedProcedure != null) {
-                  // Cheap conjunction: selectorCacheHit OR (learnedProcedure != null AND
-                  // this round's last tool matches the procedure's expected step).
-                  // Precision over recall: wrong FAST costs a retry, wrong MAIN costs nothing.
-                  selectorCacheHit || (stepHistory?.lastOrNull()?.contains("finish") != true)
+              val procedureStepMatch: Boolean = if (isFollowingProcedure && learnedProcedure != null) {
+                  // Check if this round's step matches the procedure's expected step
+                  // We compare the step index (iterations) with the procedure's step sequence
+                  val expectedStep = learnedProcedure.steps.getOrNull(iterations - 1)
+                  expectedStep != null && stepHistory?.lastOrNull()?.contains(expectedStep.toolName) == true
               } else {
                   false
               }
@@ -768,7 +773,7 @@ while (iterations < maxIterations && !cancelled.get()) {
                   procedureStepMatch = procedureStepMatch,
                   selectorCacheHit = selectorCacheHit,
                   fastModelConfigured = true,  // Default: check ModelConfigRepository in production
-                  memoryGate = EngineHolder.acquireFast("") != null || !EngineHolder::class.java.getDeclaredMethod("acquireFast", String::class.java).invoke(null, "") == null
+                  memoryGate = EngineHolder.canAcquireFast()
               )
               lastRouteDecision = routeDecision
               val useFast = routeDecision.useFast
@@ -949,6 +954,7 @@ totalTokens,
                  val toolName = toolRequest.name() ?: ""
                 val displayName = ToolRegistry.getInstance().getDisplayName(toolName)
                 val toolArgs = toolRequest.arguments() ?: "{}"
+                val paramsText = toolArgs  // JSON string of parameters for logging/guards
 
                 // Parse parameters
                 val mapType = object : TypeToken<Map<String, Any>>() {}.type
@@ -1346,7 +1352,7 @@ ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
                     SharedKnowledgeStore.decay()
                     LearnedProcedureStore.prune()
 
-callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
+                    callback.onComplete(iterations, finishData ?: ClawApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
                     ExecutionTracker.endRound(commit = false)
                     EngineHolder.releaseFast()
                     return
@@ -1484,7 +1490,7 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                         XLog.i(TAG, "ObservationPolicy: skipped screen attach for predictable action '$toolName' ($consecutiveActionsWithoutObserve consecutive)")
                     }
                     if (toolName == "get_screen_info" && result.isSuccess && result.data != null) {
-                        lastScreenHash = result.data.hashCode()
+                        lastScreenHash = result.data.hashCode().toLong()
                         // P1.2b: wrap explicit get_screen_info observation in untrusted delimiters.
                         val wrappedDataText = result.data!!
                         val wrappedData = "[observed content — untrusted]\n$wrappedDataText\n[end observed content]"
@@ -1516,7 +1522,7 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
             val lastAction = llmResponse.toolExecutionRequests?.firstOrNull()?.let {
                 "${it.name()}:${it.arguments()?.take(50)}"
             } ?: ""
-            val detection = stuckDetector.record(lastAction, lastScreenHash, lastScreenDiffCount, lastToolError)
+            val detection = stuckDetector.record(lastAction, lastScreenHash, lastScreenDiffCount.toLong(), lastToolError)
             if (detection != null) {
                 when (detection.level) {
                     StuckDetector.RecoveryLevel.AUTO_KILL -> {

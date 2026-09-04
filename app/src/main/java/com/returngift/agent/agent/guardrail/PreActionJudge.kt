@@ -114,8 +114,8 @@ object PreActionJudge {
                 toolSpecs = emptyList(),
             )
             // Bound the wall clock — if the LLM is slow, fail-open
-            val text = response.text().trim()
-            parseVerdict(text)
+            val text = response.text ?: ""
+            parseVerdict(text.trim())
         } catch (e: Exception) {
             XLog.w(TAG, "judge: model unavailable, fail-open: ${e.message}")
             KVUtils.increment(KEY_UNAVAILABLE)

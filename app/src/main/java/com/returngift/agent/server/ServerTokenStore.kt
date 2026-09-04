@@ -24,7 +24,8 @@ object ServerTokenStore {
 
     fun verifyToken(provided: String?): Boolean {
         if (provided.isNullOrEmpty()) return false
-        val stored = getToken() ?: return false
+        val stored = getToken()
+        if (stored == null) return false
         val storedBytes = stored.toByteArray(StandardCharsets.UTF_8)
         val providedBytes = provided.toByteArray(StandardCharsets.UTF_8)
         return MessageDigest.isEqual(storedBytes, providedBytes)

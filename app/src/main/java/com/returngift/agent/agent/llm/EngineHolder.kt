@@ -9,6 +9,7 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import android.content.ComponentCallbacks2
 import android.os.Build
+import com.returngift.agent.agent.llm.LocalModelRuntime.LocalEngineLease
 
 /**
  * Process-wide singleton that keeps a single LiteRT-LM Engine alive across
@@ -132,6 +133,10 @@ object EngineHolder {
         return if (modelPath == null || currentModelPath == modelPath) currentBackendLabel else null
     }
 
+    /** Check if a fast engine can be acquired (memory gate). */
+    @Synchronized
+    fun canAcquireFast(): Boolean = LocalBackendHealth.canRunSecondEngine()
+
     /** Acquire the fast (mechanical-step) engine for the given model path.
      *  Checks the memory gate before loading — returns null if insufficient resources.
      *  Caller must release with releaseFast().
@@ -148,7 +153,7 @@ object EngineHolder {
 
         if (fastEngine != null && fastModelPath == modelPath) {
             XLog.d(TAG, "acquireFast: reusing fast engine for $modelPath")
-            return LocalEngineLease(engine = fastEngine!!, backendLabel = fastBackendLabel!!)
+            return LocalEngineLease(engine = fastEngine!!, backendLabel = fastBackendLabel ?: "CPU")
         }
 
         if (fastEngine != null) {

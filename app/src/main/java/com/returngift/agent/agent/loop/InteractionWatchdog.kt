@@ -73,7 +73,7 @@ class InteractionWatchdog(
         toolName: String,
         argsFingerprint: String,
         verification: ActionVerifier.VerificationResult,
-        screenHash: Int,
+        screenHash: Long,
         expectedForeground: String? = null,
         overlayPresent: Boolean = false
     ): Recovery {

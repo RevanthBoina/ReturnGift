@@ -25,7 +25,12 @@ data class Skill(
     /** If true, this skill appears in the Task UI for users to initiate.
      *  If false, it's only used internally by the LLM agent (e.g. dismiss_popup, go_back). */
     val userFacing: Boolean = false
-)
+) {
+    fun matches(task: String): Boolean {
+        val lower = task.lowercase()
+        return triggerPatterns.any { pattern -> lower.contains(pattern.lowercase()) }
+    }
+}
 
 enum class SkillCategory(val label: String, val icon: String) {
     INPUT("Input", "\uD83D\uDD0D"),        // 🔍
