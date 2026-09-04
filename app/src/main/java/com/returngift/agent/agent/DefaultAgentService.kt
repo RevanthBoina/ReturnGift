@@ -1485,6 +1485,7 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                         GSON.toJson(result)
                     }
                 } else {
+                    var resultData: String
                     if (toolName in ACTION_TOOLS) {
                         consecutiveActionsWithoutObserve++
                         XLog.i(TAG, "ObservationPolicy: skipped screen attach for predictable action '$toolName' ($consecutiveActionsWithoutObserve consecutive)")
@@ -1499,9 +1500,11 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                             (SafetyInterceptor.lastObservations + listOf(wrappedDataText)).takeLast(2)
                         val wrappedResult = ToolResult.success(wrappedData)
                         messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(wrappedResult)))
+                        resultData = GSON.toJson(wrappedResult)
                     } else {
-                        GSON.toJson(result)
+                        resultData = GSON.toJson(result)
                     }
+                    resultData
                 }
 
                 // Add tool result to messages

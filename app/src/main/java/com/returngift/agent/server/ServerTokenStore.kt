@@ -20,14 +20,17 @@ object ServerTokenStore {
         return base64UrlEncoder.encodeToString(bytes)
     }
 
-    fun getToken(): String? = KVUtils.getString(TOKEN_KEY, null)
+    fun getToken(): String? {
+        val token = KVUtils.getString(TOKEN_KEY, "")
+        return if (token.isNotEmpty()) token else null
+    }
 
     fun verifyToken(provided: String?): Boolean {
         if (provided.isNullOrEmpty()) return false
         val stored = getToken()
         if (stored == null) return false
         val storedBytes = stored.toByteArray(StandardCharsets.UTF_8)
-        val providedBytes = provided.toByteArray(StandardCharsets.UTF_8)
+        val providedBytes = provided!!.toByteArray(StandardCharsets.UTF_8)
         return MessageDigest.isEqual(storedBytes, providedBytes)
     }
 
