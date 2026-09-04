@@ -59,6 +59,11 @@ run_check "no-static-kotlin-object-call-from-java" \
   'ProvenanceHelper\.addToFrontmatter\(' \
   "ProvenanceHelper is a Kotlin object — Java must call ProvenanceHelper.INSTANCE.addToFrontmatter(...), not the class name." "--include=*.java"
 
+# Pitfall 8 (tag v3.0.10, 2026-09-04): @OptIn belongs to Kotlin, not Compose runtime.
+run_check "no-compose-runtime-optin-import" \
+  'import androidx\.compose\.runtime\.OptIn' \
+  "androidx.compose.runtime.OptIn does not exist; remove the import and rely on Kotlin's built-in OptIn, or import kotlin.OptIn explicitly." "--include=*.kt"
+
 # Pitfall 3 (pre-existing on main, surfaced 2026-08-18): Java tool files that use a type
 # from com.returngift.agent.tool without importing it. The tv/* tools live in a sub-package
 # (com.returngift.agent.tool.impl.tv), so same-package rules do NOT apply — they must import
