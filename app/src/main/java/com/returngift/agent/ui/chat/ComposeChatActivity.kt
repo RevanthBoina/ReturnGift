@@ -14,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.runtime.OptIn
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.activity.compose.setContent
@@ -37,6 +38,7 @@ import java.util.concurrent.Executors
  * Chat runtime ownership lives in [ChatSessionController].
  * This activity keeps lifecycle wiring, task flows, and sidebar/history UI state.
  */
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 class ComposeChatActivity : ComponentActivity() {
 
     companion object {
