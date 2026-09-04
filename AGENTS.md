@@ -234,6 +234,12 @@ GitHub code engine — MUST NOT reintroduce them.
    ENFORCED by preflight `no-static-kotlin-object-call-from-java` +
    `missing-import-ClawApplication`.
 
+8. **`OptIn` is Kotlin, not Compose.** Release tag `v3.0.10` (2026-09-04)
+   failed at `:app:compileReleaseKotlin` because `ComposeChatActivity.kt` imported
+   nonexistent `androidx.compose.runtime.OptIn`. Remove that import; `@OptIn` resolves
+   via Kotlin's default imports (or use explicit `import kotlin.OptIn`).
+   ENFORCED by preflight `no-compose-runtime-optin-import`.
+
 The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
 semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnitTest` +

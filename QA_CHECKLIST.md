@@ -3838,3 +3838,11 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 
 ### QA Debug Changelog — efficient one-APK release
 - `[2026-09-04] [LOCAL-PREFLIGHT-PASS] [RC.4-RC.5]` collapsed the tag release path to a single job with preflight-first gating and Gradle cache reuse, and changed packaging/upload so only `ReturnGift-release.apk` is published. GitHub Actions release output must be verified on the next tag.
+
+### RC.6 — Compose OptIn import compiles for release (2026-09-04)
+- **Act**: after merging the fix, push the next `v*` release tag and inspect `Release APK -> Build & Release`.
+- **PASS**: `:app:compileReleaseKotlin` no longer fails with `Unresolved reference: OptIn`; the job proceeds to Java compile/APK packaging.
+- **Regression guard**: `bash scripts/ci-preflight.sh` fails if `import androidx.compose.runtime.OptIn` reappears.
+
+### QA Debug Changelog — v3.0.10 Kotlin release compile
+- `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.6]` removed the nonexistent `androidx.compose.runtime.OptIn` import from `ComposeChatActivity.kt` and added the preflight guard. GitHub Actions release verification requires the next tag.
