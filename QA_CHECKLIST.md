@@ -3853,3 +3853,14 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 
 ### QA Debug Changelog — v3.0.11 Java release compile
 - `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.7]` removed the unreachable `InterruptedException` catch from `InputTextTool.verifyEnteredText` after the sleep-to-settle-controller migration. GitHub Actions release verification requires the next tag.
+
+### RC.8 — Release workflow finds apksigner after a successful build (2026-09-04)
+- **Act**: tag the next release and inspect `Release APK -> Build signed release APK` after `BUILD SUCCESSFUL`.
+- **PASS**: the workflow resolves `apksigner` from `$ANDROID_HOME/build-tools`, prints `=== APK Signature Verification ===`, runs signature verification successfully, and proceeds to checksum/release publishing instead of exiting `127` (`apksigner: command not found`).
+
+### RC.9 — Release-build lessons are persisted in-repo (LOCAL)
+- **Act**: inspect `RELEASING.md`, `AGENTS.md`, and `docs/RELEASE_BUILD_DIAGNOSTICS.md`.
+- **PASS**: `docs/RELEASE_BUILD_DIAGNOSTICS.md` exists and links from `RELEASING.md`; `AGENTS.md` points future agents to it as the mandatory pre-tag protocol and records the v3.0.x lessons (Java/Kotlin interop, Kotlin OptIn, unreachable checked catches, and apksigner PATH).
+
+### QA Debug Changelog — v3.0.12 signature verification tooling
+- `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.8-RC.9]` added the attached release-build diagnostics document to the repo, linked it from release docs, and fixed the release workflow to locate `apksigner` inside the Android SDK build-tools instead of assuming it is on PATH.

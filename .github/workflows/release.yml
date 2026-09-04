@@ -114,12 +114,20 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             exit 1
           }
-          # Verify the APK signature
+          # Verify the APK signature using the SDK build-tools binary. setup-android
+          # installs build-tools but does not put apksigner on PATH, so resolve it.
           APK_PATH=$(find . -path "*/outputs/apk/*" -name "*.apk" | grep -i "release" | head -1)
-          if [ -n "$APK_PATH" ]; then
-            echo "=== APK Signature Verification ==="
-            apksigner verify --print-certs "$APK_PATH" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No release APK found after successful assembleRelease"
+            exit 1
           fi
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner not found under $ANDROID_HOME/build-tools"
+            exit 1
+          fi
+          echo "=== APK Signature Verification ==="
+          "$APKSIGNER" verify --print-certs "$APK_PATH" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload build log on failure
         if: failure()
