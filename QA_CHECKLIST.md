@@ -3828,3 +3828,13 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 
 ### QA Debug Changelog — release compile interop
 - `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.1-RC.3]` fixed missing `ClawApplication` import, passed the explicit `ProvenanceTag` timestamp + `ProvenanceHelper.INSTANCE` call from Java, passed the explicit `surface` argument to `ClarificationManager.request`, and added preflight guards for static Kotlin-object calls plus missing `ClawApplication` imports. Local Gradle compilation is not available in this sandbox; release verification requires the next tagged GitHub Actions run.
+
+### RC.4 — Tag release consumes fewer CI minutes (2026-09-04)
+- **Act**: push the next `v*` release tag and inspect the `Release APK` workflow graph.
+- **PASS**: the workflow has only ONE job (`Build & Release`); it runs the fast `scripts/ci-preflight.sh` first, reuses the Gradle cache, does not purge caches, and does not rerun all tasks just to build a tag.
+
+### RC.5 — Release publishes exactly one APK asset (2026-09-04)
+- **PASS**: GitHub Release assets include exactly one APK (`ReturnGift-release.apk`) plus `SHA256SUMS.txt`; the redundant `ReturnGift.apk` copy is no longer generated or uploaded.
+
+### QA Debug Changelog — efficient one-APK release
+- `[2026-09-04] [LOCAL-PREFLIGHT-PASS] [RC.4-RC.5]` collapsed the tag release path to a single job with preflight-first gating and Gradle cache reuse, and changed packaging/upload so only `ReturnGift-release.apk` is published. GitHub Actions release output must be verified on the next tag.
