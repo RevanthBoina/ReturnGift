@@ -222,7 +222,7 @@ fun ChatScreen(
     ) {
         val isWideScreen = maxWidth >= 720.dp
         val chatColumnWidth = if (isWideScreen) 720.dp else maxWidth
-        val extraPad = ((maxWidth - chatColumnWidth).coerceAtLeast(0.dp)) / 2f
+        val extraPad = ((maxWidth - chatColumnWidth).coerceAtLeast(0.dp)) / 2
         val horizontalPad = if (isWideScreen) extraPad else 0.dp
         if (isWideScreen) {
             Row(modifier = Modifier.fillMaxSize()) {
@@ -1004,7 +1004,51 @@ private fun ChatTopBar(
                                 onClick = { showModelMenu = false; onModelSwitch(model.id, model.displayName) }
                             )
                         }
+                    } else {
+                        // No API key configured
+                        DropdownMenuItem(
+                            text = { Text("No API key configured", fontSize = 13.sp, color = colors.textTertiary) },
+                            onClick = { showModelMenu = false; onSettings() },
+                        )
                     }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("Configure API key...", fontSize = 13.sp, color = colors.accent) },
+                        onClick = { showModelMenu = false; onSettings() },
+                    )
+                } else {
+                    // Local models: downloaded models
+                    val localPath = remember { kvUtils.getLocalModelPath() }
+                    if (localPath.isNotEmpty() && java.io.File(localPath).exists()) {
+                        val localName = java.io.File(localPath).nameWithoutExtension
+                            .replace("-", " ").replace("_", " ")
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("$localName (On-device)", fontSize = 13.sp,
+                                        fontWeight = if (isLocalModel) FontWeight.Bold else FontWeight.Normal)
+                                    if (isLocalModel) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("✓", fontSize = 12.sp, color = colors.accent)
+                                    }
+                                }
+                            },
+                            onClick = {
+                                showModelMenu = false
+                                onModelSwitch("LOCAL", localName)
+                            },
+                        )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text("No local model downloaded", fontSize = 13.sp, color = colors.textTertiary) },
+                            onClick = { showModelMenu = false; onSettings() },
+                        )
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("Download models...", fontSize = 13.sp, color = colors.accent) },
+                        onClick = { showModelMenu = false; onSettings() },
+                    )
                 }
             }
         }
@@ -1078,56 +1122,6 @@ private fun ConfirmCountdownChip(
                 Text("Cancel", color = Color(0xFFF44336), fontWeight = FontWeight.SemiBold)
             }
         }
-    }
-                    } else {
-                        // No API key configured
-                        DropdownMenuItem(
-                            text = { Text("No API key configured", fontSize = 13.sp, color = colors.textTertiary) },
-                            onClick = { showModelMenu = false; onSettings() },
-                        )
-                    }
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text("Configure API key...", fontSize = 13.sp, color = colors.accent) },
-                        onClick = { showModelMenu = false; onSettings() },
-                    )
-                } else {
-                    // Local models: downloaded models
-                    val localPath = remember { kvUtils.getLocalModelPath() }
-                    if (localPath.isNotEmpty() && java.io.File(localPath).exists()) {
-                        val localName = java.io.File(localPath).nameWithoutExtension
-                            .replace("-", " ").replace("_", " ")
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("$localName (On-device)", fontSize = 13.sp,
-                                        fontWeight = if (isLocalModel) FontWeight.Bold else FontWeight.Normal)
-                                    if (isLocalModel) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("✓", fontSize = 12.sp, color = colors.accent)
-                                    }
-                                }
-                            },
-                            onClick = {
-                                showModelMenu = false
-                                onModelSwitch("LOCAL", localName)
-                            },
-                        )
-                    } else {
-                        DropdownMenuItem(
-                            text = { Text("No local model downloaded", fontSize = 13.sp, color = colors.textTertiary) },
-                            onClick = { showModelMenu = false; onSettings() },
-                        )
-                    }
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text("Download models...", fontSize = 13.sp, color = colors.accent) },
-                        onClick = { showModelMenu = false; onSettings() },
-                    )
-                }
-            }
-        }
-        HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
     }
 }
 
