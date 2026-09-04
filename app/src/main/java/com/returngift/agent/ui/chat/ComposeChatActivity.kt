@@ -14,7 +14,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
-import androidx.compose.runtime.OptIn
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.activity.compose.setContent
@@ -32,13 +31,14 @@ import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.Executors
 
+@file:OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+
 /**
  * ReturnGift Chat Activity — Compose shell for the chat screen.
  *
  * Chat runtime ownership lives in [ChatSessionController].
  * This activity keeps lifecycle wiring, task flows, and sidebar/history UI state.
  */
-@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 class ComposeChatActivity : ComponentActivity() {
 
     companion object {
