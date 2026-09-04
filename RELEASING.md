@@ -2,6 +2,8 @@
 
 This repo now assumes a single stable release signing key.
 
+**Release-build lessons and diagnostics live in [`docs/RELEASE_BUILD_DIAGNOSTICS.md`](docs/RELEASE_BUILD_DIAGNOSTICS.md). Read it before every release.** It is the canonical record of the v3.0.x failures and the mandatory protocol: preflight, compile the release Kotlin/Java variants locally, build debug + release, verify the APK signature, and publish exactly one tag/workflow/APK.
+
 Once a public APK is shipped with that key, every later public APK must use the same key or Android will reject in-place upgrades.
 
 ## 1. Prepare the stable keystore once

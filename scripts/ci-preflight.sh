@@ -64,6 +64,11 @@ run_check "no-compose-runtime-optin-import" \
   'import androidx\.compose\.runtime\.OptIn' \
   "androidx.compose.runtime.OptIn does not exist; remove the import and rely on Kotlin's built-in OptIn, or import kotlin.OptIn explicitly." "--include=*.kt"
 
+# Pitfall 10 (tag v3.0.12, 2026-09-04): apksigner is in build-tools, not PATH.
+run_check "no-bare-apksigner-in-release" \
+  '^[[:space:]]*apksigner[[:space:]]+verify' \
+  "release.yml must resolve apksigner under $ANDROID_HOME/build-tools instead of assuming it is on PATH." ".github/workflows/release.yml"
+
 # Pitfall 3 (pre-existing on main, surfaced 2026-08-18): Java tool files that use a type
 # from com.returngift.agent.tool without importing it. The tv/* tools live in a sub-package
 # (com.returngift.agent.tool.impl.tv), so same-package rules do NOT apply — they must import

@@ -144,6 +144,7 @@ The 7-point computer-use bottleneck elimination is COMPLETE and wired into `Defa
 
 ## Release / in-app update (verified 2026-08-16)
 - Release workflow: `.github/workflows/release.yml`, triggers on `push: tags: 'v*'`. Builds a signed release APK + GitHub Release via `softprops/action-gh-release@v2`. Requires Actions secrets `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. As of the 2026-09-04 efficiency fix, the tag path is a single job (fast `ci-preflight`, then `assembleRelease`) with Gradle cache reuse instead of duplicate quality-gate Gradle runs.
+- Release-build lessons and the mandatory pre-tag protocol live in `docs/RELEASE_BUILD_DIAGNOSTICS.md` (2026-09-04). Follow it before every tag: preflight, compile `:app:compileReleaseKotlin` + `:app:compileReleaseJavaWithJavac`, assemble debug/release, verify the APK, then create exactly one tag. This document is the persistent learned-lessons record for the v3.0.x release failures.
 - Tag scheme: `v<semver>-<timestamp>` e.g. `v1.0.3-20260815145735`. The release-notes extraction and UpdateChecker both strip the `-suffix` and compare only the semver base.
 - **Version source bug (FIXED):** the workflow previously did NOT set `RETURNGIFT_VERSION_NAME`/`RETURNGIFT_VERSION_CODE`, so `app/build.gradle.kts` defaulted to `1.0.0` / code 1 for every release. Now a "Derive APK version from tag" step sets versionName = tag semver and versionCode = `major*10000+minor*100+patch`, injected into env + `local.properties`.
 - **UpdateChecker bug (FIXED):** `GITHUB_API` was `https://api.github.com/repos/returngift/returngift/releases/latest` (wrong repo → 404) and had no `User-Agent` header (→ 403). Correct repo is `RevanthBoina/ReturnGift`. Now sends `User-Agent: ReturnGift-App-Updater`, resolves the direct APK asset URL (prefers `ReturnGift-release.apk`), and opens it with `application/vnd.android.package-archive` so Download triggers the installer.
@@ -247,6 +248,13 @@ GitHub code engine — MUST NOT reintroduce them.
    throws no checked exception. When a blocking call is replaced by a state-based
    controller, remove the now-unreachable checked-exception catch or re-interrupt only
    around calls that still declare the exception.
+
+10. **Do not assume Android SDK build-tools binaries are on `PATH`.** Release tag
+    `v3.0.12` (2026-09-04) reached `BUILD SUCCESSFUL` and `:app:assembleRelease`, but the
+    workflow then failed with `apksigner: command not found` (exit 127). GitHub's
+    `android-actions/setup-android` installs build-tools but does not expose `apksigner`
+    directly. Resolve the newest binary explicitly under
+    `$ANDROID_HOME/build-tools/*/apksigner` and fail loudly if it is absent.
 
 The `KotlinSyntaxValidator` shipped with the self-development engine is a brace/quote
 checker only; it does NOT catch these (they are valid Kotlin *syntax* but invalid
