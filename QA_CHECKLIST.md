@@ -3846,3 +3846,10 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 
 ### QA Debug Changelog — v3.0.10 Kotlin release compile
 - `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.6]` removed the nonexistent `androidx.compose.runtime.OptIn` import from `ComposeChatActivity.kt` and added the preflight guard. GitHub Actions release verification requires the next tag.
+
+### RC.7 — Java release compile accepts InputTextTool settle verification (2026-09-04)
+- **Act**: after merging this fix, tag the next release and inspect `Release APK -> Build signed release APK`.
+- **PASS**: `:app:compileReleaseJavaWithJavac` no longer reports `exception InterruptedException is never thrown` in `InputTextTool.java`; the job proceeds to APK packaging/signature verification.
+
+### QA Debug Changelog — v3.0.11 Java release compile
+- `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.7]` removed the unreachable `InterruptedException` catch from `InputTextTool.verifyEnteredText` after the sleep-to-settle-controller migration. GitHub Actions release verification requires the next tag.

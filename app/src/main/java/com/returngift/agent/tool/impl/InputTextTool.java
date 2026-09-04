@@ -122,25 +122,21 @@ public class InputTextTool extends BaseTool {
      * State-based: re-queries the live focused node rather than trusting the action return value.
      */
     private boolean verifyEnteredText(ClawAccessibilityService service, String expected, boolean clearFirst) {
-        try {
-            // Give the field a brief, bounded moment to commit the text.
-            AdaptiveSettleController.INSTANCE.waitForSettle();
-            long deadline = System.currentTimeMillis() + 1500L;
-            while (System.currentTimeMillis() < deadline) {
-                String current = service.getFocusedEditableText();
-                if (current != null) {
-                    if (clearFirst) {
-                        if (current.equals(expected)) return true;
-                    } else {
-                        if (current.contains(expected)) return true;
-                    }
+        // Give the field a brief, bounded moment to commit the text. The settle
+        // controller does not declare checked exceptions, so no catch is needed here.
+        AdaptiveSettleController.INSTANCE.waitForSettle();
+        long deadline = System.currentTimeMillis() + 1500L;
+        while (System.currentTimeMillis() < deadline) {
+            String current = service.getFocusedEditableText();
+            if (current != null) {
+                if (clearFirst) {
+                    if (current.equals(expected)) return true;
+                } else {
+                    if (current.contains(expected)) return true;
                 }
             }
-            return false;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
         }
+        return false;
     }
 
     /**
