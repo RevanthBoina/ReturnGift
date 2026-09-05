@@ -23,6 +23,8 @@
     <string name="guide_page_subtitle">Please enable the following permissions for the app to work properly</string>
     <string name="guide_skip">Skip</string>
     <string name="guide_start">Get Started</string>
+    <string name="guide_title_restricted">Allow Restricted Settings (Android 13+)</string>
+    <string name="guide_desc_restricted">One-time step for apps installed outside a store: open App Info, tap the ⋮ menu (top right), choose "Allow restricted settings", then come back. Tap here to open App Info.</string>
     <string name="guide_title_accessibility">Accessibility Service</string>
     <string name="guide_desc_accessibility">Lets ReturnGift read the screen and tap buttons for you. Tap to enable.</string>
     <string name="guide_title_notification">Task Notifications</string>

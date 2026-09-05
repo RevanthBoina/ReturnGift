@@ -23,6 +23,8 @@
     <string name="guide_page_subtitle">请开启以下权限，以确保应用正常运行</string>
     <string name="guide_skip">跳过</string>
     <string name="guide_start">开始使用</string>
+    <string name="guide_title_restricted">允许受限设置 (Android 13+)</string>
+    <string name="guide_desc_restricted">一次性步骤，针对非商店安装的应用：打开应用信息，点击右上角 ⋮ 菜单，选择"允许受限设置"，然后返回。点击此处打开应用信息。</string>
     <string name="guide_title_accessibility">无障碍服务</string>
     <string name="guide_desc_accessibility">这是 AI 自动操控设备的核心权限。\n\n1. 前往系统设置 → 无障碍 → 已下载的应用\n2. 在列表中找到「ReturnGift」\n3. 开启开关\n4. 在系统弹窗中确认</string>
     <string name="guide_title_notification">任务通知</string>

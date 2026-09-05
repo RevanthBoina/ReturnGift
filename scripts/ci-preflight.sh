@@ -137,6 +137,28 @@ else
   red "PREFLIGHT WARN [kotlin-structure]: python3 not found — structural check SKIPPED."
 fi
 
+# ChatScreen scaffold guard: fun ChatScreen must contain exactly TWO Scaffold( calls
+# (one in wide branch, one in narrow branch inside ModalNavigationDrawer).
+# The orphan duplicate Scaffold was a bug — fail if more than two appear.
+chat_screen="app/src/main/java/com/returngift/agent/ui/chat/ChatScreen.kt"
+if [ -f "$chat_screen" ]; then
+  # Count Scaffold( occurrences in the ChatScreen composable function body
+  # Use awk to find the function and count within it
+  scaffold_count=$(awk '
+    /^@Composable/ { in_func=0 }
+    /^fun ChatScreen\(/ { in_func=1; next }
+    in_func && /^fun / && !/^fun ChatScreen\(/ { in_func=0 }
+    in_func && /Scaffold\(/ { count++ }
+    END { print count+0 }
+  ' "$chat_screen")
+  if [ "$scaffold_count" -ne 2 ]; then
+    red "PREFLIGHT FAIL [chat-screen-scaffold-count]: ChatScreen composable has $scaffold_count Scaffold( calls (expected exactly 2: wide branch + narrow branch)."
+    fail=1
+  else
+    grn "OK chat-screen-scaffold-count"
+  fi
+fi
+
 # Orphaned-safety-component guard: every class under agent/exec/ and agent/guardrail/
 # must be referenced from outside its own package. A restore-from-older-commit once
 # deleted 664 lines of DefaultAgentService and silently unwired eight guards; the unit

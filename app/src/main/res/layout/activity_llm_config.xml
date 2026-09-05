@@ -36,7 +36,7 @@
                 android:paddingBottom="8dp"
                 android:text="Active Model"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="13dp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <androidx.cardview.widget.CardView
@@ -59,7 +59,7 @@
                         android:background="@drawable/bg_avatar_ai"
                         android:gravity="center"
                         android:text="🦞"
-                        android:textSize="22dp" />
+                        android:textSize="22sp" />
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -74,7 +74,7 @@
                             android:layout_height="wrap_content"
                             android:text="No model"
                             android:textColor="@color/colorTextPrimary"
-                            android:textSize="15dp"
+                            android:textSize="15sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -84,7 +84,7 @@
                             android:layout_marginTop="2dp"
                             android:text="Tap to download a model"
                             android:textColor="@color/colorTextTertiary"
-                            android:textSize="12dp" />
+                            android:textSize="12sp" />
 
                         <TextView
                             android:id="@+id/tvActiveModelStatus"
@@ -93,7 +93,7 @@
                             android:layout_marginTop="4dp"
                             android:text="● Not configured"
                             android:textColor="@color/colorSuccessPrimary"
-                            android:textSize="12dp" />
+                            android:textSize="12sp" />
                     </LinearLayout>
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
@@ -107,7 +107,7 @@
                 android:paddingBottom="8dp"
                 android:text="Fast Model"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="13dp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <androidx.cardview.widget.CardView
@@ -138,7 +138,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="⚡"
-                            android:textSize="20dp" />
+                            android:textSize="20sp" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -154,7 +154,7 @@
                             android:layout_height="wrap_content"
                             android:text="Fast model (mechanical steps)"
                             android:textColor="@color/colorTextPrimary"
-                            android:textSize="14dp"
+                            android:textSize="14sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -164,7 +164,7 @@
                             android:layout_marginTop="2dp"
                             android:text="Routing disabled"
                             android:textColor="@color/colorTextTertiary"
-                            android:textSize="12dp" />
+                            android:textSize="12sp" />
 
                         <TextView
                             android:id="@+id/tvFastModelDesc"
@@ -173,7 +173,7 @@
                             android:layout_marginTop="4dp"
                             android:text="Enable a fast model to speed up mechanical task steps"
                             android:textColor="@color/colorTextTertiary"
-                            android:textSize="11dp" />
+                            android:textSize="11sp" />
                     </LinearLayout>
 
                     <TextView
@@ -181,7 +181,7 @@
                         android:layout_height="wrap_content"
                         android:text="›"
                         android:textColor="@color/colorTextTertiary"
-                        android:textSize="20dp" />
+                        android:textSize="20sp" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -193,7 +193,7 @@
                 android:paddingBottom="8dp"
                 android:text="Default Models"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="13dp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <androidx.cardview.widget.CardView
@@ -220,7 +220,7 @@
                             android:layout_height="32dp"
                             android:gravity="center"
                             android:text="📱"
-                            android:textSize="18dp" />
+                            android:textSize="18sp" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -234,7 +234,7 @@
                                 android:layout_height="wrap_content"
                                 android:text="Default local model"
                                 android:textColor="@color/colorTextTertiary"
-                                android:textSize="12dp" />
+                                android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/tvDefaultLocalName"
@@ -243,7 +243,7 @@
                                 android:layout_marginTop="2dp"
                                 android:text="Not set"
                                 android:textColor="@color/colorTextPrimary"
-                                android:textSize="14dp"
+                                android:textSize="14sp"
                                 android:textStyle="bold" />
 
                             <TextView
@@ -253,7 +253,7 @@
                                 android:layout_marginTop="2dp"
                                 android:text="Choose a local model below"
                                 android:textColor="@color/colorTextTertiary"
-                                android:textSize="12dp" />
+                                android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/tvDefaultLocalStatus"
@@ -262,7 +262,7 @@
                                 android:layout_marginTop="4dp"
                                 android:text="● Not configured"
                                 android:textColor="@color/colorTextTertiary"
-                                android:textSize="12dp" />
+                                android:textSize="12sp" />
                         </LinearLayout>
                     </LinearLayout>
 
@@ -283,7 +283,7 @@
                             android:layout_height="32dp"
                             android:gravity="center"
                             android:text="☁️"
-                            android:textSize="18dp" />
+                            android:textSize="18sp" />
 
                         <LinearLayout
                             android:layout_width="0dp"
@@ -297,7 +297,7 @@
                                 android:layout_height="wrap_content"
                                 android:text="Default cloud model"
                                 android:textColor="@color/colorTextTertiary"
-                                android:textSize="12dp" />
+                                android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/tvDefaultCloudName"
@@ -306,7 +306,7 @@
                                 android:layout_marginTop="2dp"
                                 android:text="Not set"
                                 android:textColor="@color/colorTextPrimary"
-                                android:textSize="14dp"
+                                android:textSize="14sp"
                                 android:textStyle="bold" />
 
                             <TextView
@@ -316,7 +316,7 @@
                                 android:layout_marginTop="2dp"
                                 android:text="Configure a cloud model below"
                                 android:textColor="@color/colorTextTertiary"
-                                android:textSize="12dp" />
+                                android:textSize="12sp" />
 
                             <TextView
                                 android:id="@+id/tvDefaultCloudStatus"
@@ -325,7 +325,7 @@
                                 android:layout_marginTop="4dp"
                                 android:text="● Not configured"
                                 android:textColor="@color/colorTextTertiary"
-                                android:textSize="12dp" />
+                                android:textSize="12sp" />
                         </LinearLayout>
                     </LinearLayout>
                 </LinearLayout>
@@ -340,7 +340,7 @@
                 android:paddingBottom="8dp"
                 android:text="Available Models"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="13dp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -376,7 +376,7 @@
                 android:paddingBottom="8dp"
                 android:text="Cloud LLM"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="13dp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <androidx.cardview.widget.CardView
@@ -423,7 +423,7 @@
                         android:layout_height="wrap_content"
                         android:text="API Key"
                         android:textColor="@color/colorTextSecondary"
-                        android:textSize="12dp"
+                        android:textSize="12sp"
                         android:layout_marginTop="12dp"
                         android:layout_marginBottom="4dp" />
 
@@ -444,7 +444,7 @@
                             android:paddingHorizontal="12dp"
                             android:textColor="@color/colorTextPrimary"
                             android:textColorHint="@color/colorTextTertiary"
-                            android:textSize="13dp" />
+                            android:textSize="13sp" />
 
                         <TextView
                             android:id="@+id/btnClearApiKey"
@@ -454,7 +454,7 @@
                             android:paddingHorizontal="10dp"
                             android:text="Clear"
                             android:textColor="@color/colorErrorPrimary"
-                            android:textSize="12dp" />
+                            android:textSize="12sp" />
 
                     </LinearLayout>
 
@@ -471,7 +471,7 @@
                             android:layout_height="wrap_content"
                             android:text="Base URL"
                             android:textColor="@color/colorTextSecondary"
-                            android:textSize="12dp"
+                            android:textSize="12sp"
                             android:layout_marginTop="10dp"
                             android:layout_marginBottom="4dp" />
 
@@ -485,14 +485,14 @@
                             android:paddingHorizontal="12dp"
                             android:textColor="@color/colorTextPrimary"
                             android:textColorHint="@color/colorTextTertiary"
-                            android:textSize="13dp" />
+                            android:textSize="13sp" />
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Model Name"
                             android:textColor="@color/colorTextSecondary"
-                            android:textSize="12dp"
+                            android:textSize="12sp"
                             android:layout_marginTop="10dp"
                             android:layout_marginBottom="4dp" />
 
@@ -506,7 +506,7 @@
                             android:paddingHorizontal="12dp"
                             android:textColor="@color/colorTextPrimary"
                             android:textColorHint="@color/colorTextTertiary"
-                            android:textSize="13dp" />
+                            android:textSize="13sp" />
 
                     </LinearLayout>
 
@@ -516,7 +516,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:textSize="12dp"
+                        android:textSize="12sp"
                         android:visibility="gone" />
 
                     <!-- Buttons -->
@@ -536,7 +536,7 @@
                             android:gravity="center"
                             android:text="Test"
                             android:textColor="@color/colorBrandPrimary"
-                            android:textSize="13dp" />
+                            android:textSize="13sp" />
 
                         <com.returngift.agent.widget.KButton
                             android:id="@+id/btnSaveCloud"
@@ -555,7 +555,7 @@
                         android:layout_marginTop="8dp"
                         android:text="Compatible with: OpenRouter, Groq, Together AI, Ollama, any OpenAI-compatible endpoint"
                         android:textColor="@color/colorTextTertiary"
-                        android:textSize="10dp"
+                        android:textSize="10sp"
                         android:visibility="gone" />
 
                 </LinearLayout>

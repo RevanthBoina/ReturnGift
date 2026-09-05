@@ -35,9 +35,18 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Menu
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -122,6 +131,25 @@ val AbyssDark = ReturnGiftColors(
     inputBorder = Color(0xFF1E293B),
 )
 
+/**
+ * Brand wordmark: "ReturnGift" with two-tone styling.
+ * Use this instead of inline annotated strings for consistency.
+ */
+@Composable
+private fun BrandWordmark(colors: ReturnGiftColors, fontSize: TextUnit = 20.sp) {
+    Text(
+        buildAnnotatedString {
+            append("Return")
+            withStyle(SpanStyle(color = colors.accent)) {
+                append("Gift")
+            }
+        },
+        fontWeight = FontWeight.Bold,
+        fontSize = fontSize,
+        color = colors.textPrimary,
+    )
+}
+
 private fun Modifier.dismissKeyboardOnBackgroundTap(onDismissKeyboard: () -> Unit): Modifier =
     pointerInput(onDismissKeyboard) {
         awaitEachGesture {
@@ -171,6 +199,7 @@ fun ChatScreen(
     onStopAllTasks: () -> Unit = {},
     inputEnabled: Boolean = true,
     onModelSwitch: (modelId: String, displayName: String) -> Unit = { _, _ -> },
+    onTaskModeChange: (Boolean) -> Unit = { _ -> },
     pendingClarification: ClarificationManager.PendingQuestion? = null,
     onClarificationAnswer: (String) -> Unit = {},
     previewPlan: List<com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep>? = null,
@@ -293,6 +322,7 @@ fun ChatScreen(
                                     onOpenVault = onOpenVault,
                                     onModelSwitch = onModelSwitch,
                                     colors = colors,
+                                    showMenu = false,
                                 )
                                 if (activeTasks.isNotEmpty()) {
                                     ActiveTaskBar(
@@ -490,6 +520,7 @@ fun ChatScreen(
                                 onOpenVault = onOpenVault,
                                 onModelSwitch = onModelSwitch,
                                 colors = colors,
+                                showMenu = true,
                             )
                             if (activeTasks.isNotEmpty()) {
                                 ActiveTaskBar(
@@ -610,185 +641,6 @@ fun ChatScreen(
             }
         }
     }
-        Scaffold(
-            containerColor = colors.background,
-            topBar = {
-                Column(
-                    modifier = Modifier.dismissKeyboardOnBackgroundTap(dismissKeyboard)
-                ) {
-                    ChatTopBar(
-                        modelStatus = modelStatus,
-                        sessionTokens = sessionTokens,
-                        sessionCost = sessionCost,
-                        isLocalModel = isLocalModel,
-                        selectedTab = selectedTab,
-                        onTabChange = { tab ->
-                            selectedTab = tab
-                            val kvUtils = com.returngift.agent.utils.KVUtils
-                            if (tab == "cloud") {
-                                // Check if cloud default model is configured
-                                if (kvUtils.hasDefaultCloudModel()) {
-                                    val modelId = kvUtils.getDefaultCloudModel()
-                                    val provider = com.returngift.agent.agent.CloudProvider.fromName(
-                                        kvUtils.getDefaultCloudProvider().ifBlank { kvUtils.getLlmProvider() }
-                                    )
-                                    val displayName = provider.models.find { it.id == modelId }?.displayName ?: modelId
-                                    onModelSwitch(modelId, displayName)
-                                } else {
-                                    // No cloud model configured — signal "no model" state
-                                    com.returngift.agent.utils.XLog.i("ChatScreen", "Cloud tab: no default cloud model configured")
-                                    onModelSwitch("NONE", "")
-                                }
-                            } else {
-                                // Check if local default model is configured
-                                if (kvUtils.hasDefaultLocalModel()) {
-                                    val localPath = kvUtils.getLocalModelPath()
-                                    val name = java.io.File(localPath).nameWithoutExtension
-                                        .replace("-", " ").replace("_", " ")
-                                    onModelSwitch("LOCAL", name)
-                                } else {
-                                    // No local model configured — signal "no model" state
-                                    com.returngift.agent.utils.XLog.i("ChatScreen", "Local tab: no default local model configured")
-                                    onModelSwitch("NONE", "")
-                                }
-                            }
-                        },
-                        onMenuClick = { scope.launch { drawerState.open() } },
-                        onSettings = onOpenSettings,
-                        onOpenVault = onOpenVault,
-                        onModelSwitch = onModelSwitch,
-                        colors = colors,
-                    )
-                    if (activeTasks.isNotEmpty()) {
-                        ActiveTaskBar(
-                            tasks = activeTasks,
-                            onStopTask = onStopTask,
-                            onStopAll = onStopAllTasks,
-                            colors = colors,
-                        )
-                    }
-                }
-            },
-            bottomBar = {
-                if (!isDownloading) {
-                    Column(
-                        modifier = Modifier.imePadding()
-                    ) {
-                        // Quick Tasks collapsible panel (v9 style)
-                        QuickTasksPanel(
-                            isLocalModel = isLocalUI,
-                            onFillTask = { text ->
-                                prefillText = text
-                                prefillIsTask = true
-                                if (isLocalUI) isTaskMode = true
-                            },
-                            onMonitorClick = { showMonitorSheet = true },
-                            monitorActive = activeTasks.isNotEmpty(),
-                            colors = colors,
-                        )
-
-                        pendingClarification?.let { question ->
-                            ClarificationCard(
-                                question = question,
-                                onAnswer = onClarificationAnswer,
-                                onStop = onStopAllTasks,
-                                colors = colors,
-                            )
-                        }
-
-                        // D3 send-confirm countdown chip
-                        val d3Surface = pendingClarification?.surface ?: "generic"
-                        // Observe remainingMs using collectAsState for proper compose integration
-                        val remainingMs by ClarificationManager.remainingMs.collectAsState()
-                        ConfirmCountdownChip(
-                            isD3 = d3Surface == "d3_send_confirm",
-                            remainingMs = remainingMs,
-                            onConfirm = { onClarificationAnswer("Send") },
-                            onCancel = { onStopAllTasks() },
-                            colors = colors,
-                        )
-
-                        previewPlan?.let { plan ->
-                            PreviewPlanCard(
-                                plan = plan,
-                                onExecute = onExecutePreviewPlan,
-                                onDismiss = onDismissPreviewPlan,
-                                colors = colors,
-                            )
-                        }
-
-                        // Pending queue card (above the input bar)
-                        pendingTasks.forEach { pending ->
-                            PendingTaskCard(
-                                pending = pending,
-                                colors = colors,
-                                isTaskRunning = isTaskRunning,
-                                onDismiss = onCancelQueue,
-                                onStartNow = { onStartNow(pending) },
-                            )
-                        }
-
-                        ChatInputBar(
-                            isAwaitingReply = isAwaitingReply,
-                            isTaskRunning = isTaskRunning,
-                            clarificationPending = pendingClarification != null,
-                            inputEnabled = inputEnabled,
-                            isTaskMode = isTaskMode,
-                            isLocalModel = isLocalUI,
-                            onTaskModeChange = { isTaskMode = it },
-                            onSendChat = onSendChat,
-                            onSendTask = onSendTask,
-                            onStopAll = onStopAllTasks,
-                            onAttach = onAttach,
-                            colors = colors,
-                            prefillText = prefillText,
-                            prefillIsTask = prefillIsTask,
-                            onPrefillConsumed = { prefillText = "" },
-                        )
-                    }
-                }
-            }
-        ) { padding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .dismissKeyboardOnBackgroundTap(dismissKeyboard)
-            ) {
-                if (!isDownloading) {
-                    // v9: always show messages or empty state regardless of mode
-                    val userMessages = messages.filter { it.role != ChatMessage.Role.SYSTEM }
-                    if (userMessages.isEmpty()) {
-                        EmptyStateWithPrompts(
-                            isLocalModel = isLocalUI,
-                            onSelectPrompt = { text, isTask ->
-                                prefillText = text
-                                prefillIsTask = isTask
-                                if (isTask && isLocalUI) isTaskMode = true
-                            },
-                            colors = colors,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        MessageList(
-                            messages = messages,
-                            colors = colors,
-                            isTaskRunning = isTaskRunning,
-                            onBackgroundTap = dismissKeyboard,
-                            onEditMessage = onEditMessage,
-                            onResumeCheckpoint = { onSendTask("resume") },
-                            onContinueNewChat = onContinueNewChat,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                // Download blocking overlay
-                if (isDownloading) {
-                    DownloadOverlay(progress = downloadProgress, colors = colors)
-                }
-            }
-        }
 
     // Monitor skill dialog
     if (showMonitorSheet) {
@@ -832,6 +684,7 @@ private fun ChatTopBar(
     onOpenVault: () -> Unit = {},
     onModelSwitch: (modelId: String, displayName: String) -> Unit = { _, _ -> },
     colors: ReturnGiftColors,
+    showMenu: Boolean = true,
 ) {
     // Token count color: grey → blue → amber → red
     val tokenColor = when {
@@ -846,52 +699,16 @@ private fun ChatTopBar(
 
         TopAppBar(
             title = {
-                Text(
-                    buildAnnotatedString {
-                        append("Return")
-                        withStyle(SpanStyle(color = colors.accent)) {
-                            append("Gift")
-                        }
-                    },
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = colors.textPrimary,
-                )
+                BrandWordmark(colors, fontSize = 18.sp)
             },
             navigationIcon = {
-                IconButton(onClick = onMenuClick) {
-                    Icon(Icons.Default.Menu, contentDescription = "Menu")
+                if (showMenu) {
+                    IconButton(onClick = onMenuClick) {
+                        Icon(Menu, contentDescription = "Open menu")
+                    }
                 }
             },
             actions = {
-                // Local/Cloud toggle — two plain buttons, no container
-                Surface(
-                    onClick = { onTabChange("local") },
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (selectedTab == "local") colors.aiBubble else Color.Transparent,
-                    border = if (selectedTab == "local") androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder) else null,
-                ) {
-                    Text(
-                        "Local",
-                        fontSize = 12.sp,
-                        color = if (selectedTab == "local") colors.accent else colors.textTertiary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                Surface(
-                    onClick = { onTabChange("cloud") },
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (selectedTab == "cloud") colors.aiBubble else Color.Transparent,
-                    border = if (selectedTab == "cloud") androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder) else null,
-                ) {
-                    Text(
-                        "Cloud",
-                        fontSize = 12.sp,
-                        color = if (selectedTab == "cloud") colors.accent else colors.textTertiary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                    )
-                }
                 // Preview/Dry-Run toggle: the agent plans without touching the
                 // device; the "Execute now" plan card runs the steps for real.
                 val previewOn = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
@@ -904,19 +721,30 @@ private fun ChatTopBar(
                     color = if (previewOn) colors.aiBubble else Color.Transparent,
                     border = if (previewOn) androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder) else null,
                 ) {
-                    Text(
-                        "🔍",
-                        fontSize = 12.sp,
-                        color = if (previewOn) colors.accent else colors.textTertiary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Visibility,
+                            contentDescription = "Preview mode",
+                            tint = if (previewOn) colors.accent else colors.textTertiary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            "Preview",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (previewOn) colors.accent else colors.textTertiary,
+                        )
+                    }
                 }
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onOpenVault) {
-                    Icon(Icons.Default.Folder, contentDescription = "Vault")
+                    Icon(Folder, contentDescription = "Vault")
                 }
                 IconButton(onClick = onSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    Icon(Settings, contentDescription = "Settings")
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
@@ -944,7 +772,7 @@ private fun ChatTopBar(
             )
             Spacer(Modifier.width(4.dp))
             Icon(
-                Icons.Default.UnfoldMore,
+                ArrowDropDown,
                 contentDescription = "Switch model",
                 tint = colors.textTertiary,
                 modifier = Modifier.size(12.dp),
@@ -1961,12 +1789,24 @@ private fun PreviewPlanCard(
             .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(
-                text = "🔍 Preview plan (" + plan.size + " step" + (if (plan.size == 1) "" else "s") + ")",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.textPrimary,
-            )
+            Row(
+                modifier = Modifier.padding(bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Visibility,
+                    contentDescription = "Preview mode",
+                    tint = colors.accent,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Preview plan (" + plan.size + " step" + (if (plan.size == 1) "" else "s") + ")",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textPrimary,
+                )
+            }
             Spacer(Modifier.height(6.dp))
             plan.forEach { step ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2102,47 +1942,39 @@ private fun ChatInputBar(
             thickness = 1.dp,
         )
 
-        // Segmented Chat/Task toggle — Local LLM only
+        // Single mode chip — Local LLM only (cloud mode has no chip)
         if (isLocalModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 10.dp, end = 10.dp, top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    .padding(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.Start,
             ) {
-                // Chat button
                 Surface(
-                    onClick = { onTaskModeChange(false) },
+                    onClick = { onTaskModeChange(!isTaskMode) },
                     shape = RoundedCornerShape(10.dp),
-                    color = if (!isTaskMode) colors.aiBubble else Color.Transparent,
-                    border = if (!isTaskMode) androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder) else null,
-                    modifier = Modifier.weight(1f),
+                    color = if (isTaskMode) colors.accent.copy(alpha = 0.15f) else colors.aiBubble,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, if (isTaskMode) colors.accent else colors.aiBubbleBorder),
+                    modifier = Modifier.padding(top = 2.dp),
                 ) {
-                    Text(
-                        "💬 Chat",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (!isTaskMode) colors.textPrimary else colors.textTertiary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(vertical = 9.dp),
-                    )
-                }
-                // Task button
-                Surface(
-                    onClick = { onTaskModeChange(true) },
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (isTaskMode) colors.accent else Color.Transparent,
-                    border = if (isTaskMode) androidx.compose.foundation.BorderStroke(1.dp, colors.accent) else null,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(
-                        "🤖 Task",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isTaskMode) Color.White else colors.textTertiary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(vertical = 9.dp),
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (isTaskMode) SmartToy else ChatBubbleOutline,
+                            contentDescription = if (isTaskMode) "Task mode" else "Chat mode",
+                            tint = if (isTaskMode) colors.accent else colors.textSecondary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (isTaskMode) "Task" else "Chat",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isTaskMode) colors.accent else colors.textPrimary,
+                        )
+                    }
                 }
             }
         }
@@ -2475,7 +2307,7 @@ private fun EmptyStateWithPrompts(
         listOf(
             Prompt("What time is it in Tokyo?", false),
             Prompt("Help me write a birthday message", false),
-            Prompt("💬 Send hi to Mom on WhatsApp", true),
+            Prompt("Send hi to Mom on WhatsApp", true),
         )
     } else {
         listOf(
@@ -2520,11 +2352,11 @@ private fun EmptyStateWithPrompts(
                 buildAnnotatedString {
                     append("Chat in ")
                     withStyle(SpanStyle(color = colors.accent, fontWeight = FontWeight.Bold)) {
-                        append("💬 Chat")
+                        append("Chat")
                     }
                     append(" mode, or switch to ")
                     withStyle(SpanStyle(color = colors.accent, fontWeight = FontWeight.Bold)) {
-                        append("🤖 Task")
+                        append("Task")
                     }
                     append(" to control your phone")
                 },

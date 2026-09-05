@@ -3,6 +3,9 @@
 
 package com.returngift.agent.ui.guide
 
+import android.app.AlertDialog
+import android.content.DialogInterface
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.ImageView
@@ -13,13 +16,29 @@ import com.returngift.agent.AppCapabilityCoordinator
 import com.returngift.agent.AppRequirement
 import com.returngift.agent.base.BaseActivity
 import com.returngift.agent.utils.KVUtils
+import com.returngift.agent.utils.XLog
 
 class GuideActivity : BaseActivity() {
+
+    private var restrictedDialogShown = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_guide)
 
+        bindSection(
+            findViewById(R.id.guideRestricted),
+            R.drawable.ic_settings,
+            R.string.guide_title_restricted,
+            R.string.guide_desc_restricted
+        ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                AppCapabilityCoordinator.openSystemSettings(this, AppRequirement.RESTRICTED_SETTINGS)
+                Toast.makeText(this, R.string.guide_desc_restricted, Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "This step is only needed on Android 13+", Toast.LENGTH_SHORT).show()
+            }
+        }
         bindSection(
             findViewById(R.id.guideAccessibility),
             R.drawable.ic_accessibility,
@@ -77,10 +96,38 @@ class GuideActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         updatePermissionIndicators()
+        checkRestrictedSettingsDeadEnd()
+    }
+
+    private fun checkRestrictedSettingsDeadEnd() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val snapshot = AppCapabilityCoordinator.snapshot(this)
+            if (snapshot.accessibilityState != com.returngift.agent.ServiceBindingState.READY && !restrictedDialogShown) {
+                // Check if user might have visited accessibility settings and hit the restricted setting block
+                // Show at most once per guide session
+                restrictedDialogShown = true
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.guide_title_restricted)
+                    .setMessage(R.string.guide_desc_restricted)
+                    .setPositiveButton(R.string.common_confirm) { _, _ ->
+                        AppCapabilityCoordinator.openSystemSettings(this, AppRequirement.RESTRICTED_SETTINGS)
+                    }
+                    .setNegativeButton(R.string.common_cancel, null)
+                    .show()
+            }
+        }
     }
 
     private fun updatePermissionIndicators() {
         val snapshot = AppCapabilityCoordinator.snapshot(this)
+        findViewById<TextView>(R.id.guideRestricted)?.let { tv ->
+            val accessibilityReady = snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY
+            val visibility = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !accessibilityReady) View.VISIBLE else View.GONE
+            tv.visibility = visibility
+            if (accessibilityReady) {
+                tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_restricted) + " (Done ✓)"
+            }
+        }
         findViewById<TextView>(R.id.guideAccessibility)?.let { tv ->
             val status = if (snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY) " (Enabled ✓)" else ""
             tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_accessibility) + status

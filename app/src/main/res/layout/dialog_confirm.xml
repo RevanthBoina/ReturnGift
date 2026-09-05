@@ -15,7 +15,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:textColor="@color/colorTextPrimary"
-        android:textSize="17dp"
+        android:textSize="17sp"
         android:textStyle="bold" />
 
     <!-- 内容 -->
@@ -26,7 +26,7 @@
         android:layout_marginTop="8dp"
         android:gravity="center"
         android:textColor="@color/colorTextTertiary"
-        android:textSize="14dp"
+        android:textSize="14sp"
         android:visibility="gone" />
 
     <!-- 勾选区域 -->
@@ -57,7 +57,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:textColor="@color/colorTextTertiary"
-                android:textSize="14dp" />
+                android:textSize="14sp" />
 
         </LinearLayout>
 
@@ -67,7 +67,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:textColor="@color/colorTextDisabled"
-            android:textSize="12dp"
+            android:textSize="12sp"
             android:visibility="gone" />
 
     </LinearLayout>
@@ -85,7 +85,7 @@
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_weight="1"
-            android:textSize="15dp"
+            android:textSize="15sp"
             android:visibility="gone" />
 
         <View
@@ -100,7 +100,7 @@
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_weight="1"
-            android:textSize="15dp" />
+            android:textSize="15sp" />
 
     </LinearLayout>
 

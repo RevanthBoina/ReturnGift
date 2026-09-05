@@ -29,7 +29,7 @@
                 android:paddingBottom="10dp"
                 android:text="Dark Themes"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="13dp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -75,7 +75,7 @@
                 android:paddingBottom="10dp"
                 android:text="Light Themes"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="13dp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -123,7 +123,7 @@
                 android:paddingBottom="24dp"
                 android:text="Current: Abyss Dark"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="14dp" />
+                android:textSize="14sp" />
 
         </LinearLayout>
     </ScrollView>

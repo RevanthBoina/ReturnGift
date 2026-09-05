@@ -14,7 +14,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textColor="@color/colorTextPrimary"
-        android:textSize="18dp"
+        android:textSize="18sp"
         android:textStyle="bold" />
 
     <!-- 副标题 -->
@@ -24,7 +24,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:textColor="@color/colorTextSecondary"
-        android:textSize="14dp"
+        android:textSize="14sp"
         android:visibility="gone" />
 
     <!-- 二维码区域 -->
@@ -56,7 +56,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:textColor="@color/colorTextPrimary"
-                android:textSize="18dp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
         </FrameLayout>
@@ -70,6 +70,6 @@
         android:layout_height="48dp"
         android:layout_marginTop="24dp"
         android:text="@string/common_close"
-        android:textSize="16dp" />
+        android:textSize="16sp" />
 
 </LinearLayout>

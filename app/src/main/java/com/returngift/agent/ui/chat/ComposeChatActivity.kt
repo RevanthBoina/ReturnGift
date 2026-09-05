@@ -29,6 +29,7 @@ import com.returngift.agent.ui.settings.LlmConfigActivity
 import com.returngift.agent.ui.settings.SettingsActivity
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
+import com.returngift.agent.agent.exec.TaskIntentClassifier
 import java.util.concurrent.Executors
 
 /**
@@ -68,6 +69,8 @@ class ComposeChatActivity : ComponentActivity() {
     private var pendingExternalRequestId: String? = null
     private var pendingExternalReturnAction: String? = null
     private var pendingExternalReturnPackage: String? = null
+    private var lastManualModeSwitchMs: Long = 0  // for 10-min auto-switch suppress
+    private val _isTaskMode = mutableStateOf(false)
 
     private val chatSessionController by lazy {
         ChatSessionController(
@@ -236,6 +239,11 @@ ChatScreen(
                     ).show()
                 },
                 onModelSwitch = { modelId, displayName -> switchModel(modelId, displayName) },
+                onTaskModeChange = { isTask ->
+                    _isTaskMode.value = isTask
+                    lastManualModeSwitchMs = System.currentTimeMillis()
+                    XLog.i(TAG, "Manual mode switch to ${if (isTask) "Task" else "Chat"} mode (suppress auto-switch for 10 min)")
+                },
                 pendingClarification = taskFlowController.pendingClarification.value,
                 onClarificationAnswer = { taskFlowController.submitClarificationAnswer(it) },
                 previewPlan = taskFlowController.previewPlan.value,
@@ -328,6 +336,35 @@ ChatScreen(
     // ==================== CHAT ====================
 
     private fun sendChat(text: String) {
+        // Auto-route based on intent classification (W5 + U4)
+        // Respect manual override for 10 minutes after user toggles the mode chip
+        val now = System.currentTimeMillis()
+        val suppressAutoSwitch = (now - lastManualModeSwitchMs) < 600_000L // 10 minutes
+        
+        if (!suppressAutoSwitch) {
+            val result = TaskIntentClassifier.classify(text)
+            XLog.i(TAG, "Auto-route: intent=${result.intent}, reason=${result.reason}, isTaskMode=${_isTaskMode.value}")
+            
+            if (result.intent == TaskIntentClassifier.Intent.DEVICE_AUTOMATION || 
+                result.intent == TaskIntentClassifier.Intent.EXTERNAL_AI_QUERY) {
+                if (!_isTaskMode.value) {
+                    _isTaskMode.value = true
+                    _messages.add(ChatMessage(ChatMessage.Role.SYSTEM, "→ Switched to Task mode"))
+                    XLog.i(TAG, "Auto-switched to Task mode")
+                }
+                taskFlowController.sendTask(text)
+                return
+            }
+            if ((result.intent == TaskIntentClassifier.Intent.KNOWLEDGE_QA ||
+                 result.intent == TaskIntentClassifier.Intent.VAULT_QUERY ||
+                 result.intent == TaskIntentClassifier.Intent.WEB_RESEARCH) && _isTaskMode.value) {
+                _isTaskMode.value = false
+                _messages.add(ChatMessage(ChatMessage.Role.SYSTEM, "→ Switched to Chat mode"))
+                XLog.i(TAG, "Auto-switched to Chat mode")
+            }
+        }
+        
+        // Default: send as chat
         chatSessionController.sendChat(text)
     }
 

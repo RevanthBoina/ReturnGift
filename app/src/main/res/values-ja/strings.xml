@@ -23,6 +23,8 @@
     <string name="guide_page_subtitle">アプリを正常に動作させるため、以下の権限を有効にしてください</string>
     <string name="guide_skip">スキップ</string>
     <string name="guide_start">はじめる</string>
+    <string name="guide_title_restricted">制限付き設定を許可 (Android 13+)</string>
+    <string name="guide_desc_restricted">ストア外インストールアプリの一回限りの手順：アプリ情報を開き、右上 ⋮ メニューから「制限付き設定を許可」を選び、戻る。ここをタップしてアプリ情報を開く。</string>
     <string name="guide_title_accessibility">ユーザー補助サービス</string>
     <string name="guide_desc_accessibility">AIがデバイスを操作するための基本権限です。\n\n1. 設定 → ユーザー補助 → ダウンロード済みアプリを開く\n2. リストから「ReturnGift」を見つける\n3. スイッチをオンにする\n4. システムダイアログで確認する</string>
     <string name="guide_title_notification">タスク通知</string>

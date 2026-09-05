@@ -32,7 +32,7 @@
                 android:paddingHorizontal="4dp"
                 android:paddingBottom="16dp"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="14dp" />
+                android:textSize="14sp" />
 
             <!-- 第一个输入框标题 -->
             <TextView
@@ -42,7 +42,7 @@
                 android:paddingHorizontal="4dp"
                 android:paddingBottom="8dp"
                 android:textColor="@color/colorTextPrimary"
-                android:textSize="14dp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <!-- 第一个输入框卡片 -->
@@ -64,7 +64,7 @@
                     android:singleLine="true"
                     android:textColor="@color/colorTextPrimary"
                     android:textColorHint="@color/colorTextTertiary"
-                    android:textSize="15dp" />
+                    android:textSize="15sp" />
             </androidx.cardview.widget.CardView>
 
             <!-- 第二个输入框标题 -->
@@ -76,7 +76,7 @@
                 android:paddingHorizontal="4dp"
                 android:paddingBottom="8dp"
                 android:textColor="@color/colorTextPrimary"
-                android:textSize="14dp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <!-- 第二个输入框卡片（密码样式 + 眼睛图标） -->
@@ -105,7 +105,7 @@
                         android:singleLine="true"
                         android:textColor="@color/colorTextPrimary"
                         android:textColorHint="@color/colorTextTertiary"
-                        android:textSize="15dp" />
+                        android:textSize="15sp" />
 
                     <ImageView
                         android:id="@+id/ivTogglePassword"
@@ -124,7 +124,7 @@
                 android:layout_height="48dp"
                 android:layout_marginTop="32dp"
                 android:text="@string/common_save"
-                android:textSize="16dp" />
+                android:textSize="16sp" />
 
             <!-- 局域网配置提示 -->
             <LinearLayout
@@ -142,7 +142,7 @@
                     android:layout_weight="1"
                     android:gravity="center"
                     android:textColor="@color/colorTextTertiary"
-                    android:textSize="13dp" />
+                    android:textSize="13sp" />
 
                 <ImageView
                     android:id="@+id/ivCopyAddress"

@@ -29,7 +29,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="@color/colorTextPrimary"
-                android:textSize="16dp"
+                android:textSize="16sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -38,7 +38,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="13dp" />
+                android:textSize="13sp" />
 
         </LinearLayout>
 
@@ -63,7 +63,7 @@
                 android:layout_gravity="center"
                 android:text="@string/home_permission_enabled"
                 android:textColor="@color/colorSuccessPrimary"
-                android:textSize="14dp"
+                android:textSize="14sp"
                 android:visibility="invisible" />
 
         </FrameLayout>

@@ -17,7 +17,7 @@
         android:paddingVertical="8dp"
         android:text="@string/guide_skip"
         android:textColor="@color/colorTextTertiary"
-        android:textSize="14dp"
+        android:textSize="14sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -45,7 +45,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/guide_page_title"
                 android:textColor="@color/colorTextPrimary"
-                android:textSize="24dp"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -54,7 +54,15 @@
                 android:layout_marginTop="8dp"
                 android:text="@string/guide_page_subtitle"
                 android:textColor="@color/colorTextSecondary"
-                android:textSize="14dp" />
+                android:textSize="14sp" />
+
+            <!-- 0. 允许受限设置 (Android 13+) -->
+            <include
+                android:id="@+id/guideRestricted"
+                layout="@layout/item_guide_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="32dp" />
 
             <!-- 1. 无障碍服务 -->
             <include
@@ -62,7 +70,7 @@
                 layout="@layout/item_guide_section"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp" />
+                android:layout_marginTop="24dp" />
 
             <!-- 2. 常驻通知 -->
             <include
@@ -107,7 +115,7 @@
         android:layout_marginHorizontal="32dp"
         android:layout_marginBottom="48dp"
         android:text="@string/guide_start"
-        android:textSize="16dp"
+        android:textSize="16sp"
         app:layout_constraintBottom_toBottomOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

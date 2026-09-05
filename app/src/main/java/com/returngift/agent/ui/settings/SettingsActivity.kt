@@ -304,7 +304,7 @@ class SettingsActivity : BaseActivity() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permRestricted = permissionsGroup.addMenuItem(
-                leadingIcon = android.R.drawable.ic_dialog_info,
+                leadingIcon = R.drawable.ic_menu_info_details,
                 title = "Allow Restricted Settings",
                 onClick = {
                     com.returngift.agent.widget.AlertDialog.show(
@@ -355,7 +355,7 @@ class SettingsActivity : BaseActivity() {
 
         // LAN Pairing — show the pairing token, server URL, and reset
         menuItems[SettingsViewModel.MenuAction.LAN_PAIRING.name] = channelGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_info_details,
+            leadingIcon = R.drawable.ic_menu_info_details,
             title = getString(R.string.menu_lan_pairing),
             onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.LAN_PAIRING) },
             showDivider = false
@@ -376,7 +376,7 @@ class SettingsActivity : BaseActivity() {
 
         // Task Budget (inline in model group)
         modelGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_recent_history,
+            leadingIcon = R.drawable.ic_menu_recent_history,
             title = "Task Budget",
             onClick = { showBudgetDialog() },
             showDivider = true
@@ -386,7 +386,7 @@ class SettingsActivity : BaseActivity() {
 
         // Global Prompt (#45) — user-defined persistent instructions
         globalPromptItem = modelGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_edit,
+            leadingIcon = R.drawable.ic_menu_edit,
             title = getString(R.string.global_prompt_title),
             onClick = {
                 val current = KVUtils.getGlobalPrompt()
@@ -410,7 +410,7 @@ class SettingsActivity : BaseActivity() {
 
         // Custom Local Model URL (#36) — advanced: lets users add their own model download URL
         customModelUrlItem = modelGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_share,
+            leadingIcon = R.drawable.ic_menu_share,
             title = getString(R.string.custom_local_model_url_title),
             onClick = {
                 val current = KVUtils.getCustomLocalModelUrl()
@@ -463,7 +463,7 @@ class SettingsActivity : BaseActivity() {
         appearanceGroup.setTitle("Appearance")
 
         appearanceGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_slideshow,
+            leadingIcon = R.drawable.ic_menu_slideshow,
             title = "Theme",
             onClick = {
                 startActivity(Intent(this, ThemeActivity::class.java))
@@ -480,7 +480,7 @@ class SettingsActivity : BaseActivity() {
         toolsGroup.setTitle("Tools")
 
         toolsGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_manage,
+            leadingIcon = R.drawable.ic_menu_manage,
             title = "Manage Tools",
             onClick = {
                 Toast.makeText(this, "12 tools enabled. Tool management coming soon.", Toast.LENGTH_SHORT).show()
@@ -495,7 +495,7 @@ class SettingsActivity : BaseActivity() {
         remoteGroup.setTitle("Remote Control")
 
         remoteGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_send,
+            leadingIcon = R.drawable.ic_menu_send,
             title = "Telegram Bot",
             onClick = {
                 channelConfigLauncher.launch(ChannelConfigActivity.ChannelType.TELEGRAM)
@@ -507,7 +507,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         externalAutomationItem = remoteGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_share,
+            leadingIcon = R.drawable.ic_menu_share,
             title = "External Automation",
             onClick = { toggleExternalAutomation() },
             showDivider = true
@@ -516,7 +516,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         remoteGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_call,
+            leadingIcon = R.drawable.ic_menu_call,
             title = "WhatsApp",
             onClick = { },
             showDivider = true
@@ -525,7 +525,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         remoteGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_myplaces,
+            leadingIcon = R.drawable.ic_menu_myplaces,
             title = "Web Dashboard",
             onClick = { },
             showDivider = false
@@ -542,7 +542,7 @@ class SettingsActivity : BaseActivity() {
         val remembered = com.returngift.agent.agent.exec.PersonalContentConsentGuard.rememberedApps()
         if (remembered.isEmpty()) {
             privacyGroup.addMenuItem(
-                leadingIcon = android.R.drawable.ic_lock_lock,
+                leadingIcon = R.drawable.ic_lock_lock,
                 title = "Personal-content access",
                 onClick = { },
                 showDivider = false
@@ -552,7 +552,7 @@ class SettingsActivity : BaseActivity() {
         } else {
             remembered.forEachIndexed { i, app ->
                 privacyGroup.addMenuItem(
-                    leadingIcon = android.R.drawable.ic_lock_lock,
+                    leadingIcon = R.drawable.ic_lock_lock,
                     title = app,
                     onClick = {
                         android.app.AlertDialog.Builder(this)
@@ -577,7 +577,7 @@ class SettingsActivity : BaseActivity() {
         if (topPackages.isNotEmpty()) {
             // Add a divider header
             privacyGroup.addMenuItem(
-                leadingIcon = android.R.drawable.ic_menu_my_calendar,
+                leadingIcon = R.drawable.ic_menu_my_calendar,
                 title = "Observed apps (tap to forget)",
                 onClick = { },
                 showDivider = true
@@ -586,7 +586,7 @@ class SettingsActivity : BaseActivity() {
             }
             topPackages.forEachIndexed { i, (pkg, count) ->
                 privacyGroup.addMenuItem(
-                    leadingIcon = android.R.drawable.ic_menu_delete,
+                    leadingIcon = R.drawable.ic_menu_delete,
                     title = pkg,
                     onClick = {
                         android.app.AlertDialog.Builder(this)
@@ -612,7 +612,7 @@ class SettingsActivity : BaseActivity() {
         if (leaveStats.isNotEmpty()) {
             // Add a divider header
             privacyGroup.addMenuItem(
-                leadingIcon = android.R.drawable.ic_menu_manage,
+                leadingIcon = R.drawable.ic_menu_manage,
                 title = "Data egress ledger (LEAVE events)",
                 onClick = { },
                 showDivider = true
@@ -622,7 +622,7 @@ class SettingsActivity : BaseActivity() {
             leaveStats.entries.toList().forEachIndexed { i, (key, stats) ->
                 val (provider, model) = key
                 privacyGroup.addMenuItem(
-                    leadingIcon = android.R.drawable.ic_menu_info_details,
+                    leadingIcon = R.drawable.ic_menu_info_details,
                     title = "$provider/$model",
                     onClick = {
                         android.app.AlertDialog.Builder(this)
@@ -647,7 +647,7 @@ class SettingsActivity : BaseActivity() {
         aboutGroup.setTitle("About")
 
         aboutGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_info_details,
+            leadingIcon = R.drawable.ic_menu_info_details,
             title = "ReturnGift",
             onClick = { },
             showDivider = true
@@ -656,7 +656,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         aboutGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_popup_sync,
+            leadingIcon = R.drawable.ic_popup_sync,
             title = "Check for Updates",
             onClick = { checkAndShowUpdateDialog() },
             showDivider = true
@@ -665,7 +665,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         aboutGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_send,
+            leadingIcon = R.drawable.ic_menu_send,
             title = "Report a Bug",
             onClick = { reportBug() },
             showDivider = true
@@ -674,7 +674,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         aboutGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_upload,
+            leadingIcon = R.drawable.ic_menu_upload,
             title = "Share Debug Report",
             onClick = { shareDebugReport() },
             showDivider = true
@@ -683,7 +683,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         aboutGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_compass,
+            leadingIcon = R.drawable.ic_menu_compass,
             title = "Built by",
             onClick = {
                 startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/ProxyStar4u".toUri()))
@@ -698,7 +698,7 @@ class SettingsActivity : BaseActivity() {
         developerGroup.setTitle("Developer")
 
         developerGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_edit,
+            leadingIcon = R.drawable.ic_menu_edit,
             title = "GitHub Repository",
             onClick = { promptGitHubRepo() },
             showDivider = true
@@ -707,7 +707,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         developerGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_lock_lock,
+            leadingIcon = R.drawable.ic_lock_lock,
             title = "GitHub Token (PAT)",
             onClick = { promptGithubToken() },
             showDivider = true
@@ -716,7 +716,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         developerGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_popup_sync,
+            leadingIcon = R.drawable.ic_popup_sync,
             title = "Dev OTA Channel",
             onClick = {
                 val enabled = !com.returngift.agent.dev.DevConfig.isDevChannelEnabled()
@@ -729,7 +729,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         developerGroup.addMenuItem(
-            leadingIcon = android.R.drawable.stat_sys_download,
+            leadingIcon = R.drawable.stat_sys_download,
             title = "Check Dev Update Now",
             onClick = { checkAndShowDevUpdateDialog() },
             showDivider = true
@@ -738,7 +738,7 @@ class SettingsActivity : BaseActivity() {
         }
 
         developerGroup.addMenuItem(
-            leadingIcon = android.R.drawable.ic_menu_add,
+            leadingIcon = R.drawable.ic_menu_add,
             title = "Commit Code Change",
             onClick = { promptCodeChange() },
             showDivider = false
