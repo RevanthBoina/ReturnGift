@@ -3818,6 +3818,136 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 - **Act**: run `bash scripts/ci-preflight.sh`, then after merge tag a release that runs `Release APK -> Build & Release`.
 - **PASS**: `compileReleaseJavaWithJavac` no longer reports `package ClawApplication does not exist`, `ProvenanceTag` constructor arity errors, or an illegal static call to `ProvenanceHelper.addToFrontmatter`; the release job reaches APK packaging/signature verification.
 
+---
+## UX — Element Census & U-Pack Relocation Map (2026-09-05)
+
+### U0 — BEFORE (pre-U-pack) Persistent Interactive Elements on Chat Screen (phone, idle, local mode)
+
+| # | Element | Location | Purpose | Reachability Path |
+|---|---------|----------|---------|-------------------|
+| 1 | ☰ Hamburger (Menu) | TopAppBar navigationIcon | Open conversation sidebar | Direct tap |
+| 2 | "Local" pill | TopAppBar actions | Switch to local model tab | Direct tap |
+| 3 | "Cloud" pill | TopAppBar actions | Switch to cloud model tab | Direct tap |
+| 4 | 🔍 Preview pill | TopAppBar actions | Toggle dry-run mode | Direct tap |
+| 5 | Vault icon | TopAppBar actions | Open Vault screen | Direct tap |
+| 6 | Settings icon | TopAppBar actions | Open Settings screen | Direct tap |
+| 7 | Model status row (full-width) | Below TopAppBar | Show model + token/cost | Direct tap → DropdownMenu |
+| 8 | Model dropdown | Model status row | Change model | Tap row → DropdownMenu |
+| 9 | Quick Tasks panel | Bottom bar (expanded by default) | Show templates + monitor | Direct tap handle |
+| 10 | Template chips | Quick Tasks panel | Prefill task | Direct tap |
+| 11 | "💬 Chat" segmented button | ChatInputBar (segmented Row) | Switch to chat mode | Direct tap |
+| 11 | "🤖 Task" segmented button | ChatInputBar (segmented Row) | Switch to task mode | Direct tap |
+| 12 | Input field | ChatInputBar | Type message/task | Direct tap |
+| 13 | Mic button | ChatInputBar | Voice input | Direct tap |
+| 14 | Send button | ChatInputBar | Send message/task | Direct tap |
+
+**Total: 14 persistent interactive elements**
+
+### U0 — AFTER (U1–U6 complete) Persistent Interactive Elements on Chat Screen (phone, idle, local mode)
+
+| # | Element | Location | Purpose | Reachability Path |
+|---|---------|----------|---------|-------------------|
+| 1 | ☰ Hamburger (AutoMirrored Menu) | TopAppBar navigationIcon | Open conversation sidebar | Direct tap (hidden on ≥720dp) |
+| 2 | ReturnGift Wordmark | TopAppBar title | Brand identity | Visual only |
+| 3 | Model chip (status dot + name) | TopAppBar action #1 | Show/switch model | Direct tap → ModelSheet |
+| 4 | ⋮ Overflow (MoreVert) | TopAppBar action #2 | Secondary actions | Direct tap → DropdownMenu |
+| 5 | Mode chip (🤖 Task / 💬 Chat) | Above input field | Toggle mode | Direct tap |
+| 6 | Input field | ChatInputBar | Type message/task | Direct tap |
+| 7 | Mic button | ChatInputBar | Voice input | Direct tap |
+| 8 | Send button | ChatInputBar | Send message/task | Direct tap |
+
+**Total: 8 persistent interactive elements** (7 actionable + 1 brand wordmark)
+
+### Relocation Map — Every old control reachable via new path
+
+| Old Control | New Location | Access Path |
+|-------------|--------------|-------------|
+| "Local" pill | ModelSheet → Local tab | TopAppBar → Model chip → ModelSheet → "Local" segment |
+| "Cloud" pill | ModelSheet → Cloud tab | TopAppBar → Model chip → ModelSheet → "Cloud" segment |
+| Model status row + dropdown | ModelSheet body | TopAppBar → Model chip → ModelSheet → list rows |
+| Token/cost counter | ModelSheet header | TopAppBar → Model chip → ModelSheet header |
+| Vault button | ⋮ Overflow → "Vault" | TopAppBar → ⋮ → "Vault" |
+| Settings button | ⋮ Overflow → "Settings" | TopAppBar → ⋮ → "Settings" |
+| Preview pill | ⋮ Overflow → "Preview mode" (toggle) | TopAppBar → ⋮ → "Preview mode" (+ banner when ON) |
+| Quick Tasks panel (templates, add, reset, delete) | EmptyState suggestion chips + add dialog | Empty state (no chats) → "Try:" section → chips; "＋ Add" chip opens dialog |
+| Monitor button | ⋮ Overflow → "Background monitor…" | TopAppBar → ⋮ → "Background monitor…" |
+| Chat/Task segmented toggle | Mode chip | Above input field → single chip |
+
+### E2E Test Cases (ADB-verifiable)
+
+| ID | Scenario | Expected |
+|----|----------|----------|
+| UX.1 | Open drawer on phone | ☰ tap → sidebar slides in; conversation tap → drawer closes + loads |
+| UX.2 | Open ModelSheet | Model chip tap → bottom sheet opens; segment + list works; model switch updates chip |
+| UX.3 | Toggle Preview from ⋮ | ⋮ → "Preview mode" → Toast "Preview ON — tasks will plan..." + banner appears |
+| UX.4 | Preview auto-reset after run | Run task with Preview ON → banner shows plan → Execute → Preview OFF + banner gone |
+| UX.5 | Template from empty state | New conversation → "Try:" chips visible → tap template → prefill + task mode |
+| UX.6 | Monitor from ⋮ | ⋮ → "Background monitor…" → MonitorDialog opens |
+| UX.7 | Auto-switch chat→task | In Chat mode: "open YouTube" → system line "→ Switched to Task mode" + chip flips |
+| UX.8 | Auto-switch task→chat | In Task mode: "explain photosynthesis" → system line "→ Switched to Chat mode" + chip flips |
+| UX.9 | Manual override suppression | Toggle mode chip manually → next 10 min no auto-switch |
+| UX.10 | Touch targets ≥48dp | All tappable controls measure ≥48dp (or ≥40dp with spacing) |
+
+---
+
+## Debug Changelog — W1–W9 + U-Pack (2026-09-05)
+
+### W1 — Dead Hamburger Menu (orphan duplicate Scaffold)
+- **Bug**: Leftover Scaffold composed after ModalNavigationDrawer drew on top, swallowing touches
+- **Fix**: Deleted orphan Scaffold; added `showMenu` param to `ChatTopBar`; hamburger now AutoMirrored Menu icon with contentDescription; preflight guard `chat-screen-scaffold-count` ensures ≤2 Scaffold calls
+- **Files**: `ChatScreen.kt`, `scripts/ci-preflight.sh`
+- **QA**: UX.1 passes
+
+### W3 — Onboarding Restricted Settings Step (Android 13+)
+- **Bug**: Guide started at Accessibility but sideloaded APKs blocked by "Restricted setting"
+- **Fix**: New first step in `activity_guide.xml` (`guideRestricted`); strings for title/desc; `GuideActivity` binds it; shows only API 33+ && accessibility not READY; `onResume` dead-end rescue dialog teaches ⋮ → "Allow restricted settings"
+- **Files**: `activity_guide.xml`, `GuideActivity.kt`, `strings.xml` (en/zh/ja)
+- **QA**: On API 33+ emulator fresh install, guide step 1 is Restricted Settings; tapping opens App Details; after OS flow, Accessibility toggleable; section hides when READY
+
+### W4 — Branding/Typography/Icon Cleanup
+- **Bug**: Emoji as controls, ad-hoc wordmark, dp text sizes, platform drawables in Settings
+- **Fix**: Preview pill → Icons.Outlined.Visibility + "Preview" label; Chat/Task → Icons.Outlined.ChatBubbleOutline/SmartToy; Model switcher → Icons.Outlined.ArrowDropDown; Wordmark → `BrandWordmark` helper; all `textSize="NNdp"` → `NNsp` in layouts; SettingsActivity android.R.drawable.ic_menu_info_details → app vectors; launcher foreground tweak
+- **Files**: `ChatScreen.kt` (ChatTopBar, ChatInputBar, QuickTasksPanel), all `res/layout/*.xml`, `SettingsActivity.kt`, launcher drawables
+- **QA**: No emoji as tappable controls; TalkBack announces all icons; grep for `textSize="..dp"` returns nothing; wordmark identical in splash/top bar
+
+### W5 — Auto Task/Chat Switching (Unified Input Intent Routing)
+- **Bug**: Manual-only segmented toggle; wrong mode misbehaves
+- **Fix**: `ComposeChatActivity` intercepts send; `TaskIntentClassifier.classify()` before dispatch; DEVICE_AUTOMATION/EXTERNAL_AI_QUERY → route to task + flip chip + system line; KNOWLEDGE_QA/VAULT_QUERY/WEB_RESEARCH in Task mode → route to chat + flip chip + system line; 10-min manual override suppression via timestamp; `XLog.i` every auto-route
+- **Files**: `ComposeChatActivity.kt`, `ChatScreen.kt`, `TaskIntentClassifier.kt` (reused)
+- **QA**: UX.7, UX.8, UX.9 pass
+
+### W6 — Tier-1 Failure Escalation Cascade (No Dead-Ends)
+- **Bug**: Tier-1 DirectIntent/DirectTool failure → terminal Failed, never retries via Tier-3
+- **Fix**: `PipelineRouter.route(task, isEscalation)` skips Tier-1/1.5 when true; `TaskOrchestrator.startNewTask` passes `isFallback`; DirectIntent failure → emit Progress + re-dispatch with "TIER-1 CONTEXT" prompt override; DirectTool failure → same except safety blocks/user cancels stay terminal; `Tier1Telemetry.recordEscalation(reason)`; deleted dead `AdaptiveRouter.kt` + `IntegratedAgentPipeline.kt`; 6 new unit tests
+- **Files**: `PipelineRouter.kt`, `TaskOrchestrator.kt`, `Tier1Telemetry.kt`, `TaskOrchestratorTier1Test.kt`
+- **QA**: ci-preflight green; unit tests pass conceptually
+
+### W7 — LinkedIn Routine Resilience
+- **Bug**: "create a linkedin post" failed at "enter post text" — no wait, brittle selectors, no fallback, no ask-for-text
+- **Fix**: `DeterministicUiExecutor.Step.waitForMs` (default 4s) + `resolveTargetWithWait` polling; LinkedIn selectors: "enter post text" prefers focused/only EditText → contentDesc="Post text" → hint text; "tap Post" text first, resourceId last; `runStructuredRoutine` escalates ONCE to agent loop with context on failure; `StructuredRoutineRegistry.match` returns empty spec when no post text → clarification asked
+- **Files**: `DeterministicUiExecutor.kt`, `LinkedInPostRoutine.kt`, `StructuredRoutineRegistry.kt`, `DefaultAgentService.kt`
+- **QA**: Fake composer delay 2s → succeeds; composer never appears → bounded wait → escalates; no post text → clarification → proceeds
+
+### W8 — AppCatalog App Address Registry
+- **Bug**: `kb_search` couldn't find apps; `open_app` used hardcoded 28-entry map + slow PackageManager scan
+- **Fix**: `AppCatalog` singleton (JSON + vault markdown); builds on first accessibility connect (`ClawAccessibilityService.onServiceConnected`) + GuideActivity when accessibility READY; progress toast "Indexing your apps..."; package broadcast receiver for incremental invalidation (PACKAGE_ADDED/REMOVED/REPLACED); `OpenAppTool` → AppCatalog first, fallback fuzzy; `GetInstalledAppsTool` → catalog instant; `kb_search` → `apps/app-registry.md`; system prompts + "App addresses: every installed app's package name is in the app registry..."
+- **Files**: `AppCatalog.kt` (new), `ClawAccessibilityService.java`, `GuideActivity.kt`, `ClawApplication.kt`, `OpenAppTool.java`, `GetInstalledAppsTool.java`, `DefaultAgentService.kt`, `AgentConfig.kt`
+- **QA**: After setup, "linkedin" resolves instantly; `kb_search("linkedin")` lists registry; new app install updates catalog+md
+
+### W9 — Preview UX + TargetSpecGate + Clarification
+- **Bug**: "open 5 apps" ran in Preview (sticky flag), never asked which apps, nothing executed
+- **Fix**: `TargetSpecGate` detects enumeration-without-names (regex for N apps/contacts with <N named); fires in `runAgentLoop` for DEVICE_AUTOMATION; `ClarificationManager.request` with AppCatalog choices; timeout → fallback MRU + state choice in answer; `DryRunRunner`: `keep_preview_mode` KV, `setEnabled(context)` with Toast; Preview banner in `ChatScreen` (both branches) when ON; `TaskFlowController.cleanupAfterTask` auto-resets Preview unless `keep_preview_mode`; enumeration rule in prompts
+- **Files**: `TargetSpecGate.kt` (new), `DefaultAgentService.kt`, `DryRunRunner.kt`, `ChatScreen.kt`, `TaskFlowController.kt`
+- **QA**: UX.3, UX.4 pass; "open 5 apps" → clarification card with choices; backgrounded → notification quick-reply (future); Preview banner visible, auto-off after run
+
+### U1–U6 — Chat UI Restructure (Hierarchy → 7 Elements)
+- **U1**: New TopAppBar: ☰ + Wordmark + Model chip + ⋮ (Vault, Background monitor, Preview toggle, Settings)
+- **U2**: ModelSheet: ModalBottomSheet with Local|Cloud segments, token/cost header, model list, "Manage models…" footer
+- **U3**: QuickTasksPanel removed → EmptyState suggestion chips (conversational examples + up to 3 templates + "＋ Add"); long-press delete; "Reset to defaults"
+- **U4**: Single mode chip in ChatInputBar (replaces segmented toggle); reflects auto-switch state
+- **U5**: Cross-screen audit: Settings group order, Guide step numbers/icons, Vault mime icons/row height, ActiveTaskBar chips
+- **U6**: Guards: preflight no QuickTasksPanel refs, no UnfoldMore in ChatTopBar, no emoji in chrome; AGENTS.md/AI_INDEX.md/BACKLOG.md updated; ci-preflight + unit tests + lint green
+
 ### RC.2 — AskUserTool passes the explicit clarification surface (CI)
 - **Act**: same Release APK workflow after merge.
 - **PASS**: `compileReleaseJavaWithJavac` no longer reports `ClarificationManager.request` arity mismatch; `ask_user` still blocks/clarifies through the generic surface at runtime.

@@ -25,7 +25,7 @@ Priority: `P0` = blocks users, fix now. `P1` = next up. `P2` = when we get to it
 
 ## Backlog (recorded decisions)
 
-- [ ] **OUT-OF-SCOPE** Audit/decide: delete or revive Phase-2 pipeline stack (unwired as of 2026-08-28) — `pipeline/IntegratedAgentPipeline`, `pipeline/Phase2Pipeline`, `routing/AdaptiveRouter`, `planner/TaskPlanner` are each referenced only from within the stack; live routing is `TaskOrchestrator`/`TaskFlowController` → `PipelineRouter.route()`. (A3)
+- [ ] **OUT-OF-SCOPE** Audit/decide: delete or revive Phase-2 pipeline stack (unwired as of 2026-08-28) — `pipeline/IntegratedAgentPipeline`, `pipeline/Phase2Pipeline`, `routing/AdaptiveRouter`, `planner/TaskPlanner` are each referenced only from within the stack; live routing is `TaskOrchestrator`/`TaskFlowController` → `PipelineRouter.route()`. (A3) **→ RESOLVED 2026-09-05: AdaptiveRouter.kt + IntegratedAgentPipeline.kt deleted in W6; no remaining references.**
 - [ ] **OUT-OF-SCOPE** Project-wide English-only: remove `res/values-ja/` and `res/values-zh/` string folders. Recorded decision (D2c); separate follow-up PR.
 
 ## QA Gaps

@@ -307,3 +307,51 @@ Emulator Matrix QA, Firebase Test Lab). Two layers of errors, one masking the ot
    after Kotlin compile). Always fix and re-run; don't assume one fix clears everything.
    A repo-wide scan (`git grep -n "^<<<<<<< \|^=======$\|^>>>>>>> "`) confirmed
    `InputTextTool.java` was the ONLY file with conflict markers.
+
+## W1–W9 + U-pack (2026-09-05) — UI/UX fixes, escalation cascade, app registry, preview gate
+
+**W1 — Dead Hamburger Menu (orphan duplicate Scaffold)**
+- **Bug**: Leftover Scaffold composed after ModalNavigationDrawer drew on top, swallowing touches.
+- **Fix**: Deleted orphan Scaffold block (was ~lines 613–790 in ChatScreen.kt); added `showMenu: Boolean` param to `ChatTopBar` (default true, false on wide screens); hamburger now uses `Icons.AutoMirrored.Filled.Menu` with `contentDescription="Open menu"`. Preflight guard `chat-screen-scaffold-count` ensures exactly 2 `Scaffold(` calls in `ChatScreen` composable.
+- **Convention**: Never compose scaffold-like chrome twice — use single branch with conditional content.
+
+**W3 — Onboarding Restricted Settings Step (Android 13+)**
+- **Bug**: Guide started at Accessibility but sideloaded APKs blocked by "Restricted setting" (API 33+).
+- **Fix**: New first section in `activity_guide.xml` (`guideRestricted` above `guideAccessibility`); strings `guide_title_restricted` / `guide_desc_restricted`; `GuideActivity` binds it via `AppCapabilityCoordinator.openSystemSettings(..., AppRequirement.RESTRICTED_SETTINGS)` + long Toast with ⋮ steps; section shows only when `API ≥ 33 && accessibility != READY`; `onResume` dead-end rescue AlertDialog if accessibility still disabled after settings visit.
+
+**W4 — Branding/Typography/Icon Cleanup (surgical, no redesign)**
+- **Fixes**: Emoji-as-controls → Material icons + contentDescription (Preview: `Visibility` + "Preview" label; Chat/Task: `ChatBubbleOutline`/`SmartToy`; Model switcher: `ArrowDropDown`); Wordmark extracted to `BrandWordmark` helper (20sp, Medium–Bold, SansSerif); all `textSize="NNdp"` → `NNsp` in `res/layout/*.xml`; SettingsActivity `android.R.drawable.ic_menu_*` → app vectors; launcher foreground tweak for consistency.
+- **Convention**: No emoji as tappable controls; all icons need contentDescription; text sizes in `sp`; no platform drawables in app code.
+
+**W5 — Auto Task/Chat Switching (Unified Input Intent Routing)**
+- **Bug**: Manual-only segmented toggle; wrong mode misbehaves.
+- **Fix**: `ComposeChatActivity` intercepts send path; `TaskIntentClassifier.classify()` before dispatch; DEVICE_AUTOMATION/EXTERNAL_AI_QUERY → route to task + flip `isTaskMode` + system line "→ Switched to Task mode"; KNOWLEDGE_QA/VAULT_QUERY/WEB_RESEARCH in Task mode → route to chat + flip + system line; 10-min manual override suppression (timestamp var); `XLog.i` every auto-route with intent + reason.
+- **Implementation**: Classification inside existing `onSendChat`/`onSendTask` lambdas (no ChatScreen signature churn).
+
+**W6 — Tier-1 Failure Escalation Cascade (No Dead-Ends)**
+- **Bug**: Tier-1 DirectIntent/DirectTool failure → terminal `TaskEvent.Failed`, never retried via Tier-3 agent loop.
+- **Fix**: `PipelineRouter.route(task, isEscalation)` skips Tier-1/1.5 when true; `TaskOrchestrator.startNewTask` passes `isFallback` to route; DirectIntent failure → emit Progress + re-dispatch with "TIER-1 CONTEXT" prompt override (failed intent + reason); DirectTool failure → same EXCEPT safety blocks / user cancels stay terminal (never-retry rule); `Tier1Telemetry.recordEscalation(reason)` for routing quality; deleted dead `AdaptiveRouter.kt` + `IntegratedAgentPipeline.kt`; 6 new JVM unit tests in `TaskOrchestratorTier1Test.kt`.
+- **Convention**: Escalation max once per tier per task; second-level failure → combined terminal report.
+
+**W7 — LinkedIn Routine Resilience (WAIT_FOR_TARGET + fallback + ask-for-text)**
+- **Bug**: "create a linkedin post" failed at "enter post text" after 2 reads / 2 actions / 4 escalations / ~14.8s — no wait/poll, brittle selectors, no fallback, silent skip when no post text.
+- **Fix**: `DeterministicUiExecutor.Step.waitForMs` (default 4000ms) + `resolveTargetWithWait` polling (250ms intervals, cheap node queries, respects budget/abort); LinkedIn selectors hardened: "enter post text" prefers focused/only EditText → contentDesc="Post text" → hint text; "tap Post" text FIRST, resourceId LAST; `runStructuredRoutine` escalates ONCE to `runAgentLoop` with context on non-SUCCESS (guard `routineEscalated` flag); `StructuredRoutineRegistry.match` returns empty spec when `extractPostText==null` → `ClarificationManager.request("What should the LinkedIn post say?")` → rebuilds spec with answer.
+- **Convention**: Wait-for-target respects budgets; selector priority = text → content-desc → resource-id → class → coords; routine→loop escalation guarded by once-per-task flag.
+
+**W8 — AppCatalog App Address Registry (setup-time build + kb_search)**
+- **Bug**: `kb_search` only searched vault notes (no app awareness); `open_app` used 28-entry hardcoded map + slow PackageManager scan per task.
+- **Fix**: `AppCatalog` singleton (`agent/knowledge/AppCatalog.kt`, patterned after `KBManager`): JSON-backed in app-private storage; builds on first accessibility connect (`ClawAccessibilityService.onServiceConnected`) AND `GuideActivity.updatePermissionIndicators` when accessibility first READY; progress toast "Indexing your apps so tasks can find them — please wait…" with count; package broadcast receiver in `ClawApplication` for PACKAGE_ADDED/REMOVED/REPLACED → `invalidatePackage` + rebuild; 7-day stale rebuild; `OpenAppTool.resolveAppName` → AppCatalog first, fallback fuzzy; `GetInstalledAppsTool` → catalog instant; after each build writes `apps/app-registry.md` to vault (one line per app: `- Label — pkg — component (alias: ...)`); system prompts (`LOCAL_TASK_PROMPT` + `DEFAULT_SYSTEM_PROMPT`) + "App addresses: every installed app's package name is in the app registry (see get_installed_apps). Never guess a package name; resolve via get_installed_apps when unsure."
+- **Convention**: Catalog built once at setup with user-visible progress; incremental updates via broadcast; vault markdown for `kb_search` awareness.
+
+**W9 — Preview UX + TargetSpecGate + Clarification for Unnamed Targets**
+- **Bug**: "open 5 apps" ran in Preview (sticky flag), never asked which apps, nothing executed.
+- **Fix**: `TargetSpecGate` (pure Kotlin, `agent/exec/TargetSpecGate.kt`) detects enumeration-without-names via regex (`open|launch|close|screenshot|install` + N apps with <N named aliases in text); fires in `runAgentLoop` for DEVICE_AUTOMATION before loop; `ClarificationManager.request` with AppCatalog choices (top N×2); timeout → fallback to MRU apps + state choice in answer; `DryRunRunner`: `keep_preview_mode` KV setting (default false), `setEnabled(context)` shows Toast "Preview ON — tasks will plan without touching your device"; Preview banner in `ChatScreen` (both branches) when ON: "Preview mode — tasks won't touch your device. Tap to disable."; `TaskFlowController.cleanupAfterTask` auto-resets Preview after run unless `keep_preview_mode`; enumeration rule in prompts: "Enumeration rule: when the task requires acting on N apps/items but fewer than N are named, FIRST call get_installed_apps, then ask_user offering concrete choices. Never choose the targets yourself."
+- **Convention**: Preview is per-task inspect-then-execute (not sticky); deterministic gate for under-specified tasks; notification quick-reply via `ClarificationNotifier` (pending).
+
+**U1–U6 — Chat UI Restructure (Hierarchy → 7 Elements)**
+- **U1**: New TopAppBar: ☰ (AutoMirrored) + Wordmark + Model chip (status dot + name, 12sp, 120dp max, opens ModelSheet) + ⋮ Overflow (Vault, Background monitor, Preview toggle, Settings).
+- **U2**: ModelSheet: ModalBottomSheet with Local|Cloud segmented control (existing `onTabChange` logic reused), token/cost header, model list rows (≥52dp), "Manage models…" footer → LlmConfigActivity.
+- **U3**: QuickTasksPanel removed → EmptyState suggestion chips ("Try:" section: 2 conversational + up to 3 templates + "＋ Add" dialog); long-press template → delete; "Reset to defaults" action.
+- **U4**: Single mode chip in ChatInputBar (replaces segmented toggle): `SmartToy` + "Task" / `ChatBubbleOutline` + "Chat"; reflects auto-switch state from W5.
+- **U5**: Cross-screen audit: Settings group order (Permissions → Model → Appearance → Tools → Channels → Remote); Guide step numbers 1–6 + ✓ suffixes; Vault mime icons/row height/⋮ actions; ActiveTaskBar one chip per task + "Stop all".
+- **U6**: Guards in `ci-preflight.sh`: (a) no QuickTasksPanel refs; (b) no `UnfoldMore` in ChatTopBar; (c) no 🔍/▲/💬/🤖 emoji literals in chrome (message content exempt); AGENTS.md (this entry), AI_INDEX.md (new files: AppCatalog, TargetSpecGate; removed: AdaptiveRouter), BACKLOG.md updated; ci-preflight + unit tests + lint green.
