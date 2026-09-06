@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -246,13 +247,12 @@ fun ChatScreen(
         val kvUtils = com.returngift.agent.utils.KVUtils
         if (tab == "cloud") {
             if (kvUtils.hasDefaultCloudModel()) {
-                val model = kvUtils.getDefaultCloudModel()
-                onModelSwitch("CLOUD", model)
-            } else if (kvUtils.hasDefaultLocalModel()) {
-                val localPath = kvUtils.getLocalModelPath()
-                val name = java.io.File(localPath).nameWithoutExtension
-                    .replace("-", " ").replace("_", " ")
-                onModelSwitch("LOCAL", name)
+                val modelId = kvUtils.getDefaultCloudModel()
+                val provider = com.returngift.agent.agent.CloudProvider.fromName(
+                    kvUtils.getDefaultCloudProvider().ifBlank { kvUtils.getLlmProvider() }
+                )
+                val displayName = provider.models.find { it.id == modelId }?.displayName ?: modelId
+                onModelSwitch(modelId, displayName)
             } else {
                 com.returngift.agent.utils.XLog.i("ChatScreen", "Cloud tab: no default cloud model configured")
                 onModelSwitch("NONE", "")
@@ -260,8 +260,7 @@ fun ChatScreen(
         } else {
             if (kvUtils.hasDefaultLocalModel()) {
                 val localPath = kvUtils.getLocalModelPath()
-                val name = java.io.File(localPath).nameWithoutExtension
-                    .replace("-", " ").replace("_", " ")
+                val name = java.io.File(localPath).nameWithoutExtension.replace("-", " ").replace("_", " ")
                 onModelSwitch("LOCAL", name)
             } else {
                 com.returngift.agent.utils.XLog.i("ChatScreen", "Local tab: no default local model configured")
@@ -331,39 +330,20 @@ fun ChatScreen(
                                     sessionCost = sessionCost,
                                     isLocalModel = isLocalModel,
                                     selectedTab = selectedTab,
-                                    onTabChange = { tab ->
-                                        selectedTab = tab
-                                        val kvUtils = com.returngift.agent.utils.KVUtils
-                                        if (tab == "cloud") {
-                                            if (kvUtils.hasDefaultCloudModel()) {
-                                                val modelId = kvUtils.getDefaultCloudModel()
-                                                val provider = com.returngift.agent.agent.CloudProvider.fromName(
-                                                    kvUtils.getDefaultCloudProvider().ifBlank { kvUtils.getLlmProvider() }
-                                                )
-                                                val displayName = provider.models.find { it.id == modelId }?.displayName ?: modelId
-                                                onModelSwitch(modelId, displayName)
-                                            } else {
-                                                com.returngift.agent.utils.XLog.i("ChatScreen", "Cloud tab: no default cloud model configured")
-                                                onModelSwitch("NONE", "")
-                                            }
-                                        } else {
-                                            if (kvUtils.hasDefaultLocalModel()) {
-                                                val localPath = kvUtils.getLocalModelPath()
-                                                val name = java.io.File(localPath).nameWithoutExtension
-                                                    .replace("-", " ").replace("_", " ")
-                                                onModelSwitch("LOCAL", name)
-                                            } else {
-                                                com.returngift.agent.utils.XLog.i("ChatScreen", "Local tab: no default local model configured")
-                                                onModelSwitch("NONE", "")
-                                            }
-                                        }
-                                    },
                                     onMenuClick = { /* no-op: sidebar always visible on wide */ },
                                     onSettings = onOpenSettings,
                                     onOpenVault = onOpenVault,
                                     onModelSwitch = onModelSwitch,
                                     colors = colors,
                                     showMenu = false,
+                                    previewEnabled = previewEnabled,
+                                    onPreviewToggle = {
+                                        val newEnabled = !previewEnabled
+                                        com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(newEnabled, context)
+                                        previewEnabled = newEnabled
+                                    },
+                                    onShowModelSheet = { showModelSheet = true },
+                                    onMonitorClick = { showMonitorSheet = true },
                                 )
                                 if (activeTasks.isNotEmpty()) {
                                     ActiveTaskBar(
@@ -582,39 +562,20 @@ fun ChatScreen(
                                 sessionCost = sessionCost,
                                 isLocalModel = isLocalModel,
                                 selectedTab = selectedTab,
-                                onTabChange = { tab ->
-                                    selectedTab = tab
-                                    val kvUtils = com.returngift.agent.utils.KVUtils
-                                    if (tab == "cloud") {
-                                        if (kvUtils.hasDefaultCloudModel()) {
-                                            val modelId = kvUtils.getDefaultCloudModel()
-                                            val provider = com.returngift.agent.agent.CloudProvider.fromName(
-                                                kvUtils.getDefaultCloudProvider().ifBlank { kvUtils.getLlmProvider() }
-                                            )
-                                            val displayName = provider.models.find { it.id == modelId }?.displayName ?: modelId
-                                            onModelSwitch(modelId, displayName)
-                                        } else {
-                                            com.returngift.agent.utils.XLog.i("ChatScreen", "Cloud tab: no default cloud model configured")
-                                            onModelSwitch("NONE", "")
-                                        }
-                                    } else {
-                                        if (kvUtils.hasDefaultLocalModel()) {
-                                            val localPath = kvUtils.getLocalModelPath()
-                                            val name = java.io.File(localPath).nameWithoutExtension
-                                                .replace("-", " ").replace("_", " ")
-                                            onModelSwitch("LOCAL", name)
-                                        } else {
-                                            com.returngift.agent.utils.XLog.i("ChatScreen", "Local tab: no default local model configured")
-                                            onModelSwitch("NONE", "")
-                                        }
-                                    }
-                                },
                                 onMenuClick = { scope.launch { drawerState.open() } },
                                 onSettings = onOpenSettings,
                                 onOpenVault = onOpenVault,
                                 onModelSwitch = onModelSwitch,
                                 colors = colors,
                                 showMenu = true,
+                                previewEnabled = previewEnabled,
+                                onPreviewToggle = {
+                                    val newEnabled = !previewEnabled
+                                    com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(newEnabled, context)
+                                    previewEnabled = newEnabled
+                                },
+                                onShowModelSheet = { showModelSheet = true },
+                                onMonitorClick = { showMonitorSheet = true },
                             )
                             if (activeTasks.isNotEmpty()) {
                                 ActiveTaskBar(
@@ -802,6 +763,23 @@ fun ChatScreen(
         )
     }
 
+    // B2: ModelSheet for model switching
+    if (showModelSheet) {
+        ModelSheet(
+            modelStatus = modelStatus,
+            sessionTokens = sessionTokens,
+            sessionCost = sessionCost,
+            isLocalModel = isLocalModel,
+            selectedTab = selectedTab,
+            onModelSwitch = onModelSwitch,
+            onSettings = onOpenSettings,
+            onOpenModels = onOpenModels,
+            colors = colors,
+            onDismiss = { showModelSheet = false },
+            switchTab = switchTab,
+        )
+    }
+
     // Send Message skill dialog
     if (showSendSheet) {
         SendMessageDialog(
@@ -825,41 +803,113 @@ private fun ChatTopBar(
     sessionCost: Double = 0.0,
     isLocalModel: Boolean = true,
     selectedTab: String,
-    onTabChange: (String) -> Unit,
     onMenuClick: () -> Unit,
     onSettings: () -> Unit,
     onOpenVault: () -> Unit = {},
     onModelSwitch: (modelId: String, displayName: String) -> Unit = { _, _ -> },
     colors: ReturnGiftColors,
     showMenu: Boolean = true,
+    previewEnabled: Boolean,
+    onPreviewToggle: () -> Unit,
+    onShowModelSheet: () -> Unit,
+    onMonitorClick: () -> Unit,
 ) {
-    // Token count color: grey → blue → amber → red
-    val tokenColor = when {
-        sessionTokens < 5000 -> colors.textTertiary
-        sessionTokens < 15000 -> Color(0xFF60A5FA) // blue
-        sessionTokens < 25000 -> Color(0xFFFBBF24) // amber
-        else -> Color(0xFFF87171) // soft red
-    }
+    val chipLabel = modelStatus.removePrefix("● ").split(" ·").firstOrNull()?.trim()
+        .takeUnless { it.isNullOrBlank() } ?: "No model"
+    var overflowOpen by remember { mutableStateOf(false) }
 
+
+    TopAppBar(
+        title = { BrandWordmark(colors, fontSize = 18.sp) },
+        navigationIcon = {
+            if (showMenu) {
+                IconButton(onClick = onMenuClick) {
+                    Icon(Menu, contentDescription = "Open menu")
+                }
+            }
+        },
+        actions = {
+            // Model chip — opens the ModelSheet
+            Surface(
+                onClick = onShowModelSheet,
+                shape = RoundedCornerShape(10.dp),
+                color = colors.aiBubble,
+                border = androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder),
+                modifier = Modifier.widthIn(max = 132.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(colors.accent, CircleShape)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        chipLabel,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = colors.textPrimary,
+                    )
+                }
+            }
+            Spacer(Modifier.width(4.dp))
+            // ⋮ overflow
+            Box {
+                IconButton(onClick = { overflowOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                }
+                DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Vault") },
+                        leadingIcon = { Icon(Folder, contentDescription = null) },
+                        onClick = { overflowOpen = false; onOpenVault() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Background monitor…") },
+                        leadingIcon = { Icon(Icons.Outlined.MonitorHeart, contentDescription = null) },
+                        onClick = { overflowOpen = false; onMonitorClick() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Preview mode") },
+                        trailingIcon = { Checkbox(checked = previewEnabled, onCheckedChange = { onPreviewToggle() }) },
+                        onClick = { onPreviewToggle() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Settings") },
+                        leadingIcon = { Icon(Settings, contentDescription = null) },
+                        onClick = { overflowOpen = false; onSettings() },
+                    )
+                }
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = colors.surface,
+            titleContentColor = colors.textPrimary,
+            navigationIconContentColor = colors.textPrimary,
+            actionIconContentColor = colors.textSecondary,
+        ),
     )
-    }
+}
 
-    // B2: ModelSheet — bottom sheet for model switching
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    private fun ModelSheet(
-        modelStatus: String,
-        sessionTokens: Int = 0,
-        sessionCost: Double = 0.0,
-        selectedTab: String,
-        onTabChange: (String) -> Unit,
-        onModelSwitch: (modelId: String, displayName: String) -> Unit,
-        onSettings: () -> Unit,
-        onOpenModels: () -> Unit,
-        colors: ReturnGiftColors,
-        showModelSheet: MutableState<Boolean>,
-        switchTab: (String) -> Unit,
-    ) {
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelSheet(
+    modelStatus: String,
+    sessionTokens: Int = 0,
+    sessionCost: Double = 0.0,
+    isLocalModel: Boolean,
+    selectedTab: String,
+    onModelSwitch: (modelId: String, displayName: String) -> Unit,
+    onSettings: () -> Unit,
+    onOpenModels: () -> Unit,
+    colors: ReturnGiftColors,
+    onDismiss: () -> Unit,
+    switchTab: (String) -> Unit,
+) {
         val scope = rememberCoroutineScope()
         
         // Token count color: grey → blue → amber → red
@@ -871,10 +921,7 @@ private fun ChatTopBar(
         }
 
         ModalBottomSheet(
-            sheetState = rememberModalBottomSheetState(
-                initialValue = ModalBottomSheetValue.Hidden,
-                confirmStateChange = { true }
-            ),
+            onDismissRequest = onDismiss,
             sheetContent = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // Header
@@ -907,7 +954,7 @@ private fun ChatTopBar(
                     ) {
                         // Local tab
                         Surface(
-                            onClick = { onTabChange("local"); switchTab("local") },
+                            onClick = { switchTab("local") },
                             shape = RoundedCornerShape(8.dp),
                             color = if (selectedTab == "local") colors.accent.copy(alpha = 0.15f) else colors.surface,
                             border = androidx.compose.foundation.BorderStroke(1.dp, if (selectedTab == "local") colors.accent else colors.divider),
@@ -941,7 +988,7 @@ private fun ChatTopBar(
                         Spacer(Modifier.width(12.dp))
                         // Cloud tab
                         Surface(
-                            onClick = { onTabChange("cloud"); switchTab("cloud") },
+                            onClick = { switchTab("cloud") },
                             shape = RoundedCornerShape(8.dp),
                             color = if (selectedTab == "cloud") colors.accent.copy(alpha = 0.15f) else colors.surface,
                             border = androidx.compose.foundation.BorderStroke(1.dp, if (selectedTab == "cloud") colors.accent else colors.divider),
@@ -1001,12 +1048,12 @@ private fun ChatTopBar(
                                             .clip(RoundedCornerShape(8.dp))
                                             .onClick {
                                                 onModelSwitch(model.id, model.displayName)
-                                                scope.launch { showModelSheet.value = false }
+                                                onDismiss()
                                             }
                                             .pointerInput(Unit) {
                                                 detectTapGestures(onTap = {
                                                     onModelSwitch(model.id, model.displayName)
-                                                    scope.launch { showModelSheet.value = false }
+                                                    onDismiss()
                                                 })
                                             },
                                         verticalAlignment = Alignment.CenterVertically,
@@ -1060,12 +1107,12 @@ private fun ChatTopBar(
                                         .clip(RoundedCornerShape(8.dp))
                                         .onClick {
                                             onModelSwitch("LOCAL", localName)
-                                            scope.launch { showModelSheet.value = false }
+                                            onDismiss()
                                         }
                                         .pointerInput(Unit) {
                                             detectTapGestures(onTap = {
                                                 onModelSwitch("LOCAL", localName)
-                                                scope.launch { showModelSheet.value = false }
+                                                onDismiss()
                                             })
                                         },
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1115,11 +1162,11 @@ private fun ChatTopBar(
                             .background(colors.surface)
                             .clip(RoundedCornerShape(8.dp))
                             .onClick {
-                                scope.launch { showModelSheet.value = false; onOpenModels() }
+                                onDismiss(); onOpenModels()
                             }
                             .pointerInput(Unit) {
                                 detectTapGestures(onTap = {
-                                    scope.launch { showModelSheet.value = false; onOpenModels() }
+                                    onDismiss(); onOpenModels()
                                 })
                             },
                     )
@@ -1132,6 +1179,7 @@ private fun ChatTopBar(
 
     // ======================== B3: EMPTY STATE SUGGESTION CHIPS ========================
 
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable
     private fun EmptyStateSuggestionChips(
         isLocalModel: Boolean,
@@ -1140,6 +1188,12 @@ private fun ChatTopBar(
     ) {
         val tasks = QuickTaskRepository.getTasks(isLocalModel)
         
+        // State for dialogs
+        var showAddDialog by remember { mutableStateOf(false) }
+        var newTaskText by remember { mutableStateOf("") }
+        var taskToDelete by remember { mutableStateOf<String?>(null) }
+        var showResetDialog by remember { mutableStateOf(false) }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1168,14 +1222,12 @@ private fun ChatTopBar(
             // Quick task templates (up to 3)
             tasks.take(3).forEach { task ->
                 SuggestionChip(
-                    text = task.name,
+                    text = task,
                     isTask = true,
-                    onClick = { onSelectPrompt(task.template, true) },
+                    onClick = { onSelectPrompt(task, true) },
                     colors = colors,
                     onLongClick = {
-                        // Show delete confirmation
-                        // TODO: Implement confirmation dialog
-                        QuickTaskRepository.removeTask(task.id)
+                        taskToDelete = task
                     }
                 )
             }
@@ -1185,12 +1237,73 @@ private fun ChatTopBar(
                 text = "＋ Add",
                 isTask = false,
                 onClick = {
-                    // TODO: Open add template dialog
-                    // QuickTaskRepository.addTask(...)
+                    newTaskText = ""
+                    showAddDialog = true
                 },
                 colors = colors,
                 isAddChip = true
             )
+
+            // Add template dialog
+            if (showAddDialog) {
+                AlertDialog(
+                    onDismissRequest = { showAddDialog = false },
+                    title = { Text("Add quick task") },
+                    text = {
+                        Column {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = newTaskText, onValueChange = { newTaskText = it },
+                                singleLine = true, placeholder = { Text("Describe the task…") },
+                            )
+                            Text("Reset to defaults", fontSize = 12.sp, color = colors.textTertiary,
+                                modifier = Modifier
+                                    .padding(top = 12.dp)
+                                    .clickable { showResetDialog = true }
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            if (newTaskText.isNotBlank()) {
+                                QuickTaskRepository.addTask(newTaskText.trim(), isLocalModel)
+                                newTaskText = ""
+                                showAddDialog = false
+                            }
+                        }) { Text("Save") }
+                    },
+                    dismissButton = { TextButton(onClick = { showAddDialog = false }) { Text("Cancel") } },
+                    containerColor = colors.surface,
+                )
+            }
+            if (showResetDialog) {
+                AlertDialog(
+                    onDismissRequest = { showResetDialog = false },
+                    title = { Text("Reset templates?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            QuickTaskRepository.resetToDefaults(isLocalModel)
+                            showResetDialog = false
+                            showAddDialog = false
+                        }) { Text("Reset") }
+                    },
+                    dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Cancel") } },
+                    containerColor = colors.surface,
+                )
+            }
+            taskToDelete?.let { task ->
+                AlertDialog(
+                    onDismissRequest = { taskToDelete = null },
+                    title = { Text("Delete \"$task\"?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            QuickTaskRepository.removeTask(task, isLocalModel)
+                            taskToDelete = null
+                        }) { Text("Delete", color = Color(0xFFF87171)) }
+                    },
+                    dismissButton = { TextButton(onClick = { taskToDelete = null }) { Text("Cancel") } },
+                    containerColor = colors.surface,
+                )
+            }
         }
     }
 
@@ -1204,13 +1317,12 @@ private fun ChatTopBar(
         isAddChip: Boolean = false,
     ) {
         Surface(
-            onClick = onClick,
-            onLongClick = onLongClick,
             shape = RoundedCornerShape(8.dp),
             color = if (isAddChip) colors.accent.copy(alpha = 0.1f) else if (isTask) colors.aiBubble.copy(alpha = 0.15f) else colors.surface,
             border = androidx.compose.foundation.BorderStroke(1.dp, if (isAddChip) colors.accent else if (isTask) colors.aiBubbleBorder else colors.divider),
             modifier = Modifier
                 .height(40.dp)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(horizontal = 12.dp),
         ) {
             Row(
