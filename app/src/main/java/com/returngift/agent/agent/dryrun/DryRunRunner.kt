@@ -18,6 +18,7 @@ object DryRunRunner {
 
     private const val TAG = "DryRunRunner"
     private const val KV_PREVIEW_ENABLED = "preview_mode_enabled"
+    private const val KV_KEEP_PREVIEW_MODE = "keep_preview_mode"
 
     /** Whether Preview mode is currently on (persisted in KV). */
     fun isEnabled(): Boolean = try {
@@ -26,7 +27,7 @@ object DryRunRunner {
         false
     }
 
-    fun setEnabled(enabled: Boolean) {
+    fun setEnabled(enabled: Boolean, context: android.content.Context? = null) {
         try {
             com.returngift.agent.utils.KVUtils.putBoolean(KV_PREVIEW_ENABLED, enabled)
         } catch (e: Exception) {
@@ -34,6 +35,28 @@ object DryRunRunner {
         }
         if (!enabled) removeStub()
         XLog.i(TAG, "preview mode -> $enabled")
+        if (enabled && context != null) {
+            android.widget.Toast.makeText(
+                context,
+                "Preview ON — tasks will plan without touching your device",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /** Whether Preview mode should persist after a run (Settings toggle). */
+    fun shouldKeepAfterRun(): Boolean = try {
+        com.returngift.agent.utils.KVUtils.getBoolean(KV_KEEP_PREVIEW_MODE, false)
+    } catch (_: Exception) {
+        false
+    }
+
+    fun setKeepAfterRun(keep: Boolean) {
+        try {
+            com.returngift.agent.utils.KVUtils.putBoolean(KV_KEEP_PREVIEW_MODE, keep)
+        } catch (e: Exception) {
+            XLog.w(TAG, "persist keep_preview_mode failed", e)
+        }
     }
 
     data class PlanStep(

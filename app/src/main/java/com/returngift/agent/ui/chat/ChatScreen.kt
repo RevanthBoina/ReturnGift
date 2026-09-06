@@ -382,6 +382,57 @@ fun ChatScreen(
                                         )
                                     }
 
+                                    // W9: Preview mode banner (persistent thin banner above input bar)
+                                    val previewOn = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
+                                    if (previewOn) {
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                                            color = colors.accent.copy(alpha = 0.1f),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.accent.copy(alpha = 0.3f)),
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                    .fillMaxWidth()
+                                                    .onClick {
+                                                        // Tap to disable preview mode
+                                                        com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(false, context)
+                                                    },
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Icon(
+                                                        Visibility,
+                                                        contentDescription = "Preview mode active",
+                                                        tint = colors.accent,
+                                                        modifier = Modifier.size(16.dp),
+                                                    )
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text(
+                                                        "Preview mode — tasks won't touch your device. Tap to disable.",
+                                                        fontSize = 12.sp,
+                                                        color = colors.accent,
+                                                        fontWeight = FontWeight.Medium,
+                                                    )
+                                                }
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Disable preview mode",
+                                                    tint = colors.accent.copy(alpha = 0.7f),
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     ChatInputBar(
                                         isAwaitingReply = isAwaitingReply,
                                         isTaskRunning = isTaskRunning,
@@ -576,6 +627,57 @@ fun ChatScreen(
                                         onDismiss = onCancelQueue,
                                         onStartNow = { onStartNow(pending) },
                                     )
+                                }
+
+                                // W9: Preview mode banner (persistent thin banner above input bar)
+                                val previewOn = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
+                                if (previewOn) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                                        color = colors.accent.copy(alpha = 0.1f),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.accent.copy(alpha = 0.3f)),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                .fillMaxWidth()
+                                                .onClick {
+                                                    // Tap to disable preview mode
+                                                    com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(false, context)
+                                                },
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Icon(
+                                                    Visibility,
+                                                    contentDescription = "Preview mode active",
+                                                    tint = colors.accent,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    "Preview mode — tasks won't touch your device. Tap to disable.",
+                                                    fontSize = 12.sp,
+                                                    color = colors.accent,
+                                                    fontWeight = FontWeight.Medium,
+                                                )
+                                            }
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Disable preview mode",
+                                                tint = colors.accent.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                    }
                                 }
 
                                 ChatInputBar(

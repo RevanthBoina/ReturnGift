@@ -577,6 +577,40 @@ class DefaultAgentService : AgentService {
             }
         }
 
+        // W9: TargetSpecGate — detect under-specified enumeration tasks (DEVICE_AUTOMATION only)
+        if (taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION) {
+            com.returngift.agent.agent.exec.TargetSpecGate.missingTargets(rawUserRequest)?.let { missing ->
+                XLog.i(TAG, "TargetSpecGate fired: requested ${missing.requestedCount} ${missing.kind}, explicitly named ${missing.explicitlyNamed} — asking user")
+                
+                // Build choices from AppCatalog (top installed / recently used)
+                val catalog = com.returngift.agent.agent.knowledge.AppCatalog.getInstance(ClawApplication.Companion.getInstance())
+                val allEntries = catalog.getAllEntries()
+                val choices = allEntries.take(min(missing.requestedCount * 2, allEntries.size))
+                    .map { it.label }
+                
+                val question = "Which ${missing.requestedCount} ${missing.kind} should I ${if (rawUserRequest.contains("open") || rawUserRequest.contains("launch")) "open" else "act on"}?"
+                val answer = com.returngift.agent.agent.clarify.ClarificationManager.request(
+                    question = question,
+                    choices = choices,
+                    allowFreeText = true,
+                    timeoutMs = 120_000L
+                )
+                
+                if (answer != null && answer.isNotBlank()) {
+                    // Substitute the answer into the task text
+                    val augmentedPrompt = "$rawUserRequest\n\nApps to ${if (missing.kind == "apps") "open" else "act on"}: $answer"
+                    XLog.i(TAG, "TargetSpecGate: user specified targets — $answer")
+                    return runAgentLoop(augmentedPrompt, callback, stepHistory, taskId)
+                } else {
+                    // Timeout: proceed with most-recently-used apps and state that choice
+                    val fallbackApps = allEntries.take(missing.requestedCount).map { it.label }
+                    XLog.w(TAG, "TargetSpecGate: timeout — proceeding with fallback: ${fallbackApps.joinToString(", ")}")
+                    val augmentedPrompt = "$rawUserRequest\n\n[Auto-selected ${missing.kind} due to timeout: ${fallbackApps.joinToString(", ")}]"
+                    return runAgentLoop(augmentedPrompt, callback, stepHistory, taskId)
+                }
+            }
+        }
+
         // Two-layer path: a known structured routine runs on the deterministic
         // executor; the AI is consulted only through the escalation seam.
         if (taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION) {

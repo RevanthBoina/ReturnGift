@@ -749,6 +749,13 @@ class TaskFlowController(
             // previewOriginalTask is kept alive so the plan card's 'Execute now'
             // button can re-dispatch the SAME task; cleared on execute/dismiss.
             onPersistConversation()
+            
+            // W9: Auto-reset preview mode after a run unless keep_preview_mode is enabled
+            if (!com.returngift.agent.agent.dryrun.DryRunRunner.shouldKeepAfterRun()) {
+                XLog.i(TAG, "Preview run finished — auto-resetting preview mode")
+                com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(false)
+                // The banner will be hidden automatically via the preview mode flag
+            }
         }
         uiState.isAwaitingReply.value = false
         uiState.isTaskRunning.value = false
