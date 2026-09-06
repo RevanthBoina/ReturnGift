@@ -235,8 +235,40 @@ fun ChatScreen(
     var showMonitorSheet by remember { mutableStateOf(false) }
     var showSendSheet by remember { mutableStateOf(false) }
     var activatingSkill by remember { mutableStateOf<String?>(null) }
+    // Model sheet state
+    var showModelSheet by remember { mutableStateOf(false) }
 
     // Chat mode is always the default — user can switch to Task manually
+
+    // Shared tab-switch logic (used by ModelSheet segmented control)
+    val switchTab: (String) -> Unit = { tab ->
+        selectedTab = tab
+        val kvUtils = com.returngift.agent.utils.KVUtils
+        if (tab == "cloud") {
+            if (kvUtils.hasDefaultCloudModel()) {
+                val model = kvUtils.getDefaultCloudModel()
+                onModelSwitch("CLOUD", model)
+            } else if (kvUtils.hasDefaultLocalModel()) {
+                val localPath = kvUtils.getLocalModelPath()
+                val name = java.io.File(localPath).nameWithoutExtension
+                    .replace("-", " ").replace("_", " ")
+                onModelSwitch("LOCAL", name)
+            } else {
+                com.returngift.agent.utils.XLog.i("ChatScreen", "Cloud tab: no default cloud model configured")
+                onModelSwitch("NONE", "")
+            }
+        } else {
+            if (kvUtils.hasDefaultLocalModel()) {
+                val localPath = kvUtils.getLocalModelPath()
+                val name = java.io.File(localPath).nameWithoutExtension
+                    .replace("-", " ").replace("_", " ")
+                onModelSwitch("LOCAL", name)
+            } else {
+                com.returngift.agent.utils.XLog.i("ChatScreen", "Local tab: no default local model configured")
+                onModelSwitch("NONE", "")
+            }
+        }
+    }
 
     // When activating finishes (2s animation), clear state
     LaunchedEffect(activatingSkill) {
@@ -351,17 +383,19 @@ fun ChatScreen(
                                         .width(chatColumnWidth)
                                         .padding(horizontal = horizontalPad)
                                 ) {
-                                    QuickTasksPanel(
-                                        isLocalModel = isLocalUI,
-                                        onFillTask = { text ->
-                                            prefillText = text
-                                            prefillIsTask = true
-                                            if (isLocalUI) onTaskModeChange(true)
-                                        },
-                                        onMonitorClick = { showMonitorSheet = true },
-                                        monitorActive = activeTasks.isNotEmpty(),
-                                        colors = colors,
-                                    )
+                                    // B3: Empty state suggestion chips
+                                    val showSuggestions = messages.isEmpty()
+                                    if (showSuggestions) {
+                                        EmptyStateSuggestionChips(
+                                            isLocalModel = isLocalUI,
+                                            onSelectPrompt = { text, task ->
+                                                prefillText = text
+                                                prefillIsTask = task
+                                                if (task && isLocalUI) onTaskModeChange(true)
+                                            },
+                                            colors = colors,
+                                        )
+                                    }
 
                                     pendingClarification?.let { question ->
                                         ClarificationCard(
@@ -598,17 +632,19 @@ fun ChatScreen(
                                 modifier = Modifier.imePadding()
                                 .padding(horizontal = horizontalPad)
                             ) {
-                                QuickTasksPanel(
-                                    isLocalModel = isLocalUI,
-                                    onFillTask = { text ->
-                                        prefillText = text
-                                        prefillIsTask = true
-                                        if (isLocalUI) onTaskModeChange(true)
-                                    },
-                                    onMonitorClick = { showMonitorSheet = true },
-                                    monitorActive = activeTasks.isNotEmpty(),
-                                    colors = colors,
-                                )
+                                // B3: Empty state suggestion chips
+                                val showSuggestions = messages.isEmpty()
+                                if (showSuggestions) {
+                                    EmptyStateSuggestionChips(
+                                        isLocalModel = isLocalUI,
+                                        onSelectPrompt = { text, task ->
+                                            prefillText = text
+                                            prefillIsTask = task
+                                            if (task && isLocalUI) onTaskModeChange(true)
+                                        },
+                                        colors = colors,
+                                    )
+                                }
 
                                 pendingClarification?.let { question ->
                                     ClarificationCard(
@@ -724,7 +760,7 @@ fun ChatScreen(
                                     onSelectPrompt = { text, task ->
                                         prefillText = text
                                         prefillIsTask = task
-                                        if (task && isLocalUI) isTaskMode = true
+                                        if (task && isLocalUI) onTaskModeChange(true)
                                     },
                                     colors = colors,
                                     modifier = Modifier.fillMaxSize(),
@@ -805,196 +841,410 @@ private fun ChatTopBar(
         else -> Color(0xFFF87171) // soft red
     }
 
-    Column {
-        var showModelMenu by remember { mutableStateOf(false) }
+    )
+    }
 
-        TopAppBar(
-            title = {
-                BrandWordmark(colors, fontSize = 18.sp)
-            },
-            navigationIcon = {
-                if (showMenu) {
-                    IconButton(onClick = onMenuClick) {
-                        Icon(Menu, contentDescription = "Open menu")
-                    }
-                }
-            },
-            actions = {
-                // Preview/Dry-Run toggle: the agent plans without touching the
-                // device; the "Execute now" plan card runs the steps for real.
-                // F2: use hoisted previewEnabled state for immediate UI update
-                Surface(
-                    onClick = {
-                        val runner = com.returngift.agent.agent.dryrun.DryRunRunner
-                        val newEnabled = !previewEnabled
-                        runner.setEnabled(newEnabled, context)
-                        previewEnabled = newEnabled
-                    },
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (previewEnabled) colors.aiBubble else Color.Transparent,
-                    border = if (previewEnabled) androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder) else null,
-                ) {
+    // B2: ModelSheet — bottom sheet for model switching
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun ModelSheet(
+        modelStatus: String,
+        sessionTokens: Int = 0,
+        sessionCost: Double = 0.0,
+        selectedTab: String,
+        onTabChange: (String) -> Unit,
+        onModelSwitch: (modelId: String, displayName: String) -> Unit,
+        onSettings: () -> Unit,
+        onOpenModels: () -> Unit,
+        colors: ReturnGiftColors,
+        showModelSheet: MutableState<Boolean>,
+        switchTab: (String) -> Unit,
+    ) {
+        val scope = rememberCoroutineScope()
+        
+        // Token count color: grey → blue → amber → red
+        val tokenColor = when {
+            sessionTokens < 5000 -> colors.textTertiary
+            sessionTokens < 15000 -> Color(0xFF60A5FA) // blue
+            sessionTokens < 25000 -> Color(0xFFFBBF24) // amber
+            else -> Color(0xFFF87171) // soft red
+        }
+
+        ModalBottomSheet(
+            sheetState = rememberModalBottomSheetState(
+                initialValue = ModalBottomSheetValue.Hidden,
+                confirmStateChange = { true }
+            ),
+            sheetContent = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Header
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            Visibility,
-                            contentDescription = "Preview mode",
-                            tint = if (previewEnabled) colors.accent else colors.textTertiary,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(
-                            "Preview",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (previewEnabled) colors.accent else colors.textTertiary,
-                        )
+                        Text("Model", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+                        if (sessionTokens > 0 && selectedTab == "cloud") {
+                            val formattedTokens = if (sessionTokens >= 1000) {
+                                String.format("%.1fK", sessionTokens / 1000.0)
+                            } else {
+                                "$sessionTokens"
+                            }
+                            val costText = if (sessionCost < 0.01) "< $0.01" else "$${String.format("%.2f", sessionCost)}"
+                            Text("$formattedTokens tokens · $costText", fontSize = 12.sp, color = tokenColor)
+                        }
                     }
-                }
-                Spacer(Modifier.width(4.dp))
-                IconButton(onClick = onOpenVault) {
-                    Icon(Folder, contentDescription = "Vault")
-                }
-                IconButton(onClick = onSettings) {
-                    Icon(Settings, contentDescription = "Settings")
+                    Divider()
+
+                    // Local | Cloud segmented control
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        // Local tab
+                        Surface(
+                            onClick = { onTabChange("local"); switchTab("local") },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selectedTab == "local") colors.accent.copy(alpha = 0.15f) else colors.surface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (selectedTab == "local") colors.accent else colors.divider),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp)
+                                .height(48.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Default.Smartphone,
+                                    contentDescription = "",
+                                    tint = if (selectedTab == "local") colors.accent else colors.textTertiary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Local",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selectedTab == "local") colors.accent else colors.textPrimary,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        // Cloud tab
+                        Surface(
+                            onClick = { onTabChange("cloud"); switchTab("cloud") },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selectedTab == "cloud") colors.accent.copy(alpha = 0.15f) else colors.surface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (selectedTab == "cloud") colors.accent else colors.divider),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp)
+                                .height(48.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Default.Cloud,
+                                    contentDescription = "",
+                                    tint = if (selectedTab == "cloud") colors.accent else colors.textTertiary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Cloud",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selectedTab == "cloud") colors.accent else colors.textPrimary,
+                                )
+                            }
+                        }
+                    }
+                    Divider()
+
+                    // Model list
+                    Column(modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
+                        val kvUtils = com.returngift.agent.utils.KVUtils
+                        val apiKey = remember { kvUtils.getLlmApiKey() }
+                        val baseUrl = remember { kvUtils.getLlmBaseUrl() }
+                        val currentModel = remember { kvUtils.getLlmModelName() }
+
+                        if (selectedTab == "cloud") {
+                            // Cloud models
+                            if (apiKey.isNotEmpty()) {
+                                val activeProvider = com.returngift.agent.agent.CloudProvider.entries.find {
+                                    it.defaultBaseUrl == baseUrl
+                                }
+                                val modelsToShow = activeProvider?.models
+                                    ?: com.returngift.agent.agent.CloudProvider.OPENAI.models
+                                modelsToShow.forEach { model ->
+                                    val isCurrent = model.id == currentModel && selectedTab == "cloud"
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(52.dp)
+                                            .padding(horizontal = 16.dp)
+                                            .background(if (isCurrent) colors.accent.copy(alpha = 0.1f) else colors.surface)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .onClick {
+                                                onModelSwitch(model.id, model.displayName)
+                                                scope.launch { showModelSheet.value = false }
+                                            }
+                                            .pointerInput(Unit) {
+                                                detectTapGestures(onTap = {
+                                                    onModelSwitch(model.id, model.displayName)
+                                                    scope.launch { showModelSheet.value = false }
+                                                })
+                                            },
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                model.displayName,
+                                                fontSize = 14.sp,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                color = colors.textPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            if (isCurrent) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = "Selected",
+                                                    tint = colors.accent,
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // No API key configured
+                                Text("No API key configured", fontSize = 14.sp, color = colors.textTertiary, modifier = Modifier.padding(16.dp))
+                                Text("Configure API key in Settings", fontSize = 12.sp, color = colors.accent, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(48.dp).onClick {
+                                    scope.launch { showModelSheet.value = false; onSettings() }
+                                })
+                            }
+                        } else {
+                            // Local models
+                            val localPath = remember { kvUtils.getLocalModelPath() }
+                            if (localPath.isNotEmpty() && java.io.File(localPath).exists()) {
+                                val localName = java.io.File(localPath).nameWithoutExtension
+                                    .replace("-", " ").replace("_", " ")
+                                val isCurrent = isLocalModel
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp)
+                                        .padding(horizontal = 16.dp)
+                                        .background(if (isCurrent) colors.accent.copy(alpha = 0.1f) else colors.surface)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .onClick {
+                                            onModelSwitch("LOCAL", localName)
+                                            scope.launch { showModelSheet.value = false }
+                                        }
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(onTap = {
+                                                onModelSwitch("LOCAL", localName)
+                                                scope.launch { showModelSheet.value = false }
+                                            })
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            "$localName (On-device)",
+                                            fontSize = 14.sp,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                            color = colors.textPrimary,
+                                        )
+                                        if (isCurrent) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = "Selected",
+                                                tint = colors.accent,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text("No local model downloaded", fontSize = 14.sp, color = colors.textTertiary, modifier = Modifier.padding(16.dp))
+                                Text("Download models in Settings", fontSize = 12.sp, color = colors.accent, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(48.dp).onClick {
+                                    scope.launch { showModelSheet.value = false; onSettings() }
+                                })
+                            }
+                        }
+                    }
+                    Divider()
+
+                    // Footer: Manage models
+                    Text(
+                        text = "Manage models…",
+                        fontSize = 14.sp,
+                        color = colors.accent,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp)
+                            .background(colors.surface)
+                            .clip(RoundedCornerShape(8.dp))
+                            .onClick {
+                                scope.launch { showModelSheet.value = false; onOpenModels() }
+                            }
+                            .pointerInput(Unit) {
+                                detectTapGestures(onTap = {
+                                    scope.launch { showModelSheet.value = false; onOpenModels() }
+                                })
+                            },
+                    )
                 }
             },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = colors.surface,
-                titleContentColor = colors.textPrimary,
-                navigationIconContentColor = colors.textPrimary,
-                actionIconContentColor = colors.textSecondary,
-            ),
+            sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            sheetBackgroundColor = colors.surface,
         )
+    }
 
-        // Model status + dropdown — filtered by selected tab
-        Box {
-        Row(
+    // ======================== B3: EMPTY STATE SUGGESTION CHIPS ========================
+
+    @Composable
+    private fun EmptyStateSuggestionChips(
+        isLocalModel: Boolean,
+        onSelectPrompt: (String, Boolean) -> Unit,
+        colors: ReturnGiftColors,
+    ) {
+        val tasks = QuickTaskRepository.getTasks(isLocalModel)
+        
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.surface)
-                .clickable { showModelMenu = true }
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = modelStatus,
-                fontSize = 11.sp,
-                color = colors.textTertiary,
+            // Header
+            Text("Try:", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.textSecondary, modifier = Modifier.padding(start = 8.dp))
+
+            // Conversational examples
+            val conversational = listOf(
+                "What's the battery level?" to false,
+                "Summarize my notifications" to false,
             )
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                ArrowDropDown,
-                contentDescription = "Switch model",
-                tint = colors.textTertiary,
-                modifier = Modifier.size(12.dp),
-            )
-            if (sessionTokens > 0 && !isLocalModel) {
-                val formattedTokens = if (sessionTokens >= 1000) {
-                    String.format("%.1fK", sessionTokens / 1000.0)
-                } else {
-                    "$sessionTokens"
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                maxItemsInEachRow = 2,
+            ) {
+                conversational.forEach { (text, isTask) ->
+                    SuggestionChip(text = text, isTask = isTask, onClick = { onSelectPrompt(text, isTask) }, colors = colors)
                 }
-                val costText = if (sessionCost < 0.01) "< $0.01" else "$${String.format("%.2f", sessionCost)}"
-                val tokenSuffix = if (!isLocalModel && sessionCost > 0) {
-                    " · $formattedTokens tokens · $costText"
-                } else {
-                    " · $formattedTokens tokens"
+            }
+
+            // Quick task templates (up to 3)
+            tasks.take(3).forEach { task ->
+                SuggestionChip(
+                    text = task.name,
+                    isTask = true,
+                    onClick = { onSelectPrompt(task.template, true) },
+                    colors = colors,
+                    onLongClick = {
+                        // Show delete confirmation
+                        // TODO: Implement confirmation dialog
+                        QuickTaskRepository.removeTask(task.id)
+                    }
+                )
+            }
+
+            // Add chip
+            SuggestionChip(
+                text = "＋ Add",
+                isTask = false,
+                onClick = {
+                    // TODO: Open add template dialog
+                    // QuickTaskRepository.addTask(...)
+                },
+                colors = colors,
+                isAddChip = true
+            )
+        }
+    }
+
+    @Composable
+    private fun SuggestionChip(
+        text: String,
+        isTask: Boolean,
+        onClick: () -> Unit,
+        colors: ReturnGiftColors,
+        onLongClick: (() -> Unit)? = null,
+        isAddChip: Boolean = false,
+    ) {
+        Surface(
+            onClick = onClick,
+            onLongClick = onLongClick,
+            shape = RoundedCornerShape(8.dp),
+            color = if (isAddChip) colors.accent.copy(alpha = 0.1f) else if (isTask) colors.aiBubble.copy(alpha = 0.15f) else colors.surface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (isAddChip) colors.accent else if (isTask) colors.aiBubbleBorder else colors.divider),
+            modifier = Modifier
+                .height(40.dp)
+                .padding(horizontal = 12.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (isTask) {
+                    Icon(
+                        Icons.Default.SmartToy,
+                        contentDescription = "",
+                        tint = colors.accent,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                } else if (isAddChip) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Add template",
+                        tint = colors.accent,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
                 }
                 Text(
-                    text = tokenSuffix,
-                    fontSize = 11.sp,
-                    color = tokenColor,
+                    text,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isAddChip) colors.accent else if (isTask) colors.accent else colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-            // Model switcher dropdown — only show configured/downloaded models
-            DropdownMenu(
-                expanded = showModelMenu,
-                onDismissRequest = { showModelMenu = false },
-            ) {
-                val kvUtils = com.returngift.agent.utils.KVUtils
-                val apiKey = remember { kvUtils.getLlmApiKey() }
-                val baseUrl = remember { kvUtils.getLlmBaseUrl() }
-                val currentModel = remember { kvUtils.getLlmModelName() }
-
-                if (selectedTab == "cloud") {
-                    // Cloud models: from configured provider
-                    if (apiKey.isNotEmpty()) {
-                        val activeProvider = com.returngift.agent.agent.CloudProvider.entries.find {
-                            it.defaultBaseUrl == baseUrl
-                        }
-                        val modelsToShow = activeProvider?.models
-                            ?: com.returngift.agent.agent.CloudProvider.OPENAI.models
-                        modelsToShow.forEach { model ->
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            model.displayName,
-                                            fontSize = 13.sp,
-                                            fontWeight = if (model.id == currentModel && !isLocalModel) FontWeight.Bold else FontWeight.Normal,
-                                        )
-                                        if (model.id == currentModel && !isLocalModel) {
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("✓", fontSize = 12.sp, color = colors.accent)
-                                        }
-                                    }
-                                },
-                                onClick = { showModelMenu = false; onModelSwitch(model.id, model.displayName) }
-                            )
-                        }
-                    } else {
-                        // No API key configured
-                        DropdownMenuItem(
-                            text = { Text("No API key configured", fontSize = 13.sp, color = colors.textTertiary) },
-                            onClick = { showModelMenu = false; onSettings() },
-                        )
-                    }
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text("Configure API key...", fontSize = 13.sp, color = colors.accent) },
-                        onClick = { showModelMenu = false; onSettings() },
-                    )
-                } else {
-                    // Local models: downloaded models
-                    val localPath = remember { kvUtils.getLocalModelPath() }
-                    if (localPath.isNotEmpty() && java.io.File(localPath).exists()) {
-                        val localName = java.io.File(localPath).nameWithoutExtension
-                            .replace("-", " ").replace("_", " ")
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("$localName (On-device)", fontSize = 13.sp,
-                                        fontWeight = if (isLocalModel) FontWeight.Bold else FontWeight.Normal)
-                                    if (isLocalModel) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("✓", fontSize = 12.sp, color = colors.accent)
-                                    }
-                                }
-                            },
-                            onClick = {
-                                showModelMenu = false
-                                onModelSwitch("LOCAL", localName)
-                            },
-                        )
-                    } else {
-                        DropdownMenuItem(
-                            text = { Text("No local model downloaded", fontSize = 13.sp, color = colors.textTertiary) },
-                            onClick = { showModelMenu = false; onSettings() },
-                        )
-                    }
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text("Download models...", fontSize = 13.sp, color = colors.accent) },
-                        onClick = { showModelMenu = false; onSettings() },
-                    )
-                }
-            }
-        }
     }
-}
 
 // ======================== D3 SEND CONFIRM COUNTDOWN CHIP ========================
 
@@ -2527,289 +2777,6 @@ private fun EmptyStateWithPrompts(
                     }
                 }
             }
-        }
-    }
-}
-
-// ======================== QUICK TASKS PANEL (v9) ========================
-
-@Composable
-private fun QuickTasksPanel(
-    isLocalModel: Boolean,
-    onFillTask: (String) -> Unit,
-    onMonitorClick: () -> Unit,
-    monitorActive: Boolean,
-    colors: ReturnGiftColors,
-) {
-    var expanded by remember { mutableStateOf(true) }
-    var taskVersion by remember { mutableStateOf(0) }
-    val quickTasks = remember(isLocalModel, taskVersion) {
-        QuickTaskRepository.getTasks(isLocalModel)
-    }
-
-    var showAddDialog by remember { mutableStateOf(false) }
-    var newTaskText by remember { mutableStateOf("") }
-    var taskToDelete by remember { mutableStateOf<String?>(null) }
-    var showResetDialog by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier.background(colors.surface),
-    ) {
-        HorizontalDivider(color = colors.divider, thickness = 1.dp)
-
-        // Handle bar — ▲ Quick Task Templates ▲ + Add/Reset actions
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                modifier = Modifier
-                    .clickable { expanded = !expanded }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Toggle",
-                    tint = colors.accent,
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    "Quick Task Templates",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = colors.accent,
-                )
-            }
-
-            if (expanded) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Reset",
-                        fontSize = 10.sp,
-                        color = colors.textTertiary,
-                        modifier = Modifier
-                            .clickable { showResetDialog = true }
-                            .padding(4.dp)
-                    )
-                    Text(
-                        "+ Add",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colors.accent,
-                        modifier = Modifier
-                            .clickable {
-                                newTaskText = ""
-                                showAddDialog = true
-                            }
-                            .padding(4.dp)
-                    )
-                }
-            }
-        }
-
-        // Collapsible content
-        if (expanded) {
-            // Quick task items — scrollable
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 280.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                quickTasks.forEach { task ->
-                    Surface(
-                        shape = RoundedCornerShape(9.dp),
-                        color = colors.background,
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.inputBorder),
-                        modifier = Modifier.pointerInput(task) {
-                            detectTapGestures(
-                                onTap = { onFillTask(task.substringAfter(" ")) },
-                                onLongPress = { taskToDelete = task }
-                            )
-                        }
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(3.dp)
-                                    .height(38.dp)
-                                    .background(colors.accent, RoundedCornerShape(topStart = 9.dp, bottomStart = 9.dp)),
-                            )
-                            Text(
-                                task,
-                                fontSize = 12.sp,
-                                color = colors.textSecondary,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Dialogs for Quick Tasks
-            if (showAddDialog) {
-                AlertDialog(
-                    onDismissRequest = { showAddDialog = false },
-                    title = { Text("Add Quick Task Template", color = colors.textPrimary) },
-                    text = {
-                        OutlinedTextField(
-                            value = newTaskText,
-                            onValueChange = { newTaskText = it },
-                            placeholder = { Text("e.g. ⚡ Open Spotify and play daily mix", color = colors.textTertiary) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = colors.textPrimary,
-                                unfocusedTextColor = colors.textPrimary,
-                                focusedBorderColor = colors.accent,
-                                unfocusedBorderColor = colors.inputBorder,
-                            )
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                if (newTaskText.isNotBlank()) {
-                                    QuickTaskRepository.addTask(newTaskText.trim(), isLocalModel)
-                                    taskVersion++
-                                }
-                                showAddDialog = false
-                            }
-                        ) {
-                            Text("Add", color = colors.accent)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showAddDialog = false }) {
-                            Text("Cancel", color = colors.textSecondary)
-                        }
-                    },
-                    containerColor = colors.surface,
-                )
-            }
-
-            taskToDelete?.let { task ->
-                AlertDialog(
-                    onDismissRequest = { taskToDelete = null },
-                    title = { Text("Delete Quick Task?", color = colors.textPrimary) },
-                    text = { Text("Remove '$task' from templates?", color = colors.textSecondary) },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                QuickTaskRepository.removeTask(task, isLocalModel)
-                                taskVersion++
-                                taskToDelete = null
-                            }
-                        ) {
-                            Text("Delete", color = Color(0xFFFF5252))
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { taskToDelete = null }) {
-                            Text("Cancel", color = colors.textSecondary)
-                        }
-                    },
-                    containerColor = colors.surface,
-                )
-            }
-
-            if (showResetDialog) {
-                AlertDialog(
-                    onDismissRequest = { showResetDialog = false },
-                    title = { Text("Reset Templates?", color = colors.textPrimary) },
-                    text = { Text("Restore default quick task templates?", color = colors.textSecondary) },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                QuickTaskRepository.resetToDefaults(isLocalModel)
-                                taskVersion++
-                                showResetDialog = false
-                            }
-                        ) {
-                            Text("Reset", color = colors.accent)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showResetDialog = false }) {
-                            Text("Cancel", color = colors.textSecondary)
-                        }
-                    },
-                    containerColor = colors.surface,
-                )
-            }
-
-            // Background section — always visible, NOT inside scroll
-            Column(modifier = Modifier.padding(horizontal = 12.dp)) {
-                Text(
-                    "BACKGROUND",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.textTertiary,
-                    letterSpacing = 0.5.sp,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
-                )
-
-                // Monitor card
-                val monitorBorderColor = if (monitorActive) colors.accent else colors.inputBorder
-                Surface(
-                    onClick = {
-                        if (!monitorActive) onMonitorClick()
-                    },
-                    shape = RoundedCornerShape(10.dp),
-                    color = colors.background,
-                    border = androidx.compose.foundation.BorderStroke(
-                        if (monitorActive) 1.dp else 0.5.dp,
-                        monitorBorderColor,
-                    ),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(
-                                    colors.accent.copy(alpha = 0.12f),
-                                    RoundedCornerShape(9.dp),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("👁️", fontSize = 15.sp)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                if (monitorActive) "Active" else "Monitor & Auto-Reply",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.textPrimary,
-                            )
-                            Text(
-                                if (monitorActive) "Monitoring active — use the top bar to stop" else "Watch messages and reply automatically",
-                                fontSize = 9.sp,
-                                color = colors.textTertiary,
-                            )
-                        }
-                        if (!monitorActive) {
-                            Text("›", color = colors.textTertiary, fontSize = 14.sp)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-            } // end Background Column
         }
     }
 }

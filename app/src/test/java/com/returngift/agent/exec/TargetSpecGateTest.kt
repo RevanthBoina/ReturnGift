@@ -3,6 +3,7 @@
 
 package com.returngift.agent.exec
 
+import com.returngift.agent.agent.exec.TargetSpecGate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull

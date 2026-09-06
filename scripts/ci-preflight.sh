@@ -198,6 +198,27 @@ if [ -d skill_library/skills ] && [ -d app/src/main/assets/skill_library/skills 
   fi
 fi
 
+# B4: UX restructure guards
+# QuickTasksPanel must be deleted (replaced by EmptyStateSuggestionChips)
+run_check "no-quicktaskspanel" \
+  'QuickTasksPanel' \
+  "QuickTasksPanel was removed (replaced by EmptyStateSuggestionChips) — no references should remain in app/src." \
+  "--include=*.kt --include=*.java"
+
+# Icons.Default.UnfoldMore must not appear in ChatScreen.kt (replaced by model chip + overflow)
+run_check "no-unfoldmore-in-chatscreen" \
+  'Icons\.Default\.UnfoldMore' \
+  "Icons.Default.UnfoldMore (arrow drop-down) was removed from ChatTopBar — replaced by model chip + ⋮ overflow." \
+  "--include=*.kt"
+
+# isTaskMode = (assignment) must not appear in ChatScreen.kt (it's now a parameter, only onTaskModeChange allowed)
+# Match only actual variable declarations: var/val isTaskMode = ...
+# Don't match named parameter calls like `isTaskMode = isTaskMode,` or string interpolation
+run_check "no-istaskmode-assignment" \
+  '^\s*(var|val)\s+isTaskMode\s*=' \
+  "isTaskMode is now a read-only parameter in ChatScreen — use onTaskModeChange(...) instead of assignment." \
+  "--include=*.kt"
+
 if [ "$fail" -ne 0 ]; then
   red ""
   red "CI pre-flight found known-pitfall patterns. Fix them before Gradle runs."
