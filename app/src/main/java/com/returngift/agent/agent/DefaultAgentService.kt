@@ -582,10 +582,35 @@ class DefaultAgentService : AgentService {
             com.returngift.agent.agent.exec.TargetSpecGate.missingTargets(rawUserRequest)?.let { missing ->
                 XLog.i(TAG, "TargetSpecGate fired: requested ${missing.requestedCount} ${missing.kind}, explicitly named ${missing.explicitlyNamed} — asking user")
                 
-                // Build choices from AppCatalog (top installed / recently used)
+                // Build choices from AppCatalog with priority ordering
                 val catalog = com.returngift.agent.agent.knowledge.AppCatalog.getInstance(ClawApplication.Companion.getInstance())
                 val allEntries = catalog.getAllEntries()
-                val choices = allEntries.take(min(missing.requestedCount * 2, allEntries.size))
+                
+                // F6: Priority apps that should appear first in choices
+                val priorityLabels = listOf(
+                    "WhatsApp", "Messages", "Gmail", "Chrome", "YouTube", 
+                    "Camera", "Settings", "Photos", "Maps", "Phone",
+                    "Contacts", "Calendar", "Clock", "Calculator", "Files",
+                    "Drive", "Instagram", "LinkedIn"
+                )
+                
+                // Sort entries: priority apps first, then alphabetically
+                val sortedEntries = allEntries.sortedWith(
+                    compareByDescending { entry ->
+                        priorityLabels.indexOfFirst { it.equals(entry.label, ignoreCase = true) } >= 0
+                    }.thenBy { it.label }
+                )
+                
+                // Prefer apps that are actually named in the task text
+                val taskLower = rawUserRequest.lowercase()
+                val namedInTask = sortedEntries.filter { entry ->
+                    entry.aliases.any { alias -> taskLower.contains(alias.lowercase()) } ||
+                    taskLower.contains(entry.label.lowercase())
+                }
+                val otherApps = sortedEntries.filter { it !in namedInTask }
+                val prioritized = namedInTask + otherApps
+                
+                val choices = prioritized.take(minOf(missing.requestedCount * 2, prioritized.size))
                     .map { it.label }
                 
                 val question = "Which ${missing.requestedCount} ${missing.kind} should I ${if (rawUserRequest.contains("open") || rawUserRequest.contains("launch")) "open" else "act on"}?"
@@ -602,8 +627,8 @@ class DefaultAgentService : AgentService {
                     XLog.i(TAG, "TargetSpecGate: user specified targets — $answer")
                     return runAgentLoop(augmentedPrompt, callback, stepHistory, taskId)
                 } else {
-                    // Timeout: proceed with most-recently-used apps and state that choice
-                    val fallbackApps = allEntries.take(missing.requestedCount).map { it.label }
+                    // Timeout: proceed with priority apps and state that choice
+                    val fallbackApps = prioritized.take(missing.requestedCount).map { it.label }
                     XLog.w(TAG, "TargetSpecGate: timeout — proceeding with fallback: ${fallbackApps.joinToString(", ")}")
                     val augmentedPrompt = "$rawUserRequest\n\n[Auto-selected ${missing.kind} due to timeout: ${fallbackApps.joinToString(", ")}]"
                     return runAgentLoop(augmentedPrompt, callback, stepHistory, taskId)
@@ -1732,8 +1757,9 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                     append("Do NOT restart the app or repeat the failed selector verbatim. ")
                     append("Original user request: \"").append(rawUserRequest).append("\"")
                 }
-                // Run the agent loop with the escalation prompt
-                runAgentLoop(rawUserRequest, escalationPrompt, callback, stepHistory)
+                // Run the agent loop with merged prompt (user goal FIRST, then TIER-2 CONTEXT block)
+                val mergedPrompt = "$rawUserRequest\n\n$escalationPrompt"
+                runAgentLoop(mergedPrompt, callback, stepHistory, taskId = UUID.randomUUID().toString())
                 return
             }
             // Second failure (or escalation already used) → normal terminal error path

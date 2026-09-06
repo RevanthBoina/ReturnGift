@@ -358,7 +358,8 @@ class TaskOrchestrator(
                     }
                     taskEventCallback?.invoke(TaskEvent.Progress(0, "Quick path failed ($error) — switching to AI control"))
                     XLog.i(TAG, "Escalating failed Tier-1 DirectIntent to Tier-3 agent loop")
-                    startNewTask(channel, task, messageID, agentPromptOverride = escalationContext, isFallback = true)
+                    // F1: Include original task in escalation prompt so Tier-3 sees the goal
+                    startNewTask(channel, task, messageID, agentPromptOverride = "${task}\n\n${escalationContext}", isFallback = true)
                 }
                 return
             }
@@ -418,11 +419,12 @@ class TaskOrchestrator(
                     }
                     if (outcomeError != null) {
                         // Check if this is a safety block or user cancellation - don't escalate those
-                        val isSafetyBlock = outcomeError?.contains("blocked") == true || 
-                            outcomeError?.contains("not allowed") == true ||
-                            outcomeError?.contains("Allow-list") == true
-                        val isUserCancel = outcomeError?.contains("cancelled") == true || 
-                            outcomeError?.contains("Send cancelled") == true
+                        // Use exact string matching to avoid false positives (e.g., "screen is blocked" should escalate)
+                        val isSafetyBlock = outcomeError.startsWith("Action blocked:") ||
+                            outcomeError.startsWith("not allowed:") ||
+                            outcomeError.startsWith("Allow-list block:")
+                        val isUserCancel = outcomeError.startsWith("Send cancelled") ||
+                            outcomeError == "cancelled"
                         
                         if (isSafetyBlock || isUserCancel) {
                             XLog.i(TAG, "Tier-1 DirectTool safety/cancel failure - not escalating: $outcomeError")
@@ -438,7 +440,8 @@ class TaskOrchestrator(
                             }
                             taskEventCallback?.invoke(TaskEvent.Progress(0, "Quick path failed ($outcomeError) — switching to AI control"))
                             XLog.i(TAG, "Escalating failed Tier-1 DirectTool to Tier-3 agent loop")
-                            startNewTask(channel, task, messageID, agentPromptOverride = escalationContext, isFallback = true)
+                            // F1: Include original task in escalation prompt so Tier-3 sees the goal
+                            startNewTask(channel, task, messageID, agentPromptOverride = "${task}\n\n${escalationContext}", isFallback = true)
                         }
                     } else {
                         terminal(messageID, ok = true, TaskEvent.Completed(route.description), "✓ ${route.description}")

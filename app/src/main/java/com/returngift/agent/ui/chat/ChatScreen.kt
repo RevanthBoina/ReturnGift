@@ -200,11 +200,13 @@ fun ChatScreen(
     inputEnabled: Boolean = true,
     onModelSwitch: (modelId: String, displayName: String) -> Unit = { _, _ -> },
     onTaskModeChange: (Boolean) -> Unit = { _ -> },
+    isTaskMode: Boolean = false,
     pendingClarification: ClarificationManager.PendingQuestion? = null,
     onClarificationAnswer: (String) -> Unit = {},
     previewPlan: List<com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep>? = null,
     onExecutePreviewPlan: () -> Unit = {},
     onDismissPreviewPlan: () -> Unit = {},
+    previewVersion: Int = 0,
     colors: ReturnGiftColors = AbyssDark,
     onCancelQueue: () -> Unit = {},
     onStartNow: (PendingTask?) -> Unit = {},
@@ -220,8 +222,10 @@ fun ChatScreen(
     // Shared state for prompt chip → input bar prefill
     var prefillText by remember { mutableStateOf("") }
     var prefillIsTask by remember { mutableStateOf(false) }
-    // Task mode state — lifted here so content area can react
-    var isTaskMode by remember { mutableStateOf(false) }
+    // Task mode state — now passed in as parameter (F3)
+    // Preview mode state — hoisted for immediate UI updates (F2)
+    var previewEnabled by remember { mutableStateOf(com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()) }
+    val context = LocalContext.current
     // Local/Cloud tab — controls UI presentation AND triggers model switch.
     // Keep the tab aligned with the actual active model so returning from
     // Settings/model changes cannot leave the toolbar UI out of sync.
@@ -244,6 +248,11 @@ fun ChatScreen(
 
     LaunchedEffect(isLocalModel) {
         selectedTab = if (isLocalModel) "local" else "cloud"
+    }
+    
+    // F2: Observe previewVersion from TaskFlowController to sync hoisted state
+    LaunchedEffect(previewVersion) {
+        previewEnabled = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
     }
 
     BoxWithConstraints(
@@ -347,7 +356,7 @@ fun ChatScreen(
                                         onFillTask = { text ->
                                             prefillText = text
                                             prefillIsTask = true
-                                            if (isLocalUI) isTaskMode = true
+                                            if (isLocalUI) onTaskModeChange(true)
                                         },
                                         onMonitorClick = { showMonitorSheet = true },
                                         monitorActive = activeTasks.isNotEmpty(),
@@ -383,8 +392,7 @@ fun ChatScreen(
                                     }
 
                                     // W9: Preview mode banner (persistent thin banner above input bar)
-                                    val previewOn = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
-                                    if (previewOn) {
+                                    if (previewEnabled) {
                                         Surface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -398,9 +406,10 @@ fun ChatScreen(
                                                     .fillMaxWidth()
                                                     .padding(horizontal = 12.dp, vertical = 8.dp)
                                                     .fillMaxWidth()
-                                                    .onClick {
+                                                    .clickable {
                                                         // Tap to disable preview mode
                                                         com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(false, context)
+                                                        previewEnabled = false
                                                     },
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically,
@@ -440,7 +449,7 @@ fun ChatScreen(
                                         inputEnabled = inputEnabled,
                                         isTaskMode = isTaskMode,
                                         isLocalModel = isLocalUI,
-                                        onTaskModeChange = { isTaskMode = it },
+                                        onTaskModeChange = onTaskModeChange,
                                         onSendChat = onSendChat,
                                         onSendTask = onSendTask,
                                         onStopAll = onStopAllTasks,
@@ -468,7 +477,7 @@ fun ChatScreen(
                                         onSelectPrompt = { text, task ->
                                             prefillText = text
                                             prefillIsTask = task
-                                            if (task && isLocalUI) isTaskMode = true
+                                            if (task && isLocalUI) onTaskModeChange(true)
                                         },
                                         colors = colors,
                                         modifier = Modifier.fillMaxSize(),
@@ -594,7 +603,7 @@ fun ChatScreen(
                                     onFillTask = { text ->
                                         prefillText = text
                                         prefillIsTask = true
-                                        if (isLocalUI) isTaskMode = true
+                                        if (isLocalUI) onTaskModeChange(true)
                                     },
                                     onMonitorClick = { showMonitorSheet = true },
                                     monitorActive = activeTasks.isNotEmpty(),
@@ -630,8 +639,7 @@ fun ChatScreen(
                                 }
 
                                 // W9: Preview mode banner (persistent thin banner above input bar)
-                                val previewOn = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
-                                if (previewOn) {
+                                if (previewEnabled) {
                                     Surface(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -645,9 +653,10 @@ fun ChatScreen(
                                                 .fillMaxWidth()
                                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                                                 .fillMaxWidth()
-                                                .onClick {
+                                                .clickable {
                                                     // Tap to disable preview mode
                                                     com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(false, context)
+                                                    previewEnabled = false
                                                 },
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically,
@@ -687,7 +696,7 @@ fun ChatScreen(
                                     inputEnabled = inputEnabled,
                                     isTaskMode = isTaskMode,
                                     isLocalModel = isLocalUI,
-                                    onTaskModeChange = { isTaskMode = it },
+                                    onTaskModeChange = onTaskModeChange,
                                     onSendChat = onSendChat,
                                     onSendTask = onSendTask,
                                     onStopAll = onStopAllTasks,
@@ -813,15 +822,17 @@ private fun ChatTopBar(
             actions = {
                 // Preview/Dry-Run toggle: the agent plans without touching the
                 // device; the "Execute now" plan card runs the steps for real.
-                val previewOn = com.returngift.agent.agent.dryrun.DryRunRunner.isEnabled()
+                // F2: use hoisted previewEnabled state for immediate UI update
                 Surface(
                     onClick = {
                         val runner = com.returngift.agent.agent.dryrun.DryRunRunner
-                        runner.setEnabled(!runner.isEnabled())
+                        val newEnabled = !previewEnabled
+                        runner.setEnabled(newEnabled, context)
+                        previewEnabled = newEnabled
                     },
                     shape = RoundedCornerShape(10.dp),
-                    color = if (previewOn) colors.aiBubble else Color.Transparent,
-                    border = if (previewOn) androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder) else null,
+                    color = if (previewEnabled) colors.aiBubble else Color.Transparent,
+                    border = if (previewEnabled) androidx.compose.foundation.BorderStroke(1.dp, colors.aiBubbleBorder) else null,
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -830,14 +841,14 @@ private fun ChatTopBar(
                         Icon(
                             Visibility,
                             contentDescription = "Preview mode",
-                            tint = if (previewOn) colors.accent else colors.textTertiary,
+                            tint = if (previewEnabled) colors.accent else colors.textTertiary,
                             modifier = Modifier.size(16.dp),
                         )
                         Text(
                             "Preview",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (previewOn) colors.accent else colors.textTertiary,
+                            color = if (previewEnabled) colors.accent else colors.textTertiary,
                         )
                     }
                 }

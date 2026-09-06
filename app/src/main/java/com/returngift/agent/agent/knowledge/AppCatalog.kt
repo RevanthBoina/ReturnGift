@@ -33,12 +33,14 @@ class AppCatalog(private val context: Context) {
         
         @Volatile private var instance: AppCatalog? = null
         
+        @JvmStatic
         fun getInstance(context: Context): AppCatalog {
             return instance ?: synchronized(this) {
                 instance ?: AppCatalog(context.applicationContext).also { instance = it }
             }
         }
         
+        @JvmStatic
         fun invalidate() {
             instance = null
         }

@@ -47,7 +47,11 @@ class TaskOrchestratorTier1Test {
         val launched = CopyOnWriteArrayList<Intent>()
         val executedTool = CopyOnWriteArrayList<String>()
 
-        override fun route(task: String): Route {
+        override fun route(task: String, isEscalation: Boolean): Route {
+            // When isEscalation is true, skip Tier-1 matching and return AgentLoop directly
+            if (isEscalation) {
+                return Route.AgentLoop(task)
+            }
             return when (task) {
                 "stub" -> Route.DirectIntent(Intent(Intent.ACTION_VIEW), "stub intent")
                 "skill" -> Route.Skill("cancellable_skill", mapOf(), "run a skill")
@@ -595,6 +599,44 @@ class TaskOrchestratorTier1Test {
         } finally {
             com.returngift.agent.agent.Tier1Telemetry.counterHook = null
             orchestrator.directToolTimeoutMs = com.returngift.agent.agent.exec.BoundedExecution.DEFAULT_WALL_CLOCK_MS
+        }
+    }
+
+    // ── F7: Safety-block carve-out with exact string matching ─────────────────────────────
+    @Test
+    fun `tool error containing \"blocked\" but not exact safety block escalates`() {
+        // "screen is blocked" contains "blocked" but is NOT a safety block
+        // It should escalate (not be treated as a safety block)
+        router = FakeRouter(
+            toolHook = { _, _ ->
+                ToolResult.error("screen is blocked by overlay")
+            }
+        )
+        orchestrator.routerForTesting = router
+        
+        val counters = CopyOnWriteArrayList<String>()
+        com.returngift.agent.agent.Tier1Telemetry.counterHook = { counters.add(it) }
+        try {
+            val latch = CountDownLatch(1)
+            orchestrator.taskEventCallback = { event ->
+                terminalEvents.add(event)
+                if (event is TaskEvent.Progress && event.message.contains("switching to AI control")) latch.countDown()
+            }
+            
+            orchestrator.startNewTask(Channel.LOCAL, "stub_tool", "m1")
+            assertTrue("escalation Progress not delivered", latch.await(10, TimeUnit.SECONDS))
+            
+            // Should have progress event for escalation
+            assertTrue("expected Progress event for escalation", terminalEvents.any { it is TaskEvent.Progress })
+            
+            // Should NOT have a Failed terminal event (escalated instead)
+            assertEquals("events=$terminalEvents", 0, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
+            
+            // Should have escalation telemetry
+            assertTrue("expected tier1_escalation_tool_failed counter, got $counters", 
+                counters.any { it.contains("tier1_escalation_tool_failed") })
+        } finally {
+            com.returngift.agent.agent.Tier1Telemetry.counterHook = null
         }
     }
 }

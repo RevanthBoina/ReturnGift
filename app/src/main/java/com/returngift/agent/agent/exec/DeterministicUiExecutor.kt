@@ -6,6 +6,7 @@ package com.returngift.agent.agent.exec
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.returngift.agent.agent.grounding.SemanticTargetResolver
+import com.returngift.agent.core.telemetry.AdaptiveSettleController
 import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.utils.XLog
 
@@ -117,6 +118,9 @@ class DeterministicUiExecutor(
                     )
                     budget.check()?.let { return budgetReport(it) }
                 }
+                
+                // Wait for UI to settle after app launch before proceeding to steps
+                AdaptiveSettleController.waitForSettle()
             }
 
             for (step in spec.steps) {
@@ -124,11 +128,6 @@ class DeterministicUiExecutor(
                 budget.check()?.let { return budgetReport(it) }
                 val stepReport = executeStep(service, step) ?: continue
                 return stepReport
-            }
-            
-            // waitForIdle after the target app is opened (reuse AdaptiveSettleController)
-            if (spec.targetPackage != null) {
-                com.returngift.agent.agent.input.AdaptiveSettleController.waitForSettle()
             }
 
             enter(State.DONE)
@@ -211,11 +210,11 @@ class DeterministicUiExecutor(
     }
 
     /**
-     * Deterministic resolution over the selector chain (text → content-desc →
-     * resource-id → a11y-props/class → coordinates). On failure: ONE gated
-     * re-read + bounded AI escalation (≤2 per run). Never reuses node IDs.
+     * Deterministic-only resolution over the selector chain (text → content-desc →
+     * resource-id → a11y-props/class → coordinates). NO AI escalation, NO gated reads.
+     * Used for polling during WAIT_FOR_TARGET to avoid burning escalation budget.
      */
-    private fun resolveTarget(
+    private fun resolveDeterministic(
         service: ClawAccessibilityService,
         step: Step,
     ): SemanticTargetResolver.ResolvedTarget? {
@@ -233,6 +232,20 @@ class DeterministicUiExecutor(
             )
             SemanticTargetResolver.resolve(td)?.let { return it }
         }
+        return null
+    }
+
+    /**
+     * Deterministic resolution over the selector chain (text → content-desc →
+     * resource-id → a11y-props/class → coordinates). On failure: ONE gated
+     * re-read + bounded AI escalation (≤2 per run). Never reuses node IDs.
+     */
+    private fun resolveTarget(
+        service: ClawAccessibilityService,
+        step: Step,
+    ): SemanticTargetResolver.ResolvedTarget? {
+        // First try deterministic resolution
+        resolveDeterministic(service, step)?.let { return it }
 
         // Deterministic resolution failed → bounded AI escalation with one read.
         val esc = escalator ?: return null
@@ -266,6 +279,8 @@ class DeterministicUiExecutor(
      * up to step.waitForMs before counting a retry. Uses cheap node queries
      * (findNodesByText/ById), not full tree dumps; at most one gated screen
      * read per wait burst. Respects shouldAbort() and wall-clock budget.
+     * Uses deterministic-only resolution during polling to avoid burning
+     * AI escalation budget on loading screens.
      */
     private fun resolveTargetWithWait(
         service: ClawAccessibilityService,
@@ -279,8 +294,8 @@ class DeterministicUiExecutor(
         while (System.currentTimeMillis() - startTime < waitForMs) {
             if (shouldAbort()) throw AbortedException()
             
-            // Try to resolve using the standard chain
-            val resolved = resolveTarget(service, step)
+            // Use deterministic-only resolution during polling to avoid AI escalation
+            val resolved = resolveDeterministic(service, step)
             if (resolved != null) return resolved
             
             // Wait a bit before polling again
@@ -291,9 +306,9 @@ class DeterministicUiExecutor(
             }
         }
         
-        // Timeout reached - return null to trigger retry logic
-        XLog.w(TAG, "WAIT_FOR_TARGET timeout (${waitForMs}ms) for step '${step.name}'")
-        return null
+        // Timeout reached - fall through to full resolveTarget (with AI escalation)
+        // exactly once, so retry/budget logic works as designed
+        return resolveTarget(service, step)
     }
 
     private fun performAction(

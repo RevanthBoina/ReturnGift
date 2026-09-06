@@ -105,6 +105,8 @@ class TaskFlowController(
     val previewPlan = androidx.compose.runtime.mutableStateOf<List<com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep>?>(null)
     private var previewOriginalTask: String? = null
     private val previewPlanSteps = mutableListOf<com.returngift.agent.agent.dryrun.DryRunRunner.PlanStep>()
+    /** Preview mode version — incremented on auto-reset so ChatScreen can observe the change (F2). */
+    val previewVersion = androidx.compose.runtime.mutableStateOf(0)
 
     private val clarificationListener: (ClarificationManager.PendingQuestion?) -> Unit = { q ->
         pendingClarification.value = q
@@ -754,6 +756,8 @@ class TaskFlowController(
             if (!com.returngift.agent.agent.dryrun.DryRunRunner.shouldKeepAfterRun()) {
                 XLog.i(TAG, "Preview run finished — auto-resetting preview mode")
                 com.returngift.agent.agent.dryrun.DryRunRunner.setEnabled(false)
+                // F2: Increment previewVersion so ChatScreen hoisted state updates
+                previewVersion.value++
                 // The banner will be hidden automatically via the preview mode flag
             }
         }

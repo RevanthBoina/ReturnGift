@@ -21,10 +21,11 @@ object TargetSpecGate {
     )
 
     /**
-     * Analyze a task for enumeration-without-names patterns.
+     * Pure JVM function - no Android dependencies.
+     * Analyzes a task for enumeration-without-names patterns.
      * Returns MissingTargets if the task asks for N items but names fewer than N.
      */
-    fun missingTargets(task: String): MissingTargets? {
+    fun missingTargets(task: String, knownAppAliases: Set<String>): MissingTargets? {
         val lower = task.lowercase().trim()
         
         // Patterns: "open/launch/close/screenshot/install N apps"
@@ -44,9 +45,9 @@ object TargetSpecGate {
                 val countStr = match.groupValues[2]
                 val requestedCount = parseCount(countStr)
                 if (requestedCount > 0) {
-                    val named = countNamedApps(lower)
+                    val named = countNamedApps(lower, knownAppAliases)
                     if (named < requestedCount) {
-                        return MissingTargets(requestedCount, named, "apps", findNamedApps(lower))
+                        return MissingTargets(requestedCount, named, "apps", findNamedApps(lower, knownAppAliases))
                     }
                 }
             }
@@ -70,6 +71,15 @@ object TargetSpecGate {
         return null
     }
 
+    /**
+     * Android wrapper that fetches known app aliases from AppCatalog.
+     */
+    fun missingTargets(task: String): MissingTargets? {
+        val catalog = AppCatalog.getInstance(ClawApplication.Companion.getInstance())
+        val aliases = catalog.getAllEntries().flatMap { it.aliases }.toSet()
+        return missingTargets(task, aliases)
+    }
+
     private fun parseCount(s: String): Int {
         val trimmed = s.trim().lowercase()
         return when (trimmed) {
@@ -89,29 +99,18 @@ object TargetSpecGate {
         }
     }
 
-    private fun countNamedApps(task: String): Int {
-        val catalog = AppCatalog.getInstance(ClawApplication.Companion.getInstance())
+    private fun countNamedApps(task: String, knownAppAliases: Set<String>): Int {
         var count = 0
-        for (entry in catalog.getAllEntries()) {
-            val labelLower = entry.label.lowercase()
-            if (task.contains(labelLower)) count++
-            // Also check common aliases
-            for (alias in entry.aliases) {
-                if (task.contains(alias)) { count++; break }
-            }
+        for (alias in knownAppAliases) {
+            if (task.contains(alias)) count++
         }
         return count
     }
 
-    private fun findNamedApps(task: String): List<String> {
-        val catalog = AppCatalog.getInstance(ClawApplication.Companion.getInstance())
+    private fun findNamedApps(task: String, knownAppAliases: Set<String>): List<String> {
         val found = mutableListOf<String>()
-        for (entry in catalog.getAllEntries()) {
-            val labelLower = entry.label.lowercase()
-            if (task.contains(labelLower)) { found.add(entry.label); continue }
-            for (alias in entry.aliases) {
-                if (task.contains(alias)) { found.add(entry.label); break }
-            }
+        for (alias in knownAppAliases) {
+            if (task.contains(alias)) found.add(alias)
         }
         return found.distinct()
     }
