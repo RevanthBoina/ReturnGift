@@ -35,6 +35,7 @@ object Tier1Telemetry {
     const val KEY_FALLBACK_TIER3 = "tier3_fallback_total"
     const val KEY_HIT_PREFIX = "tier1_hit_"
     const val KEY_FP_PREFIX = "tier1_fp_"
+    const val KEY_ESCALATION_PREFIX = "tier1_escalation_"
 
     /** Test seam: observes every counter key. KV writes are a no-op when KV is unavailable. */
     internal var counterHook: ((String) -> Unit)? = null
@@ -61,6 +62,16 @@ object Tier1Telemetry {
     fun recordFalsePositive(intent: String) {
         increment("$KEY_FP_PREFIX$intent")
         XLog.d(TAG, "tier1 FP proxy: $intent")
+    }
+
+    /**
+     * Record a Tier-1 escalation to Tier-3 agent loop.
+     * Called when Tier-1 DirectIntent or DirectTool fails and we escalate to the agent loop.
+     * @param reason the reason for escalation (e.g., "intent_failed", "tool_failed", "tool_timed_out")
+     */
+    fun recordEscalation(reason: String) {
+        increment("$KEY_ESCALATION_PREFIX$reason")
+        XLog.i(TAG, "tier1 escalation: $reason")
     }
 
     /**

@@ -49,7 +49,14 @@ open class PipelineRouter(private val context: Context) {
         data class Redirect(val targetSkillId: String, val reason: String) : Route()
     }
 
-    open fun route(task: String): Route {
+    open fun route(task: String, isEscalation: Boolean = false): Route {
+        // When called from an escalation path, skip Tier-1 and Tier-1.5 entirely
+        // and go straight to the agent loop to avoid re-running the same failed logic.
+        if (isEscalation) {
+            XLog.i(TAG, "Escalation path: skipping Tier 1/1.5, routing directly to agent loop: $task")
+            return Route.AgentLoop(task)
+        }
+
         // Compound tasks (containing "and", "then", "after") should go to agent loop,
         // not be partially handled by Tier 1 deterministic matching. Shared guard lives
         // in TaskParser.isCompound so the golden-corpus test and the router can't diverge.

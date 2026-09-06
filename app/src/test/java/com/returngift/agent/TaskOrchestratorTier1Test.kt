@@ -425,4 +425,176 @@ class TaskOrchestratorTier1Test {
         assertTrue("expected ✓ message, got $channelMessages", channelMessages.any { it.startsWith("✓") })
         assertFalse(orchestrator.isTaskRunning())
     }
+
+    // ── W6: Tier-1 escalation to Tier-3 agent loop tests ─────────────────────────────
+
+    @Test
+    fun `failed DirectIntent escalates to agent loop exactly once`() {
+        router = FakeRouter(launchResult = { false })
+        orchestrator.routerForTesting = router
+        val latch = CountDownLatch(1)
+        orchestrator.taskEventCallback = { event ->
+            terminalEvents.add(event)
+            if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+        }
+
+        orchestrator.startNewTask(Channel.LOCAL, "stub", "m1")
+        assertTrue("terminal event not delivered", latch.await(10, TimeUnit.SECONDS))
+        assertTrue("task not finished", awaitFinished())
+
+        // Should have progress event for escalation
+        assertTrue("expected Progress event for escalation", terminalEvents.any { it is TaskEvent.Progress })
+        
+        // Should NOT have a Failed terminal event (escalated instead)
+        assertEquals("events=$terminalEvents", 0, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
+        
+        // Should have a channel message about switching to AI control
+        assertTrue("expected escalation message", channelMessages.any { it.contains("switching to AI control") })
+        
+        // The fallback should have been started (isTaskRunning should be true until the fallback completes)
+        // But we don't have a real agent loop here, so just verify the escalation happened
+        assertEquals(1, finishedCount)
+    }
+
+    @Test
+    fun `failed DirectTool escalates to agent loop with telemetry`() {
+        router = FakeRouter(toolResult = { ToolResult.error("tool boom") })
+        orchestrator.routerForTesting = router
+        
+        val counters = CopyOnWriteArrayList<String>()
+        com.returngift.agent.agent.Tier1Telemetry.counterHook = { counters.add(it) }
+        try {
+            val latch = CountDownLatch(1)
+            orchestrator.taskEventCallback = { event ->
+                terminalEvents.add(event)
+                if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+            }
+
+            orchestrator.startNewTask(Channel.LOCAL, "stub_tool", "m1")
+            assertTrue("terminal event not delivered", latch.await(10, TimeUnit.SECONDS))
+            assertTrue("task not finished", awaitFinished())
+
+            // Should have progress event for escalation
+            assertTrue("expected Progress event for escalation", terminalEvents.any { it is TaskEvent.Progress })
+            
+            // Should NOT have a Failed terminal event (escalated instead)
+            assertEquals("events=$terminalEvents", 0, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
+            
+            // Should have escalation telemetry
+            assertTrue("expected tier1_escalation_tool_failed counter, got $counters", 
+                counters.any { it.contains("tier1_escalation_tool_failed") })
+        } finally {
+            com.returngift.agent.agent.Tier1Telemetry.counterHook = null
+        }
+    }
+
+    @Test
+    fun `safety-blocked DirectTool does NOT escalate`() {
+        router = FakeRouter(
+            toolHook = { _, _ ->
+                ToolResult.error("Action blocked: the agent is not allowed to act in \"WhatsApp\"")
+            }
+        )
+        orchestrator.routerForTesting = router
+        
+        val counters = CopyOnWriteArrayList<String>()
+        com.returngift.agent.agent.Tier1Telemetry.counterHook = { counters.add(it) }
+        try {
+            val latch = CountDownLatch(1)
+            orchestrator.taskEventCallback = { event ->
+                terminalEvents.add(event)
+                if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+            }
+
+            orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
+            assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
+            assertTrue("task not finished", awaitFinished())
+
+            // Should have a Failed terminal event (safety block - no escalation)
+            assertEquals("events=$terminalEvents", 1, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
+            assertEquals("events=$terminalEvents", 0, terminalEvents.filterIsInstance<TaskEvent.Completed>().size)
+            
+            // Should NOT have escalation telemetry
+            assertFalse("should not have escalation telemetry for safety block, got $counters",
+                counters.any { it.contains("tier1_escalation") })
+        } finally {
+            com.returngift.agent.agent.Tier1Telemetry.counterHook = null
+        }
+    }
+
+    @Test
+    fun `user-cancelled send_message does NOT escalate`() {
+        router = FakeRouter()
+        orchestrator.routerForTesting = router
+        orchestrator.sendMessageConfirm = { false } // user cancelled / 5s auto-cancel
+
+        val counters = CopyOnWriteArrayList<String>()
+        com.returngift.agent.agent.Tier1Telemetry.counterHook = { counters.add(it) }
+        try {
+            val latch = CountDownLatch(1)
+            orchestrator.taskEventCallback = { event ->
+                terminalEvents.add(event)
+                if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+            }
+
+            orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
+            assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
+            assertTrue("task not finished", awaitFinished())
+
+            // Should have a Failed terminal event (user cancel - no escalation)
+            assertEquals("events=$terminalEvents", 1, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
+            assertEquals("events=$terminalEvents", 0, terminalEvents.filterIsInstance<TaskEvent.Completed>().size)
+            
+            // Should NOT have escalation telemetry
+            assertFalse("should not have escalation telemetry for user cancel, got $counters",
+                counters.any { it.contains("tier1_escalation") })
+            
+            // Should have FP counter
+            assertTrue("expected tier1_fp_send_message counter, got $counters",
+                counters.any { it.contains("tier1_fp_send_message") })
+        } finally {
+            com.returngift.agent.agent.Tier1Telemetry.counterHook = null
+        }
+    }
+
+    @Test
+    fun `tool timeout escalates with telemetry`() {
+        // Set a very short timeout to force timeout
+        orchestrator.directToolTimeoutMs = 10L
+        
+        router = FakeRouter(
+            toolHook = { _, _ ->
+                Thread.sleep(50) // longer than 10ms timeout
+                ToolResult.success("done")
+            }
+        )
+        orchestrator.routerForTesting = router
+        
+        val counters = CopyOnWriteArrayList<String>()
+        com.returngift.agent.agent.Tier1Telemetry.counterHook = { counters.add(it) }
+        try {
+            val latch = CountDownLatch(1)
+            orchestrator.taskEventCallback = { event ->
+                terminalEvents.add(event)
+                if (event is TaskEvent.Failed || event is TaskEvent.Completed) latch.countDown()
+            }
+
+            orchestrator.startNewTask(Channel.LOCAL, "stub_tool", "m1")
+            assertTrue("terminal event not delivered", latch.await(10, TimeUnit.SECONDS))
+            assertTrue("task not finished", awaitFinished())
+
+            // Should have progress event for escalation
+            assertTrue("expected Progress event for escalation", terminalEvents.any { it is TaskEvent.Progress })
+            
+            // Should NOT have a Failed terminal event (escalated instead)
+            assertEquals("events=$terminalEvents", 0, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
+            
+            // Should have escalation telemetry for timeout
+            assertTrue("expected tier1_escalation_tool_timed_out counter, got $counters",
+                counters.any { it.contains("tier1_escalation_tool_timed_out") })
+        } finally {
+            com.returngift.agent.agent.Tier1Telemetry.counterHook = null
+            orchestrator.directToolTimeoutMs = com.returngift.agent.agent.exec.BoundedExecution.DEFAULT_WALL_CLOCK_MS
+        }
+    }
 }

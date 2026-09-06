@@ -321,8 +321,8 @@ class TaskOrchestrator(
 
         ForegroundService.updateTaskStatus(appContext, "Preparing task...")
 
-        // Tier 1: Deterministic routing
-        val route = pipelineRouter.route(task)
+        // Tier 1: Deterministic routing (skip on escalation/fallback)
+        val route = pipelineRouter.route(task, isEscalation = isFallback)
 
         // P1.1d: emit tier event right at the routing decision, adjacent to any Tier1Telemetry
         // calls so the two never drift. Closed vocab: "tier1"/"tier2"/"tier3", route values are
@@ -348,7 +348,17 @@ class TaskOrchestrator(
                 } else {
                     val error = "No app can handle this action"
                     XLog.e(TAG, "Tier 1 intent failed: ${route.intent.action} — $error")
-                    terminal(messageID, ok = false, TaskEvent.Failed(error), "✗ ${route.description}: $error")
+                    // W6: Escalate to Tier-3 agent loop instead of dead-ending
+                    com.returngift.agent.agent.Tier1Telemetry.recordEscalation("intent_failed")
+                    val escalationContext = buildString {
+                        append("TIER-1 CONTEXT: the direct intent '").append(route.description)
+                        append("' failed because '").append(error).append("'. ")
+                        append("Do not retry the identical intent. ")
+                        append("Verify current state and complete the goal with a different approach.")
+                    }
+                    taskEventCallback?.invoke(TaskEvent.Progress(0, "Quick path failed ($error) — switching to AI control"))
+                    XLog.i(TAG, "Escalating failed Tier-1 DirectIntent to Tier-3 agent loop")
+                    startNewTask(channel, task, messageID, agentPromptOverride = escalationContext, isFallback = true)
                 }
                 return
             }
@@ -387,8 +397,11 @@ class TaskOrchestrator(
                         }
                     }
                     when (bounded) {
-                        is BoundedExecution.Outcome.TimedOut ->
+                        is BoundedExecution.Outcome.TimedOut -> {
                             outcomeError = "Tier-1 tool timed out after ${directToolTimeoutMs}ms"
+                            // W6: Record telemetry for timeout escalation
+                            com.returngift.agent.agent.Tier1Telemetry.recordEscalation("tool_timed_out")
+                        }
                         is BoundedExecution.Outcome.Failed -> {
                             XLog.e(TAG, "Tier 1 tool crashed: ${route.toolName}", bounded.error)
                             outcomeError = bounded.error.message ?: "Unknown error"
@@ -404,7 +417,29 @@ class TaskOrchestrator(
                         }
                     }
                     if (outcomeError != null) {
-                        terminal(messageID, ok = false, TaskEvent.Failed(outcomeError), "✗ ${route.description}: $outcomeError")
+                        // Check if this is a safety block or user cancellation - don't escalate those
+                        val isSafetyBlock = outcomeError?.contains("blocked") == true || 
+                            outcomeError?.contains("not allowed") == true ||
+                            outcomeError?.contains("Allow-list") == true
+                        val isUserCancel = outcomeError?.contains("cancelled") == true || 
+                            outcomeError?.contains("Send cancelled") == true
+                        
+                        if (isSafetyBlock || isUserCancel) {
+                            XLog.i(TAG, "Tier-1 DirectTool safety/cancel failure - not escalating: $outcomeError")
+                            terminal(messageID, ok = false, TaskEvent.Failed(outcomeError), "✗ ${route.description}: $outcomeError")
+                        } else {
+                            // W6: Escalate to Tier-3 agent loop
+                            com.returngift.agent.agent.Tier1Telemetry.recordEscalation("tool_failed")
+                            val escalationContext = buildString {
+                                append("TIER-1 CONTEXT: the direct tool '").append(route.toolName)
+                                append("' failed because '").append(outcomeError).append("'. ")
+                                append("Do not retry the identical tool call. ")
+                                append("Verify current state and complete the goal with a different approach.")
+                            }
+                            taskEventCallback?.invoke(TaskEvent.Progress(0, "Quick path failed ($outcomeError) — switching to AI control"))
+                            XLog.i(TAG, "Escalating failed Tier-1 DirectTool to Tier-3 agent loop")
+                            startNewTask(channel, task, messageID, agentPromptOverride = escalationContext, isFallback = true)
+                        }
                     } else {
                         terminal(messageID, ok = true, TaskEvent.Completed(route.description), "✓ ${route.description}")
                     }
