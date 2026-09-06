@@ -4,6 +4,7 @@
 package com.returngift.agent
 
 import com.returngift.agent.agent.DefaultAgentService
+import com.returngift.agent.agent.knowledge.AppCatalog
 import com.returngift.agent.agent.llm.LocalBackendHealth
 import com.returngift.agent.base.BaseApp
 import com.returngift.agent.channel.ChannelManager
@@ -65,6 +66,9 @@ class ClawApplication : BaseApp() {
         com.returngift.agent.agent.PlaybookManager.loadAll(this)
         XLog.e(TAG, "ClawApplication initialized, tools registered: ${ToolRegistry.getInstance().getAllTools().size}, skills registered: ${com.returngift.agent.agent.skill.SkillRegistry.getAll().size}")
 
+        // W8: Register package broadcast receiver for app catalog invalidation
+        registerPackageBroadcastReceiver()
+
         // Auto-start config server if enabled
         ConfigServerManager.autoStartIfNeeded(this)
 
@@ -90,6 +94,34 @@ class ClawApplication : BaseApp() {
                 android.util.Log.e("RETURNGIFT_INIT", "app-async-init CRASHED: ${e.message}", e)
             }
         }, "app-async-init").start()
+    }
+    
+    private fun registerPackageBroadcastReceiver() {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+                val action = intent.action
+                val pkg = intent.getStringExtra("android.intent.extra.PACKAGE_NAME")
+                if (pkg != null && (action == android.content.Intent.ACTION_PACKAGE_ADDED
+                        || action == android.content.Intent.ACTION_PACKAGE_REMOVED
+                        || action == android.content.Intent.ACTION_PACKAGE_REPLACED
+                        || action == android.content.Intent.ACTION_PACKAGE_CHANGED)) {
+                    XLog.d(TAG, "Package event: $action for $pkg — invalidating app catalog")
+                    AppCatalog.getInstance(context).invalidatePackage(pkg)
+                    // Rebuild catalog to include new/updated apps
+                    if (action == android.content.Intent.ACTION_PACKAGE_ADDED
+                            || action == android.content.Intent.ACTION_PACKAGE_REPLACED) {
+                        AppCatalog.getInstance(context).maybeBuildOnFirstConnect(context)
+                    }
+                }
+            }
+        }
+        val filter = android.content.IntentFilter()
+        filter.addAction(android.content.Intent.ACTION_PACKAGE_ADDED)
+        filter.addAction(android.content.Intent.ACTION_PACKAGE_REMOVED)
+        filter.addAction(android.content.Intent.ACTION_PACKAGE_REPLACED)
+        filter.addAction(android.content.Intent.ACTION_PACKAGE_CHANGED)
+        filter.addDataScheme("package")
+        registerReceiver(receiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
     }
 
     private var networkListener: NetworkUtils.OnNetworkStatusChangedListener? = null

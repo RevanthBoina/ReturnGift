@@ -21,6 +21,7 @@ import com.returngift.agent.utils.XLog
 class GuideActivity : BaseActivity() {
 
     private var restrictedDialogShown = false
+    private var appCatalogBuilt = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,6 +132,12 @@ class GuideActivity : BaseActivity() {
         findViewById<TextView>(R.id.guideAccessibility)?.let { tv ->
             val status = if (snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY) " (Enabled ✓)" else ""
             tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_accessibility) + status
+            
+            // W8: Trigger app catalog build when accessibility first becomes READY
+            if (accessibilityReady && !appCatalogBuilt) {
+                appCatalogBuilt = true
+                com.returngift.agent.agent.knowledge.AppCatalog.getInstance(this).maybeBuildOnFirstConnect(this)
+            }
         }
         findViewById<TextView>(R.id.guideNotification)?.let { tv ->
             val status = if (snapshot.notificationPermissionGranted) " (Enabled ✓)" else ""

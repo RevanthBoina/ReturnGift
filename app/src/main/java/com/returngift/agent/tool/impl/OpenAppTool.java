@@ -7,6 +7,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 
 import com.returngift.agent.ClawApplication;
 import com.returngift.agent.R;
+import com.returngift.agent.agent.knowledge.AppCatalog;
 import com.returngift.agent.core.telemetry.AdaptiveSettleController;
 import com.returngift.agent.service.ClawAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
@@ -82,7 +83,12 @@ public class OpenAppTool extends BaseTool {
 
         // If LLM sends app name instead of package name, resolve it
         if (!packageName.contains(".")) {
-            String resolved = resolveAppName(packageName);
+            // W8: Try AppCatalog first for instant resolution
+            String resolved = AppCatalog.getInstance(ClawApplication.Companion.getInstance()).resolve(packageName);
+            if (resolved == null) {
+                // Fallback to legacy fuzzy search
+                resolved = resolveAppName(packageName);
+            }
             if (resolved != null) {
                 XLog.i(TAG, "Resolved app name '" + packageName + "' → '" + resolved + "'");
                 packageName = resolved;

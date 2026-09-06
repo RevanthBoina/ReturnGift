@@ -75,6 +75,12 @@ class DeterministicUiExecutor(
         /** Clear the field deterministically before typing (no clipboard). */
         val clearBeforeInput: Boolean = true,
         val verify: VerifySpec? = null,
+        /**
+         * Optional wait time (ms) to poll for the target to appear before counting a retry.
+         * Default 4000ms. When resolveTarget returns null, poll the accessibility tree
+         * every ~250ms up to this limit before failing the step.
+         */
+        val waitForMs: Int = 4000,
     )
 
     data class Spec(
@@ -119,6 +125,11 @@ class DeterministicUiExecutor(
                 val stepReport = executeStep(service, step) ?: continue
                 return stepReport
             }
+            
+            // waitForIdle after the target app is opened (reuse AdaptiveSettleController)
+            if (spec.targetPackage != null) {
+                com.returngift.agent.agent.input.AdaptiveSettleController.waitForSettle()
+            }
 
             enter(State.DONE)
             return report(ExecOutcome.SUCCESS, "${spec.taskLabel} completed")
@@ -139,7 +150,9 @@ class DeterministicUiExecutor(
             // FIND_TARGET — resolution against the live tree; node IDs never reused.
             val resolved = if (step.target != null) {
                 enter(State.FIND_TARGET)
-                resolveTarget(service, step)
+                // WAIT_FOR_TARGET: poll for the target to appear up to step.waitForMs
+                // before counting a retry against the budget.
+                resolveTargetWithWait(service, step)
             } else null
 
             if (step.target != null && resolved == null) {
@@ -245,6 +258,41 @@ class DeterministicUiExecutor(
             )
             SemanticTargetResolver.resolve(td)?.let { return it }
         }
+        return null
+    }
+
+    /**
+     * WAIT_FOR_TARGET: poll the accessibility tree for the target to appear
+     * up to step.waitForMs before counting a retry. Uses cheap node queries
+     * (findNodesByText/ById), not full tree dumps; at most one gated screen
+     * read per wait burst. Respects shouldAbort() and wall-clock budget.
+     */
+    private fun resolveTargetWithWait(
+        service: ClawAccessibilityService,
+        step: Step,
+    ): SemanticTargetResolver.ResolvedTarget? {
+        val chain = step.target ?: return null
+        val startTime = System.currentTimeMillis()
+        val waitForMs = step.waitForMs.toLong()
+        val pollIntervalMs = 250L
+        
+        while (System.currentTimeMillis() - startTime < waitForMs) {
+            if (shouldAbort()) throw AbortedException()
+            
+            // Try to resolve using the standard chain
+            val resolved = resolveTarget(service, step)
+            if (resolved != null) return resolved
+            
+            // Wait a bit before polling again
+            try {
+                Thread.sleep(pollIntervalMs)
+            } catch (e: InterruptedException) {
+                throw AbortedException()
+            }
+        }
+        
+        // Timeout reached - return null to trigger retry logic
+        XLog.w(TAG, "WAIT_FOR_TARGET timeout (${waitForMs}ms) for step '${step.name}'")
         return null
     }
 

@@ -85,6 +85,7 @@ class DefaultAgentService : AgentService {
 - Notifications → get_notifications()
 - Clipboard → clipboard(action="get"|"set", text="...")
 - List apps → get_installed_apps()
+- App addresses: every installed app's package name is in the app registry (see get_installed_apps). Never guess a package name; resolve via get_installed_apps when unsure.
 - Ask the user when unsure → ask_user(question="Which app should I use?", choices="ChatGPT; Claude; Gemini") — waits for the tap/typed answer and returns it
 - Query an external AI / generate an image (SUPPORTED — never refuse on capability grounds, e.g. "I can't generate images"; all other safety-scoped rules — payment/credentials, personal-content consent, deliverable honesty — still apply) → drive the installed AI app (ChatGPT, Gemini, Claude, Perplexity, …): open_app its package, input the prompt, read the answer. For generated images use the app's own Download/Save control, then import_download(name_hint="…") to bring the file into the vault. Do NOT screenshot the result unless the app offers no download control.
 - Import a downloaded file into the vault → import_download(name_hint="flower") — copies the newest matching file from system Downloads into images/ and returns the vault path
@@ -148,6 +149,8 @@ class DefaultAgentService : AgentService {
     private var executor: ExecutorService? = null
     private val running = AtomicBoolean(false)
     private val cancelled = AtomicBoolean(false)
+    /** Guard to ensure routine→loop escalation happens at most once per task. */
+    private val routineEscalated = AtomicBoolean(false)
     private var taskFuture: java.util.concurrent.Future<*>? = null
     private var taskId: String = ""
 
@@ -190,6 +193,7 @@ class DefaultAgentService : AgentService {
 
         running.set(true)
         cancelled.set(false)
+        routineEscalated.set(false)
         // import_download correlates Downloads-folder files with THIS task run —
         // files added before this moment are stale and must not be imported.
         com.returngift.agent.tool.impl.ImportDownloadTool.taskStartTimestamp = System.currentTimeMillis()
@@ -1612,6 +1616,26 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
         val taskId = UUID.randomUUID().toString()
         ExecutionTracker.beginTask(taskId, rawUserRequest, "structured:${match.routineId}")
 
+        // W7: Missing post text - ask user via ClarificationManager before proceeding
+        if (match.spec.steps.isEmpty()) {
+            XLog.i(TAG, "LinkedIn routine matched but no post text provided — asking user")
+            val answer = com.returngift.agent.agent.clarify.ClarificationManager.request(
+                question = "What should the LinkedIn post say?",
+                choices = emptyList(),
+                allowFreeText = true,
+                timeoutMs = 120_000L // 2 minutes
+            )
+            if (answer == null || answer.isBlank()) {
+                XLog.w(TAG, "No post text provided by user — cancelling")
+                callback.onError(1, RuntimeException("Cancelled — no post text provided"), 0)
+                return
+            }
+            // Rebuild spec with the user's answer
+            val newSpec = com.returngift.agent.agent.exec.routines.LinkedInPostRoutine.buildSpec(answer)
+            val newMatch = com.returngift.agent.agent.exec.StructuredRoutineRegistry.Match(match.routineId, newSpec)
+            return runStructuredRoutine(newMatch, rawUserRequest, callback, stepHistory)
+        }
+
         val escalator = com.returngift.agent.agent.exec.DeterministicUiExecutor.Escalator { screenDump, hint ->
             try {
                 val messages = listOf(
@@ -1660,7 +1684,25 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
         if (report.outcome == com.returngift.agent.agent.exec.ExecOutcome.SUCCESS) {
             callback.onComplete(1, report.toSummary(), 0, null)
         } else {
-            // Genuine pre-completion stop → ERROR outcome (resumable via checkpoint).
+            // W7: Escalate ONCE to the general agent loop with context from the failed routine
+            // Guard with a once-per-task flag so routine→loop→routine loops are impossible.
+            val alreadyEscalated = routineEscalated.getAndSet(true)
+            if (!alreadyEscalated) {
+                XLog.i(TAG, "Structured routine ${match.routineId} failed (${report.outcome}): ${report.reason} — escalating to agent loop")
+                val escalationPrompt = buildString {
+                    append("TIER-2 CONTEXT: the structured routine '").append(match.routineId)
+                    append("' failed at step with outcome: ").append(report.outcome.name)
+                    append(". Reason: ").append(report.reason).append("\n")
+                    append("State trace:\n").append(report.stateTrace.joinToString("\n")).append("\n")
+                    append("INSTRUCTION: Continue the original task from the CURRENT screen using general tools. ")
+                    append("Do NOT restart the app or repeat the failed selector verbatim. ")
+                    append("Original user request: \"").append(rawUserRequest).append("\"")
+                }
+                // Run the agent loop with the escalation prompt
+                runAgentLoop(rawUserRequest, escalationPrompt, callback, stepHistory)
+                return
+            }
+            // Second failure (or escalation already used) → normal terminal error path
             callback.onError(1, RuntimeException(report.toSummary()), 0)
         }
     }

@@ -9,6 +9,7 @@ import android.content.pm.ResolveInfo;
 
 import com.returngift.agent.ClawApplication;
 import com.returngift.agent.R;
+import com.returngift.agent.agent.knowledge.AppCatalog;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -57,28 +58,21 @@ public class GetInstalledAppsTool extends BaseTool {
         String keyword = optionalString(params, "keyword", "");
 
         try {
-            PackageManager pm = ClawApplication.Companion.getInstance().getPackageManager();
-            Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
-            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-
-            List<ResolveInfo> resolveInfos = pm.queryIntentActivities(mainIntent, 0);
-            if (resolveInfos == null || resolveInfos.isEmpty()) {
-                return ToolResult.error("No installed apps found");
-            }
+            // W8: Use AppCatalog for instant results
+            AppCatalog catalog = AppCatalog.getInstance(ClawApplication.Companion.getInstance());
+            List<AppCatalog.AppEntry> entries = catalog.getAllEntries();
 
             List<String> appList = new ArrayList<>();
-            for (ResolveInfo info : resolveInfos) {
-                String appName = info.loadLabel(pm).toString();
-                String packageName = info.activityInfo.packageName;
-
+            for (AppCatalog.AppEntry entry : entries) {
                 if (!keyword.isEmpty()) {
-                    if (!appName.toLowerCase().contains(keyword.toLowerCase())
-                            && !packageName.toLowerCase().contains(keyword.toLowerCase())) {
+                    String lower = keyword.toLowerCase();
+                    if (!entry.label.toLowerCase().contains(lower)
+                            && !entry.packageName.toLowerCase().contains(lower)) {
                         continue;
                     }
                 }
 
-                appList.add(appName + " | " + packageName);
+                appList.add(entry.label + " | " + entry.packageName);
             }
 
             if (appList.isEmpty()) {

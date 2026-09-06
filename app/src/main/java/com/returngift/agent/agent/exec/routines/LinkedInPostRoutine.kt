@@ -48,6 +48,7 @@ object LinkedInPostRoutine {
         targetPackage = LINKEDIN_PKG,
         steps = listOf(
             // 1. Open the composer — semantic text/desc first, coordinates last.
+            // Wait up to 6s for the composer to appear after opening the app.
             Step(
                 name = "open composer",
                 target = SelectorChain(
@@ -57,19 +58,27 @@ object LinkedInPostRoutine {
                 ),
                 action = Action.TAP,
                 verify = VerifySpec(foregroundPackage = LINKEDIN_PKG),
+                waitForMs = 6000,
             ),
             // 2. Deterministic input: focus → clear → set text → field-content verify.
+            // Selector hardening: prefer the only/focused editable EditText on screen,
+            // then contentDesc="Post text", then hint text patterns.
+            // Wait up to 6s for the composer to fully load.
             Step(
                 name = "enter post text",
                 target = SelectorChain(
-                    contentDesc = "Post text",
+                    // The executor's resolveTarget will find the focused/only editable EditText
+                    // when viewClass="android.widget.EditText" is provided as a candidate
                     viewClass = "android.widget.EditText",
+                    contentDesc = "Post text",
+                    text = "Start writing",
                 ),
                 action = Action.INPUT_TEXT,
                 inputText = postText,
                 clearBeforeInput = true,
+                waitForMs = 6000,
             ),
-            // 3. Publish.
+            // 3. Publish — text first, resourceId last (resource ids break with app updates).
             Step(
                 name = "tap Post",
                 target = SelectorChain(

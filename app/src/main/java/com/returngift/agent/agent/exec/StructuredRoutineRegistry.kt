@@ -21,8 +21,16 @@ object StructuredRoutineRegistry {
     /** @return the routine to run for [task], or null → normal agent loop. */
     fun match(task: String): Match? {
         if (LinkedInPostRoutine.matches(task)) {
-            val text = LinkedInPostRoutine.extractPostText(task) ?: return null
-            return Match("linkedin_post", LinkedInPostRoutine.buildSpec(text))
+            val text = LinkedInPostRoutine.extractPostText(task)
+            if (text != null) {
+                return Match("linkedin_post", LinkedInPostRoutine.buildSpec(text))
+            }
+            // Post text missing - signal to caller to ask for clarification
+            return Match("linkedin_post", DeterministicUiExecutor.Spec(
+                taskLabel = "LinkedIn post (needs text)",
+                targetPackage = "com.linkedin.android",
+                steps = emptyList() // empty spec indicates clarification needed
+            ))
         }
         return null
     }

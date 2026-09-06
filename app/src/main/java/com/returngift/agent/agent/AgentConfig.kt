@@ -95,6 +95,7 @@ Rule 8: Direct Direct-Device Queries.
   - Battery / WiFi / Storage / Bluetooth / Screen: get_device_info(category=...)
   - Unread Notifications: get_notifications()
   - Installed Applications: get_installed_apps()
+  - App addresses: every installed app's package name is in the app registry (see get_installed_apps). Never guess a package name; resolve via get_installed_apps when unsure.
   - Current Clipboard: clipboard(action="get")
 
 Rule 9: Text Entry.

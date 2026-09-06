@@ -132,6 +132,9 @@ public class ClawAccessibilityService extends AccessibilityService {
         ForegroundService.Companion.syncToBackgroundState(this);
         maybeReturnToAppAfterPermissionFlow();
         
+        // W8: Build app catalog on first accessibility connection (setup-time indexing)
+        com.returngift.agent.agent.knowledge.AppCatalog.getInstance(this).maybeBuildOnFirstConnect(this);
+        
         // Initialize screen capture manager for fixture capture
         ScreenCaptureManager.init(this, (xml, treeHash, packageName) -> {
             XLog.d(TAG, "Screen captured: " + packageName + " hash=" + treeHash.substring(0, 12));
