@@ -596,10 +596,9 @@ class DefaultAgentService : AgentService {
                 
                 // Sort entries: priority apps first, then alphabetically
                 val sortedEntries = allEntries.sortedWith(
-                    compareByDescending<com.returngift.agent.agent.knowledge.AppCatalog.AppEntry>(
-                        { entry -> priorityLabels.indexOfFirst { it.equals(entry.label, ignoreCase = true) } >= 0 },
-                        { it.label }
-                    )
+                    compareBy<com.returngift.agent.agent.knowledge.AppCatalog.AppEntry> { entry ->
+                        !priorityLabels.any { priority -> priority.equals(entry.label, ignoreCase = true) }
+                    }.thenBy { entry -> entry.label.lowercase() }
                 )
                 
                 // Prefer apps that are actually named in the task text

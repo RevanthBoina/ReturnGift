@@ -183,22 +183,24 @@ ClawApplication.Companion.getInstance()
 ```
 
 **(b) `compareByDescending` receiver/lambda mismatch**
-Sorting `allEntries.sortedWith(compareByDescending<AppEntry>(...))` with a trailing `{ it.label }` lambda left the receiver ambiguous. Working shape:
+Sorting `allEntries.sortedWith(compareByDescending<AppEntry>(...))` with a trailing `{ it.label }` lambda left the receiver ambiguous and eventually failed with `2 type arguments expected for fun <T,K> compareByDescending(comparator: Comparator<in K>, crossinline selector:(T) -> K)`. Do NOT use that two-lambda arity — chain two comparators instead. Working shape:
 ```kotlin
 val sortedEntries = allEntries.sortedWith(
-    compareByDescending<com.returngift.agent.agent.knowledge.AppCatalog.AppEntry>(
-        { entry -> priorityLabels.indexOfFirst { it.equals(entry.label, ignoreCase = true) } >= 0 },
-        { entry -> entry.label }
-    )
+    compareBy<com.returngift.agent.agent.knowledge.AppCatalog.AppEntry> { entry ->
+        !priorityLabels.any { priority -> priority.equals(entry.label, ignoreCase = true) }  // priority apps first
+    }.thenBy { entry -> entry.label.lowercase() }                                  // then alphabetical
 )
 ```
-**Symptom:** `Type mismatch` / `Unresolved reference: it` clashing with the lambda receiver. Use explicit `{ entry -> … }` for every comparator lambda; don't rely on implicit `it` inside nested lambdas.
+**Symptom:** `2 type arguments expected`, `Argument type mismatch`, `Return type mismatch: expected Int, actual Boolean`. Use `compareBy<AppEntry> { … }.thenBy { … }` chain; don't rely on implicit `it` inside nested lambdas; don't use the `<T,K>` overload with two lambdas.
+
+**(b2) `Icons.AutoMirrored.*` does NOT exist in the pinned Compose BOM (2025.05.00)**
+The `material-icons-*` artifact published with the pinned BOM omits the `AutoMirrored` icon variants — `Icons.AutoMirrored.Filled.Menu` → `Unresolved reference 'Menu'` at the import site,and `Icons.AutoMirrored.Filled.ArrowBack` likewise fails. Using the plain `Icons.Filled.Menu` / `Icons.Filled.ArrowBack` (import `androidx.compose.material.icons.filled.Menu` / `filled.ArrowBack`) compiles fine. The earlier W1-era guidance to prefer AutoMirrored is no longer valid for this BOM pin.
 
 **(c) Missing `KBManager` import in `AppCatalog.kt`**
 `AppCatalog.kt` calls `KBManager.write("apps/app-registry.md", emptyMap(), content)` but forgot `import com.returngift.agent.agent.knowledge.KBManager`. The 3-arg signature is `write(path, frontmatter: Map<String, Any>, content)` — the frontmatter arg is mandatory. Do not assume a 2-arg overload exists.
 
 **(d) `ChatScreen.kt` — Compose icon/-click/sheet API drift with the pinned Compose BOM (2025.05.00)**
-1. Bare `Icon(Menu, …)` etc reference unqualified `Menu`/`Visibility`/`Folder`/`Settings` — qualify `Icons.AutoMirrored.Filled.Menu`, `Icons.Outlined.Visibility`, `Icons.Outlined.Folder`, `Icons.Outlined.Settings`, `Icons.Outlined.SmartToy`, `Icons.Outlined.ChatBubbleOutline`. The `Icon` first arg needs the `ImageVector` receiver; unqualified top-level vector objects don't resolve without a matching import.
+1. Bare `Icon(Menu, …)` etc reference unqualified `Menu`/`Visibility`/`Folder`/`Settings` — qualify `Icons.Filled.Menu` (or `Icons.Outlined.Menu`; the `AutoMirrored` variants do NOT exist in this BOM — see b2), `Icons.Outlined.Visibility`, `Icons.Outlined.Folder`, `Icons.Outlined.Settings`, `Icons.Outlined.SmartToy`, `Icons.Outlined.ChatBubbleOutline`. The `Icon` first arg needs the `ImageVector` receiver; unqualified top-level vector objects don't resolve without a matching import.
 2. `Modifier.onClick { … }` does NOT exist — use `Modifier.clickable { … }` (needs `import androidx.compose.foundation.clickable`). Also remove any adjacent dual `pointerInput(Unit) { detectTapGestures(...) }` blocks that double-handle the same tap. Five sites in `ModelSheet`:
 ```kotlin
 .clip(RoundedCornerShape(8.dp))

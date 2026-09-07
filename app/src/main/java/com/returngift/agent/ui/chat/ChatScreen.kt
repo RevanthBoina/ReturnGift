@@ -36,7 +36,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Menu
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -825,7 +824,7 @@ private fun ChatTopBar(
         navigationIcon = {
             if (showMenu) {
                 IconButton(onClick = onMenuClick) {
-                    Icon(Icons.AutoMirrored.Filled.Menu, contentDescription = "Open menu")
+                    Icon(Icons.Filled.Menu, contentDescription = "Open menu")
                 }
             }
         },
