@@ -82,6 +82,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import com.bumptech.glide.Glide
@@ -433,7 +434,7 @@ fun ChatScreen(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                 ) {
                                                     Icon(
-                                                        Visibility,
+                                                        Icons.Outlined.Visibility,
                                                         contentDescription = "Preview mode active",
                                                         tint = colors.accent,
                                                         modifier = Modifier.size(16.dp),
@@ -663,7 +664,7 @@ fun ChatScreen(
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 Icon(
-                                                    Visibility,
+                                                    Icons.Outlined.Visibility,
                                                     contentDescription = "Preview mode active",
                                                     tint = colors.accent,
                                                     modifier = Modifier.size(16.dp),
@@ -824,7 +825,7 @@ private fun ChatTopBar(
         navigationIcon = {
             if (showMenu) {
                 IconButton(onClick = onMenuClick) {
-                    Icon(Menu, contentDescription = "Open menu")
+                    Icon(Icons.AutoMirrored.Filled.Menu, contentDescription = "Open menu")
                 }
             }
         },
@@ -865,7 +866,7 @@ private fun ChatTopBar(
                 DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
                     DropdownMenuItem(
                         text = { Text("Vault") },
-                        leadingIcon = { Icon(Folder, contentDescription = null) },
+                        leadingIcon = { Icon(Icons.Outlined.Folder, contentDescription = null) },
                         onClick = { overflowOpen = false; onOpenVault() },
                     )
                     DropdownMenuItem(
@@ -880,7 +881,7 @@ private fun ChatTopBar(
                     )
                     DropdownMenuItem(
                         text = { Text("Settings") },
-                        leadingIcon = { Icon(Settings, contentDescription = null) },
+                        leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
                         onClick = { overflowOpen = false; onSettings() },
                     )
                 }
@@ -922,7 +923,7 @@ private fun ModelSheet(
 
         ModalBottomSheet(
             onDismissRequest = onDismiss,
-            sheetContent = {
+            content = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // Header
                     Row(
@@ -1046,15 +1047,9 @@ private fun ModelSheet(
                                             .padding(horizontal = 16.dp)
                                             .background(if (isCurrent) colors.accent.copy(alpha = 0.1f) else colors.surface)
                                             .clip(RoundedCornerShape(8.dp))
-                                            .onClick {
+                                            .clickable {
                                                 onModelSwitch(model.id, model.displayName)
                                                 onDismiss()
-                                            }
-                                            .pointerInput(Unit) {
-                                                detectTapGestures(onTap = {
-                                                    onModelSwitch(model.id, model.displayName)
-                                                    onDismiss()
-                                                })
                                             },
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
@@ -1087,8 +1082,8 @@ private fun ModelSheet(
                             } else {
                                 // No API key configured
                                 Text("No API key configured", fontSize = 14.sp, color = colors.textTertiary, modifier = Modifier.padding(16.dp))
-                                Text("Configure API key in Settings", fontSize = 12.sp, color = colors.accent, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(48.dp).onClick {
-                                    scope.launch { showModelSheet.value = false; onSettings() }
+                                Text("Configure API key in Settings", fontSize = 12.sp, color = colors.accent, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(48.dp).clickable {
+                                    scope.launch { onDismiss(); onSettings() }
                                 })
                             }
                         } else {
@@ -1105,15 +1100,9 @@ private fun ModelSheet(
                                         .padding(horizontal = 16.dp)
                                         .background(if (isCurrent) colors.accent.copy(alpha = 0.1f) else colors.surface)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .onClick {
+                                        .clickable {
                                             onModelSwitch("LOCAL", localName)
                                             onDismiss()
-                                        }
-                                        .pointerInput(Unit) {
-                                            detectTapGestures(onTap = {
-                                                onModelSwitch("LOCAL", localName)
-                                                onDismiss()
-                                            })
                                         },
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -1142,8 +1131,8 @@ private fun ModelSheet(
                                 }
                             } else {
                                 Text("No local model downloaded", fontSize = 14.sp, color = colors.textTertiary, modifier = Modifier.padding(16.dp))
-                                Text("Download models in Settings", fontSize = 12.sp, color = colors.accent, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(48.dp).onClick {
-                                    scope.launch { showModelSheet.value = false; onSettings() }
+                                Text("Download models in Settings", fontSize = 12.sp, color = colors.accent, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(48.dp).clickable {
+                                    scope.launch { onDismiss(); onSettings() }
                                 })
                             }
                         }
@@ -1161,19 +1150,14 @@ private fun ModelSheet(
                             .padding(horizontal = 16.dp, vertical = 16.dp)
                             .background(colors.surface)
                             .clip(RoundedCornerShape(8.dp))
-                            .onClick {
+                            .clickable {
                                 onDismiss(); onOpenModels()
-                            }
-                            .pointerInput(Unit) {
-                                detectTapGestures(onTap = {
-                                    onDismiss(); onOpenModels()
-                                })
                             },
                     )
                 }
             },
-            sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            sheetBackgroundColor = colors.surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = colors.surface,
         )
     }
 
@@ -2269,7 +2253,7 @@ private fun PreviewPlanCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    Visibility,
+                    Icons.Outlined.Visibility,
                     contentDescription = "Preview mode",
                     tint = colors.accent,
                     modifier = Modifier.size(16.dp),
@@ -2437,7 +2421,7 @@ private fun ChatInputBar(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
-                            if (isTaskMode) SmartToy else ChatBubbleOutline,
+                            if (isTaskMode) Icons.Outlined.SmartToy else Icons.Outlined.ChatBubbleOutline,
                             contentDescription = if (isTaskMode) "Task mode" else "Chat mode",
                             tint = if (isTaskMode) colors.accent else colors.textSecondary,
                             modifier = Modifier.size(16.dp),

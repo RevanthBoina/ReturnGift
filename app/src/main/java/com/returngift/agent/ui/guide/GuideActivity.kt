@@ -121,8 +121,8 @@ class GuideActivity : BaseActivity() {
 
     private fun updatePermissionIndicators() {
         val snapshot = AppCapabilityCoordinator.snapshot(this)
+        val accessibilityReady = snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY
         findViewById<TextView>(R.id.guideRestricted)?.let { tv ->
-            val accessibilityReady = snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY
             val visibility = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !accessibilityReady) View.VISIBLE else View.GONE
             tv.visibility = visibility
             if (accessibilityReady) {

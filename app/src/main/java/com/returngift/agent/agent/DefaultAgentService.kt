@@ -583,7 +583,7 @@ class DefaultAgentService : AgentService {
                 XLog.i(TAG, "TargetSpecGate fired: requested ${missing.requestedCount} ${missing.kind}, explicitly named ${missing.explicitlyNamed} — asking user")
                 
                 // Build choices from AppCatalog with priority ordering
-                val catalog = com.returngift.agent.agent.knowledge.AppCatalog.getInstance(ClawApplication.Companion.getInstance())
+                val catalog = com.returngift.agent.agent.knowledge.AppCatalog.getInstance(ClawApplication.instance)
                 val allEntries = catalog.getAllEntries()
                 
                 // F6: Priority apps that should appear first in choices
@@ -596,9 +596,10 @@ class DefaultAgentService : AgentService {
                 
                 // Sort entries: priority apps first, then alphabetically
                 val sortedEntries = allEntries.sortedWith(
-                    compareByDescending { entry ->
-                        priorityLabels.indexOfFirst { it.equals(entry.label, ignoreCase = true) } >= 0
-                    }.thenBy { it.label }
+                    compareByDescending<com.returngift.agent.agent.knowledge.AppCatalog.AppEntry>(
+                        { entry -> priorityLabels.indexOfFirst { it.equals(entry.label, ignoreCase = true) } >= 0 },
+                        { it.label }
+                    )
                 )
                 
                 // Prefer apps that are actually named in the task text

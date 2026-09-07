@@ -169,6 +169,58 @@ grep -rn "catch.*InterruptedException" --include="*.kt" app/src/main/java/ && \
 
 ---
 
+## Pitfall 9: v3.2.0 — `compileReleaseKotlin` Failure Clusters (2026-09-07)
+
+The `v3.2.0` tag (run #34104968181) failed at `:app:compileReleaseKotlin` with SEVERAL independent errors surfacing together. Fix ALL of them before tagging again. They fall into five clusters:
+
+**(a) Kotlin callers cannot use `ClawApplication.Companion.getInstance()`**
+`ClawApplication` exposes a Kotlin `companion object` with `lateinit var instance`. In Kotlin, reference it as `ClawApplication.instance` — the `Companion.getInstance()` form is only valid from Java. Files hit: `DefaultAgentService.kt`, `TargetSpecGate.kt`.
+```kotlin
+// Kotlin:
+ClawApplication.instance
+// Java:
+ClawApplication.Companion.getInstance()
+```
+
+**(b) `compareByDescending` receiver/lambda mismatch**
+Sorting `allEntries.sortedWith(compareByDescending<AppEntry>(...))` with a trailing `{ it.label }` lambda left the receiver ambiguous. Working shape:
+```kotlin
+val sortedEntries = allEntries.sortedWith(
+    compareByDescending<com.returngift.agent.agent.knowledge.AppCatalog.AppEntry>(
+        { entry -> priorityLabels.indexOfFirst { it.equals(entry.label, ignoreCase = true) } >= 0 },
+        { entry -> entry.label }
+    )
+)
+```
+**Symptom:** `Type mismatch` / `Unresolved reference: it` clashing with the lambda receiver. Use explicit `{ entry -> … }` for every comparator lambda; don't rely on implicit `it` inside nested lambdas.
+
+**(c) Missing `KBManager` import in `AppCatalog.kt`**
+`AppCatalog.kt` calls `KBManager.write("apps/app-registry.md", emptyMap(), content)` but forgot `import com.returngift.agent.agent.knowledge.KBManager`. The 3-arg signature is `write(path, frontmatter: Map<String, Any>, content)` — the frontmatter arg is mandatory. Do not assume a 2-arg overload exists.
+
+**(d) `ChatScreen.kt` — Compose icon/-click/sheet API drift with the pinned Compose BOM (2025.05.00)**
+1. Bare `Icon(Menu, …)` etc reference unqualified `Menu`/`Visibility`/`Folder`/`Settings` — qualify `Icons.AutoMirrored.Filled.Menu`, `Icons.Outlined.Visibility`, `Icons.Outlined.Folder`, `Icons.Outlined.Settings`, `Icons.Outlined.SmartToy`, `Icons.Outlined.ChatBubbleOutline`. The `Icon` first arg needs the `ImageVector` receiver; unqualified top-level vector objects don't resolve without a matching import.
+2. `Modifier.onClick { … }` does NOT exist — use `Modifier.clickable { … }` (needs `import androidx.compose.foundation.clickable`). Also remove any adjacent dual `pointerInput(Unit) { detectTapGestures(...) }` blocks that double-handle the same tap. Five sites in `ModelSheet`:
+```kotlin
+.clip(RoundedCornerShape(8.dp))
+    .clickable { onModelSwitch(model.id, model.displayName); onDismiss() },
+```
+3. `ModalBottomSheet` (pinned BOM) uses `content = { … }`, `shape = …`, `containerColor = …` — NOT the legacy `sheetContent`/`sheetShape`/`sheetBackgroundColor`. Retit also `showModelSheet` is out-of-scope inside the sheet — use `onDismiss()` instead:
+```kotlin
+scope.launch { onDismiss(); onSettings() }
+```
+4. Smart icon ternary: `if (isTaskMode) SmartToy else ChatBubbleOutline` must be `if (isTaskMode) Icons.Outlined.SmartToy else Icons.Outlined.ChatBubbleOutline`.
+5. `TextUnit` missing import: `import androidx.compose.ui.unit.TextUnit` when a param type refers to it.
+
+**(e) `GuideActivity.kt` — variable used outside declaration scope**
+`accessibilityReady` was declared inside a `.let { }` block but referenced in a sibling block — hoist it to the function body:
+```kotlin
+val accessibilityReady = snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY
+```
+
+**Lesson:** `compileReleaseKotlin` failures bundle multiple independent errors from several files. Fix-and-recompile iterates until clean; don't tag until `bash scripts/ci-preflight.sh` AND an actual Kotlin compile both pass. Preflight's `kotlin-structure` check (brace balance + overloads) does NOT catch these — they're semantic/API-resolution errors, only visible to a real `compileReleaseKotlin` (run `./gradlew :app:compileReleaseKotlin` or push-and-watch `Auto Build & Test`).
+
+---
+
 ## Successful Release Checklist
 
 Before tagging a release, verify locally:
@@ -201,5 +253,5 @@ grep -rn "catch.*InterruptedException" app/src/main/java/ --include="*.kt"
 
 ---
 
-**Last Updated:** 2026-09-06 (v3.0.14 release)
+**Last Updated:** 2026-09-07 (v3.2.0 compile-failure lessons; v3.2.1 fix build)
 **Related:** `QA_CHECKLIST.md` section R (Release Build), `RELEASING.md`

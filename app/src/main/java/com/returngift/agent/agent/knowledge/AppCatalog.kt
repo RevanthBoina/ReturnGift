@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Handler
 import android.os.Looper
+import com.returngift.agent.agent.knowledge.KBManager
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 import com.returngift.agent.tool.impl.OpenAppTool
@@ -338,7 +339,7 @@ class AppCatalog(private val context: Context) {
         }
         
         val content = lines.joinToString("\n")
-        com.returngift.agent.agent.KBManager.write("apps/app-registry.md", content)
+        KBManager.write("apps/app-registry.md", emptyMap(), content)
         XLog.d(TAG, "Wrote vault markdown for app registry")
     }
 }

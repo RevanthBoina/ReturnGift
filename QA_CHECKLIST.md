@@ -3994,3 +3994,13 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 
 ### QA Debug Changelog — v3.0.12 signature verification tooling
 - `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.8-RC.9]` added the attached release-build diagnostics document to the repo, linked it from release docs, and fixed the release workflow to locate `apksigner` inside the Android SDK build-tools instead of assuming it is on PATH.
+
+### QA Debug Changelog — v3.2.0 release Kotlin compile fix (2026-09-07)
+- `[2026-09-07] [CI-PREFLIGHT-PASS] [v3.2.0-fix]` fixed the `:app:compileReleaseKotlin` failure clusters that blocked the `v3.2.0` tag (run #34104968181):
+  - Kotlin callers now use `ClawApplication.instance` (not `Companion.getInstance()`: `DefaultAgentService.kt`, `TargetSpecGate.kt`
+  - `DefaultAgentService.kt` sorting uses explicit `{ entry -> … }` lambdas inside `sortedWith(compareByDescending<AppEntry>(…))`
+  - `AppCatalog.kt` added the missing `KBManager` import and passes the mandatory frontmatter arg (`emptyMap()`) to `KBManager.write`
+  - `ChatScreen.kt`: qualified all bare icon refs (`Icons.AutoMirrored.Filled.Menu`, `Icons.Outlined.Visibility/Folder/Settings/SmartToy/ChatBubbleOutline`); replaced non-existent `Modifier.onClick` with `Modifier.clickable` (and deleted double-fire `pointerInput/detectTapGestures` twins); migrated `ModalBottomSheet` params to `content`/`shape`/`containerColor`; routed the two ModelSheet settings links via `onDismiss()` (removing out-of-scope `showModelSheet` refs); added missing `TextUnit` import
+  - `GuideActivity.kt` hoisted `accessibilityReady` out of the `.let` block to function scope
+- **Guard**: `docs/RELEASE_BUILD_DIAGNOSTICS.md` Pitfall 9 documents all five clusters with the mandatory pre-tag protocol; local verification requires `bash scripts/ci-preflight.sh` + a real Kotlin compile (`./gradlew :app:compileReleaseKotlin`) since preflight structure checks do NOT catch semantic/API-resolution errors.
+- **Runtime QA**: v3.2.1 APK must open ModelSheet (Local/Cloud tabs, manage-models footer, settings links dismiss the sheet then navigate), Preview pill/Task chip icons visible, and app-registry vault note written after indexing.

@@ -75,7 +75,7 @@ object TargetSpecGate {
      * Android wrapper that fetches known app aliases from AppCatalog.
      */
     fun missingTargets(task: String): MissingTargets? {
-        val catalog = AppCatalog.getInstance(ClawApplication.Companion.getInstance())
+        val catalog = AppCatalog.getInstance(ClawApplication.instance)
         val aliases = catalog.getAllEntries().flatMap { it.aliases }.toSet()
         return missingTargets(task, aliases)
     }
