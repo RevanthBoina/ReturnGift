@@ -4004,3 +4004,9 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
   - `GuideActivity.kt` hoisted `accessibilityReady` out of the `.let` block to function scope
 - **Guard**: `docs/RELEASE_BUILD_DIAGNOSTICS.md` Pitfall 9 documents all five clusters with the mandatory pre-tag protocol; local verification requires `bash scripts/ci-preflight.sh` + a real Kotlin compile (`./gradlew :app:compileReleaseKotlin`) since preflight structure checks do NOT catch semantic/API-resolution errors.
 - **Runtime QA**: v3.2.1 APK must open ModelSheet (Local/Cloud tabs, manage-models footer, settings links dismiss the sheet then navigate), Preview pill/Task chip icons visible, and app-registry vault note written after indexing.
+
+
+### QA Debug Changelog — v3.2 Java/Kotlin interop pass 3 (2026-09-07, v3.2.1b v3.2.2)
+- `[2026-09-07] [CI-PREFLIGHT-PASS] [v3.2.1-followup]` Kotlin compile advanced, Java compile failed at `GetInstalledAppsTool.java` — `AppEntry.label/packageName have private access` (4 errors). Fixed: use the generated getters `entry.getLabel()` / `entry.getPackageName()` in Java to access Kotlin `data class` properties. Documented in `docs/RELEASE_BUILD_DIAGNOSTICS.md` Pitfall 9 cluster (e).
+- Runtime QA for the next tag (v3.2.3): `get_installed_apps` must list apps (with and without a keyword), and `open_app` by label/alias must still resolve (regression check for the getter swap).
+

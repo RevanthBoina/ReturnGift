@@ -66,13 +66,13 @@ public class GetInstalledAppsTool extends BaseTool {
             for (AppCatalog.AppEntry entry : entries) {
                 if (!keyword.isEmpty()) {
                     String lower = keyword.toLowerCase();
-                    if (!entry.label.toLowerCase().contains(lower)
-                            && !entry.packageName.toLowerCase().contains(lower)) {
+                    if (!entry.getLabel().toLowerCase().contains(lower
+                            && !entry.getPackageName().toLowerCase().contains(lower)) {
                         continue;
                     }
                 }
 
-                appList.add(entry.label + " | " + entry.packageName);
+                appList.add(entry.getLabel() + " | " + entry.getPackageName());
             }
 
             if (appList.isEmpty()) {

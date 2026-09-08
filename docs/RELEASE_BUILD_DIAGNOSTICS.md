@@ -213,7 +213,15 @@ scope.launch { onDismiss(); onSettings() }
 4. Smart icon ternary: `if (isTaskMode) SmartToy else ChatBubbleOutline` must be `if (isTaskMode) Icons.Outlined.SmartToy else Icons.Outlined.ChatBubbleOutline`.
 5. `TextUnit` missing import: `import androidx.compose.ui.unit.TextUnit` when a param type refers to it.
 
-**(e) `GuideActivity.kt` — variable used outside declaration scope**
+**(e) `GetInstalledAppsTool.java` — Java cannot read Kotlin `data class` fields directly (v3.2.2)**
+`AppCatalog.AppEntry` declares `val label: String` / `val packageName: String`. From Java, `entry.label` / `entry.packageName` fail with `label has private access in AppEntry` — the compile-safe forms are the generated getters:
+```java
+entry.getLabel();  // NOT entry.label
+entry.getPackageName();  // NOT entry.packageName
+```
+**Lesson:** Kotlin sees these as properties (`entry.label`); Java sees the private backing fields behind `getLabel()`/`getPackageName()` getters. Whenever a Java tool file iterates Kotlin data classes (e.g. `AppCatalog.AppEntry`), use `.getXxx()` accessors.
+
+**(f) `GuideActivity.kt` — variable used outside declaration scope**
 `accessibilityReady` was declared inside a `.let { }` block but referenced in a sibling block — hoist it to the function body:
 ```kotlin
 val accessibilityReady = snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY
@@ -255,5 +263,5 @@ grep -rn "catch.*InterruptedException" app/src/main/java/ --include="*.kt"
 
 ---
 
-**Last Updated:** 2026-09-07 (v3.2.0 compile-failure lessons; v3.2.1 fix build)
+**Last Updated:** 2026-09-07 (v3.2.0/3.2.1/3.2.2 compile-failure lessons; v3.2.3 fix build)
 **Related:** `QA_CHECKLIST.md` section R (Release Build), `RELEASING.md`
