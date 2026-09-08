@@ -221,6 +221,8 @@ entry.getPackageName();  // NOT entry.packageName
 ```
 **Lesson:** Kotlin sees these as properties (`entry.label`); Java sees the private backing fields behind `getLabel()`/`getPackageName()` getters. Whenever a Java tool file iterates Kotlin data classes (e.g. `AppCatalog.AppEntry`), use `.getXxx()` accessors.
 
+**Follow-up (v3.2.4):** the two-line `if (...contain(lower\n && ...contain(lower))` kept its closing paren on the SECOND line — once the private-access errors were fixed, javac surfaced `error: ')' expected` at line 70 (the classic unmasking pattern: fix the first error CLASS then re-run. Put the whole condition on ONE line with balanced parens. Preflight adds no Java-syntax check — javac is the gate.
+
 **(f) `GuideActivity.kt` — variable used outside declaration scope**
 `accessibilityReady` was declared inside a `.let { }` block but referenced in a sibling block — hoist it to the function body:
 ```kotlin
