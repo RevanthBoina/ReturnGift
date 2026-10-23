@@ -16,7 +16,7 @@ permissions:
 jobs:
   release:
     name: Build & Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
@@ -30,8 +30,59 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
+      - name: Locate preinstalled Android SDK
+        id: locate-sdk
+        run: |
+          set -uo pipefail
+          for candidate in "${ANDROID_SDK_ROOT:-}" "${ANDROID_HOME:-}" /usr/local/lib/android/sdk "$HOME/Android/Sdk"; do
+            if [ -n "$candidate" ] && [ -d "$candidate/platforms" ]; then
+              echo "Found preinstalled Android SDK at $candidate"
+              echo "path=$candidate" >> "$GITHUB_OUTPUT"
+              echo "found=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "No preinstalled Android SDK found; will use the setup action"
+          echo "found=false" >> "$GITHUB_OUTPUT"
+
+      # Only runs when the image has no SDK. Non-fatal: the next step validates.
+      - name: Setup Android SDK (fallback)
+        if: steps.locate-sdk.outputs.found != 'true'
+        id: setup-sdk
+        continue-on-error: true
         uses: android-actions/setup-android@v3
+
+      - name: Verify Android SDK
+        run: |
+          set -uo pipefail
+          SDK="${{ steps.locate-sdk.outputs.path }}"
+          if [ -z "$SDK" ]; then
+            for candidate in "${ANDROID_SDK_ROOT:-}" "${ANDROID_HOME:-}" /usr/local/lib/android/sdk "$HOME/Android/Sdk"; do
+              if [ -n "$candidate" ] && [ -d "$candidate/platforms" ]; then SDK="$candidate"; break; fi
+            done
+          fi
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            echo "::error::No usable Android SDK. If the setup-android step failed, see its log in the job."
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_USER_HOME=$HOME/.android" >> "$GITHUB_ENV"
+          echo "Using Android SDK at $SDK"
+          echo "=== platforms ==="; ls "$SDK/platforms" 2>/dev/null || true
+          echo "=== build-tools ==="; ls "$SDK/build-tools" 2>/dev/null || true
+          SDKMANAGER=""
+          for sm in "$SDK/cmdline-tools/latest/bin/sdkmanager" "$SDK/cmdline-tools/bin/sdkmanager" "$SDK/tools/bin/sdkmanager"; do
+            if [ -x "$sm" ]; then SDKMANAGER="$sm"; break; fi
+          done
+          if [ -n "$SDKMANAGER" ]; then
+            echo "sdkmanager: $SDKMANAGER"
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" --install "platforms;android-37" "build-tools;36.0.0" "platform-tools" > /dev/null 2>&1 || \
+              echo "::warning::sdkmanager could not install the exact compileSdk packages; AGP will try to download them."
+          else
+            echo "::warning::sdkmanager not found; relying on AGP's automatic SDK download."
+          fi
 
       - name: Cache Gradle packages
         uses: actions/cache@v4
@@ -136,6 +187,24 @@ jobs:
           name: assemble-release-log
           path: assemble-release.log
           retention-days: 14
+
+      # Log downloads are not always reachable from tooling; surface the tail of the
+      # Gradle log here so the failure reason is visible as a check annotation.
+      - name: Annotate build failure
+        if: failure()
+        run: |
+          python3 - <<'PYEOF'
+          import urllib.parse
+          from pathlib import Path
+
+          log = Path("assemble-release.log")
+          if not log.exists():
+              print("::error title=assembleRelease::no Gradle log was produced")
+              raise SystemExit(0)
+          lines = log.read_text(errors="replace").splitlines()
+          tail = "\n".join(lines[-25:])
+          print("::error title=assembleRelease failed::" + urllib.parse.quote(tail, safe=""))
+          PYEOF
 
       - name: Generate release checksums and rename APK
         run: |
