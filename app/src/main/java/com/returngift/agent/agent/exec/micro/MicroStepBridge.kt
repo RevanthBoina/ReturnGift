@@ -41,10 +41,16 @@ object MicroStepBridge {
     private const val PKG_SETTINGS = "com.android.settings"
     private const val PKG_LAUNCHER = "launcher"
 
-    /** Package → semantic surface, used when the tool does not name one. */
+    /**
+     * Package → semantic surface, used when the tool does not name one.
+     * The curated [com.returngift.agent.agent.knowledge.AppUsageGuide] is consulted
+     * first so an app's real flow (Chrome = address bar, LinkedIn = post composer…)
+     * beats the generic package heuristics below.
+     */
     fun surfaceForPackage(packageName: String?): AppSurface {
         val pkg = packageName?.lowercase().orEmpty()
         if (pkg.isEmpty()) return AppSurface.UNKNOWN
+        com.returngift.agent.agent.knowledge.AppUsageGuide.surfaceFor(pkg)?.let { return it }
         return when {
             CHAT_PACKAGES.any { pkg.contains(it) } -> AppSurface.CHAT_COMPOSER
             SOCIAL_PACKAGES.any { pkg.contains(it) } -> AppSurface.SOCIAL_POST

@@ -14,11 +14,13 @@ import com.returngift.agent.utils.XLog
  * The result tells the caller whether to proceed, block, or show the first-time
  * permission prompt with "Allow once" and "Add to allow-list" buttons.
  *
- * Rules:
- *  - Default for any newly-encountered app: ALLOWED.
- *  - First encounter → return FIRST_TIME so the UI can show the prompt.
- *  - Subsequent encounters where allowed=true → ALLOWED.
- *  - Subsequent encounters where allowed=false → BLOCKED (show prompt again).
+ * Rules (mode lives in AppAllowListStore, toggles in AgentPreferences):
+ *  - ALWAYS      → Allowed, no prompt.
+ *  - ASK (default for a new app) → the permission card is shown and the answer
+ *    decides: Allow once → Allowed for this task; Always allow → persisted
+ *    ALWAYS (unless remembering is switched off); Cancel → Blocked.
+ *  - BLOCKED     → Blocked without a prompt.
+ *  - "Ask before a new app" switched OFF → recorded and Allowed (legacy default).
  */
 object AppAllowListGuard {
 
@@ -51,19 +53,17 @@ object AppAllowListGuard {
     fun checkAndRecord(context: Context, packageName: String): CheckResult {
         if (packageName.isBlank()) return CheckResult.Allowed
 
-        val store = AppAllowListStore.getInstance(context)
-        val label = resolveLabel(context, packageName)
+        val result = com.returngift.agent.agent.permission.AppAccessGate.evaluate(context, packageName)
+        val label = result.label
+        val firstEncounter = result.firstEncounter
 
-        return if (store.isFirstEncounter(packageName)) {
-            // Insert with default ON so subsequent calls see it as known
-            store.touchApp(packageName, label, allowed = true)
-            XLog.i(TAG, "First encounter: $packageName ($label)")
-            CheckResult.FirstTime(packageName, label)
-        } else if (store.isAllowed(packageName)) {
-            CheckResult.Allowed
-        } else {
-            XLog.i(TAG, "Blocked by allow-list: $packageName")
-            CheckResult.Blocked(packageName, label)
+        return when {
+            // Blocked by the user's own setting or by a declined card.
+            !result.allowed -> CheckResult.Blocked(packageName, label)
+            // A first encounter that was answered this run is still a "first time" for
+            // callers that surface telemetry.
+            firstEncounter -> CheckResult.FirstTime(packageName, label)
+            else -> CheckResult.Allowed
         }
     }
 

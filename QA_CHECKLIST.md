@@ -4116,3 +4116,86 @@ when the app is in the background.
     broker tests run the real latch/timeout machinery on background threads). Android-side
     compile/device run still requires the next CI/APK build. (See `AGENTS.md`-style sandbox
     note: this checkout has no Android SDK, so `./gradlew` cannot run here.)
+
+
+---
+
+## TP — App permission toggles + installed-app usage guide (2026-10-23)
+
+Settings → **App permissions** is now the single control surface: five toggles for the
+permission/micro-step machinery, plus one row per installed app (Chrome, LinkedIn,
+YouTube, WhatsApp, …) with a tri-state control **Always allow / Ask / Blocked** and a
+one-line "how the agent will use this app" hint. The same hints are injected into the
+system prompt (`AppUsageGuide.promptSection`) so the model and the UI agree.
+
+**Unit coverage (JVM, no device):** `AppAccessPolicyTest` (16), `AppUsageGuideTest` (9),
+`AgentPreferencesTest` (5) — plus the existing permission/micro-step suites; 136 tests
+green locally with a real Kotlin compile + runner.
+
+### TP.1 Settings entry opens the screen `[ADB]`
+- **Act**: Settings → Permissions → **App permissions**.
+- **PASS**: the screen opens with a PERMISSIONS card (5 switches on by default), a search
+  box, All/Always/Ask/Blocked filter chips, and app rows with icons; the Settings row's
+  trailing text reads "<n> allowed · <n> blocked".
+
+### TP.2 Toggles take effect immediately `[ADB] [LOGCAT-DEBUG]`
+- **Act**: turn **Ask before a new app** OFF, then run a task targeting an app never used
+  before (e.g. "Open Instagram and like the first post").
+- **PASS**: no permission card appears; logcat shows
+  `AppAccessGate: allowed <pkg> (ask-before-new-app is off)`; the app still appears in the
+  app list with mode **Ask**.
+- **Act (reverse)**: turn it back ON and repeat → the card appears.
+
+### TP.3 Remember-choices toggle switches permanent ↔ temporary `[ADB]`
+- **Act**: turn **Remember choices permanently** OFF, run a task, choose **Always allow**;
+  then run a second task against the same app.
+- **PASS**: the card appears again on the second task and the row still reads **Ask**;
+  logcat shows `remember-choices OFF — downgraded 'Always allow' to this task`.
+- **Act (reverse)**: with the toggle ON, **Always allow** persists (row shows **Always
+  allow**, no card on the next task).
+
+### TP.4 Blocked app is blocked without a prompt `[ADB] [LOGCAT-DEBUG]`
+- **Act**: set WhatsApp to **Blocked**, then run "Send Mom a WhatsApp message".
+- **PASS**: no permission card is shown; the chat shows
+  `Action blocked: permission to act in "WhatsApp" was not granted…`; logcat shows
+  `blocked by the user — no prompt`; nothing is sent.
+
+### TP.5 Reset returns an app to first-encounter state `[ADB]`
+- **Act**: set Chrome to **Always allow**, then tap **Reset** on its row and run a Chrome task.
+- **PASS**: the permission card appears again (the row is forgotten and re-created on the
+  next encounter).
+
+### TP.6 Card shows how the agent will use the app `[ADB]`
+- **Act**: trigger the card for Chrome / LinkedIn / YouTube.
+- **PASS**: below the explanation the card lists up to three concrete steps, e.g.
+  "Tap the address bar ("Search or type URL") → type the site/query → press Enter."
+
+### TP.7 Model gets app-specific recipes `[ADB] [LOGCAT-DEBUG]`
+- **Act**: run "Post on LinkedIn about the release" with a cloud model and dump the prompt
+  (debug log) or check `MicroStep pending` rules.
+- **PASS**: the system prompt contains `## App usage guide (installed apps)` with LinkedIn's
+  steps; apps not named in the task and not fallback-installed are absent. A knowledge-only
+  question (e.g. "what is 2+2?") adds no app section.
+
+### TP.8 Micro-step enforcement toggle `[ADB]`
+- **Act**: turn **Enforce mid-task steps** OFF, then type into a chat and let the model call
+  `finish` without sending.
+- **PASS**: `finish` is accepted (no `Not finished yet:` block) and logcat shows no
+  `MicroStep pending` lines; turning it back ON restores the veto.
+
+### TP.9 Screen is responsive on a full device `[ADB]`
+- **Act**: open the screen on a device with 200+ installed apps and type in the search box.
+- **PASS**: the list loads off the main thread (spinner first, no jank), search filters as
+  you type, and the filter chips + reset buttons respond immediately.
+
+### QA Debug Changelog — permission toggles + app guide (2026-10-23)
+- `[2026-10-23] [UNIT-PASS] [TP.1-TP.9]`:
+  1. `AppAccessMode` (Always/Ask/Blocked) replaces the boolean allow-list; the store moved to
+     DB v2 with a `mode` column and a migration (ON → always, OFF → blocked).
+  2. `AppAccessPolicy` holds the pure ask/allow/block rules; `AppAccessGate` is the single
+     runtime decision point shared by the agent loop and Tier-1 direct tools.
+  3. `AgentPreferences` adds five user toggles surfaced in the new screen.
+  4. `AppUsageGuide` + `InstalledApps` give the model per-app recipes and the UI real app
+     rows (icons, labels, hints) for every installed app.
+  - Local verification: JVM compile + runner → **136 tests green**. Android compile/device
+    run still requires the next CI/APK build.

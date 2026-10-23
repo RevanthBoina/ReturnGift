@@ -5,6 +5,7 @@ package com.returngift.agent.agent.permission
 
 import android.os.Handler
 import android.os.Looper
+import com.returngift.agent.agent.prefs.AgentPreferences
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -115,19 +116,43 @@ object PermissionPromptBroker {
         XLog.i(TAG, "Permission pending: kind=${request.kind} target=${request.packageName.ifBlank { request.capabilityId }}")
         notifyListeners(request)
 
+        // Toggles from Settings → App Permissions (both default ON). At least one
+        // channel stays on so a parked thread can never be answered by a timeout
+        // with no request ever reaching the user.
+        var opened = false
+        var notified = false
+
         // 1) Open ReturnGift's own UI (the "APK interface") in the foreground.
-        try {
-            openUiHook(request)
-        } catch (e: Throwable) {
-            XLog.w(TAG, "could not open the permission screen", e)
+        if (AgentPreferences.openPermissionCard) {
+            try {
+                openUiHook(request)
+                opened = true
+            } catch (e: Throwable) {
+                XLog.w(TAG, "could not open the permission screen", e)
+            }
         }
-        // 2) Always mirror it as a heads-up notification so a background task can
+        // 2) Mirror it as a heads-up notification so a background task can
         //    never ask silently. No-op without notification permission.
-        try {
-            notifyHook(request)
-        } catch (e: Throwable) {
-            XLog.w(TAG, "could not post the permission notification", e)
+        if (AgentPreferences.notifyPermission) {
+            try {
+                notifyHook(request)
+                notified = true
+            } catch (e: Throwable) {
+                XLog.w(TAG, "could not post the permission notification", e)
+            }
         }
+        if (!AgentPreferences.openPermissionCard && !notified) {
+            // Both channels disabled and the notification failed: fall back to the
+            // card so the request is answerable, and log the user-visible reason.
+            XLog.w(TAG, "no permission channel available — forcing the permission card open")
+            try {
+                openUiHook(request)
+                opened = true
+            } catch (e: Throwable) {
+                XLog.w(TAG, "fallback permission card launch failed", e)
+            }
+        }
+        XLog.i(TAG, "permission request surfaced (card=$opened, notification=$notified)")
 
         val activeLatch = latch
         val deadline = System.currentTimeMillis() + timeoutMs

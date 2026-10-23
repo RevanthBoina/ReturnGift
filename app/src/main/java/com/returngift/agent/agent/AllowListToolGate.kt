@@ -4,11 +4,8 @@
 package com.returngift.agent.agent
 
 import android.content.Context
-import com.returngift.agent.agent.permission.PermissionPromptBroker
-import com.returngift.agent.agent.permission.PermissionRequest
 import com.returngift.agent.service.ClawAccessibilityService
 import com.returngift.agent.utils.XLog
-import java.util.Collections
 
 /**
  * Part B — Tool-call gate for the per-app allow-list.
@@ -17,14 +14,15 @@ import java.util.Collections
  * Resolves the foreground app package from the accessibility service and checks
  * the allow-list. Returns a non-null block message if the call should be halted.
  *
- * First encounter (and any app the user turned OFF) now RAISES A REAL PROMPT:
- * [PermissionPromptBroker] opens ReturnGift's permission card in the foreground
- * (the app's own interface — never a silent default), parks the agent thread and
- * returns the user's decision:
+ * The decision itself lives in [com.returngift.agent.agent.permission.AppAccessGate]
+ * (shared with the Tier-1 path). For an app that is set to "ask" — the default for
+ * a first encounter — the gate opens ReturnGift's permission card in the
+ * foreground, parks the agent thread and returns the user's decision:
  *
  *  - Allow once   → this task only (in-memory grant, not persisted)
- *  - Always allow → persisted in the allow-list
+ *  - Always allow → persisted in the allow-list (unless remembering is switched off)
  *  - Cancel/timeout → the tool call is blocked with an honest message
+ *  - Blocked in Settings → blocked without a prompt
  *
  * Tools that always pass (never target a specific third-party app):
  *   finish, get_screen_info, get_device_info, get_notifications, get_installed_apps,
@@ -44,12 +42,10 @@ object AllowListToolGate {
     )
 
     /** "Allow once" grants for the current task run (process memory only). */
-    private val onceGrants: MutableSet<String> = Collections.synchronizedSet(mutableSetOf<String>())
+    fun resetTaskGrants() = com.returngift.agent.agent.permission.AppAccessGate.resetTaskGrants()
 
-    /** Called at the start of every task run so "once" never leaks across tasks. */
-    fun resetTaskGrants() {
-        onceGrants.clear()
-    }
+    /** Packages granted for this task by "Allow once". */
+    fun taskGrants(): Set<String> = com.returngift.agent.agent.permission.AppAccessGate.taskGrants()
 
     /**
      * Returns null if the tool call is allowed, or a user-facing block message if not.
@@ -73,47 +69,15 @@ object AllowListToolGate {
         // Skip ReturnGift's own package
         if (targetPackage == context.packageName) return null
 
-        val store = AppAllowListStore.getInstance(context)
-        val firstEncounter = store.isFirstEncounter(targetPackage)
-        val allowedInStore = !firstEncounter && store.isAllowed(targetPackage)
-        val grantedOnce = targetPackage in onceGrants
-        if (allowedInStore || grantedOnce) return null
-
-        // ── Ask the user — opens the APK's permission card in the foreground ──
-        val label = AppAllowListGuard.resolveLabel(context, targetPackage)
-        val reason = if (firstEncounter) {
-            "ReturnGift is about to act inside \"$label\" for the first time. " +
-                "Grant access to let it continue this task."
-        } else {
-            "\"$label\" is turned off in App Permissions. Grant access to let the agent act in it."
+        val result = com.returngift.agent.agent.permission.AppAccessGate.evaluate(context, targetPackage)
+        if (!result.allowed) {
+            XLog.w(TAG, "Tool $toolName blocked: ${result.blockMessage}")
+            return result.blockMessage
         }
-        val request = PermissionRequest.forApp(targetPackage, label, reason)
-        XLog.i(TAG, "permission prompt raised for $targetPackage ($label), firstEncounter=$firstEncounter")
-        val decision = PermissionPromptBroker.request(request)
-
-        return when (decision) {
-            PermissionRequest.Decision.ALLOW_ONCE -> {
-                // Persist the row as NOT-allowed so the next task asks again;
-                // this run is covered by the in-memory grant.
-                if (firstEncounter) store.touchApp(targetPackage, label, allowed = false)
-                onceGrants.add(targetPackage)
-                XLog.i(TAG, "allow-once granted for $targetPackage (this task only)")
-                null
-            }
-            PermissionRequest.Decision.ALWAYS_ALLOW -> {
-                store.touchApp(targetPackage, label, allowed = true)
-                store.setAllowed(targetPackage, allowed = true, label = label)
-                onceGrants.add(targetPackage)
-                XLog.i(TAG, "always-allow granted for $targetPackage")
-                null
-            }
-            else -> {
-                XLog.w(TAG, "Tool $toolName blocked: permission for $targetPackage was not granted")
-                "Action blocked: permission to act in \"$label\" was not granted. " +
-                    "Tap Allow once or Always allow on the ReturnGift permission card " +
-                    "(or enable the app in Settings → App Permissions), then try again."
-            }
+        if (!result.automatic) {
+            XLog.i(TAG, "permission granted (${result.decision}) for $targetPackage")
         }
+        return null
     }
 
     private fun resolveTargetPackage(toolName: String, params: Map<String, Any>): String? {

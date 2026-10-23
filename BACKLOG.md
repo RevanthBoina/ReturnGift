@@ -14,6 +14,7 @@ Priority: `P0` = blocks users, fix now. `P1` = next up. `P2` = when we get to it
 ## Features
 
 - [x] **P1** Mid-task micro-step planning — DONE 2026-10-23: 73-rule catalogue (`agent/exec/micro/`) with finish veto after type-without-send
+- [x] **P1** Permission behaviour toggles + installed-app usage guide — DONE 2026-10-23: Settings → App permissions has 5 toggles and a per-app Always/Ask/Blocked tri-state, and the model receives per-app recipes for apps installed on the device
 - [x] **P1** Remove the hard 200K token ceiling — DONE 2026-10-23: TokenMonitor has no ceiling; only the user's TaskBudget can stop a task on cost
 - [ ] **P1** LoRA Action Skills infrastructure: define SkillOpt Skill doc format and loading pipeline
 - [ ] **P1** Persistent global instructions: user-editable local instructions layer, short, inspectable, local-first

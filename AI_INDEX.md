@@ -43,6 +43,14 @@ This is the repo map for coding agents. Keep canonical information in existing f
 | `app/src/main/java/com/returngift/agent/ui/permission/PermissionPromptActivity.kt` | The APK's permission card (icon, reason, Allow once / Always allow / Cancel, Open settings) |
 | `app/src/main/java/com/returngift/agent/service/PermissionPromptNotifier.kt` | Heads-up mirror with the same choices when the app is in the background |
 | `app/src/main/java/com/returngift/agent/service/PermissionAnswerReceiver.kt` | Notification answer → broker |
+| `app/src/main/java/com/returngift/agent/agent/AppAllowListStore.kt` | Per-app policy store (DB v2): mode = always / ask / blocked, with migration |
+| `app/src/main/java/com/returngift/agent/agent/permission/AppAccessMode.kt` | Pure tri-state enum (Always allow / Ask / Blocked) |
+| `app/src/main/java/com/returngift/agent/agent/permission/AppAccessPolicy.kt` | Pure rules: when to ask, what to persist for each card answer |
+| `app/src/main/java/com/returngift/agent/agent/permission/AppAccessGate.kt` | Single runtime decision point used by the agent loop and Tier-1 tools |
+| `app/src/main/java/com/returngift/agent/agent/prefs/AgentPreferences.kt` | User toggles: ask before new app, remember permanently, open card, notify, enforce micro-steps |
+| `app/src/main/java/com/returngift/agent/agent/knowledge/AppUsageGuide.kt` | Per-app recipes + surfaces (Chrome, LinkedIn, YouTube, WhatsApp, …) for prompt + UI |
+| `app/src/main/java/com/returngift/agent/agent/knowledge/InstalledApps.kt` | Cached launchable-app list (PackageManager) |
+| `app/src/main/java/com/returngift/agent/ui/settings/AppAllowListActivity.kt` | Settings → App permissions: toggles + per-app Always/Ask/Blocked rows with hints |
 | `app/src/main/java/com/returngift/agent/agent/TokenMonitor.kt` | Token/cost display counters — NO ceiling (the 200K CRITICAL abort was removed) |
 | `app/src/main/java/com/returngift/agent/agent/PipelineRouter.kt` | Tier-1 router with isEscalation param to skip to Tier-3 |
 | `app/src/main/java/com/returngift/agent/agent/Tier1Telemetry.kt` | Escalation tracking for routing quality |

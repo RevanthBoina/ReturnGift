@@ -197,11 +197,32 @@ private fun PermissionPromptScreen(
                 ),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(
-                    text = request.body(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp),
-                )
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = request.body(),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    // How the agent will actually use this app (same recipes the model
+                    // receives), so the user knows what they are approving.
+                    val guide = remember(request.packageName) {
+                        com.returngift.agent.agent.knowledge.AppUsageGuide.forPackage(request.packageName)
+                    }
+                    if (guide != null) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "How the agent will use ${guide.label}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        guide.tips.take(3).forEach { tip ->
+                            Text(
+                                text = "• $tip",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(24.dp))
 

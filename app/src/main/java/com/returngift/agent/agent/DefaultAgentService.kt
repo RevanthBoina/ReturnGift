@@ -714,6 +714,23 @@ class DefaultAgentService : AgentService {
             append(emailComposeGuard.buildPromptSection())
             append(directDeviceDataGuard.buildPromptSection())
             append(artifactContract.buildPromptSection())
+            // App usage guide: concrete per-app recipes (Chrome/LinkedIn/YouTube/…)
+            // for the apps this task touches, limited to apps installed on this
+            // device. Knowledge-only tasks skip it entirely.
+            if (taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION) {
+                append(
+                    com.returngift.agent.agent.knowledge.AppUsageGuide.promptSection(
+                        task = rawUserRequest,
+                        installedPackages = try {
+                            com.returngift.agent.agent.knowledge.InstalledApps.packageNames(
+                                ClawApplication.instance
+                            )
+                        } catch (_: Exception) {
+                            emptyList()
+                        },
+                    )
+                )
+            }
             if (allowedTools != null) {
                 append("\n\n## Task type: ").append(taskIntent.intent.name)
                 append("\nThis is NOT a device-control task. Answer directly from knowledge")
@@ -822,6 +839,8 @@ class DefaultAgentService : AgentService {
         // one action that MUST follow (typed text → press Enter / tap Send, tap → confirm,
         // permission dialog → grant, …). The tracker vetoes a premature finish below.
         val microStepTracker = com.returngift.agent.agent.exec.micro.MicroStepTracker()
+        // Respects Settings → App permissions → "Enforce mid-task steps".
+        val microStepsEnabled = com.returngift.agent.agent.prefs.AgentPreferences.enforceMicroSteps
         val stuckDetector = StuckDetector()
         val interactionWatchdog = InteractionWatchdog()
         val observeStallGuard = ObserveStallGuard()
@@ -995,8 +1014,9 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                     }
                     // Mid-task micro-step: a text-only "done" is not done while a
                     // mandatory follow-up is outstanding (e.g. the message was typed
-                    // but Enter/Send never happened).
-                    microStepTracker.blockFinishReason()?.let { microBlock ->
+                    // but Enter/Send never happened). Users can switch this off in
+                    // Settings → App permissions.
+                    if (microStepsEnabled) microStepTracker.blockFinishReason()?.let { microBlock ->
                         XLog.i(TAG, "MicroStepTracker blocked text-only completion: $microBlock")
                         messages.add(UserMessage.from(microBlock))
                         continue
@@ -1053,7 +1073,7 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                     } catch (_: Exception) {
                         null
                     }
-                    microStepTracker.blockFinishReason()
+                    (if (microStepsEnabled) microStepTracker.blockFinishReason() else null)
                         ?: directDeviceDataGuard.maybeBlockFinish()
                         ?: inAppSearchGuard.maybeBlockFinish(screenInfo)
                         ?: emailComposeGuard.maybeBlockFinish(screenInfo)
@@ -1606,7 +1626,9 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                 val microForeground = verification?.foregroundPackage
                     ?: try { ClawAccessibilityService.getInstance()?.getForegroundPackage() } catch (_: Exception) { null }
                     ?: currentTargetPackage
-                val microPlan = microStepTracker.observe(
+                val microPlan = if (!microStepsEnabled) {
+                    com.returngift.agent.agent.exec.micro.MicroPlan("disabled", "micro-steps off", emptyList())
+                } else microStepTracker.observe(
                     MicroStepBridge.observe(
                         toolName = toolName,
                         params = params,
