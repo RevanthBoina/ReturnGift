@@ -71,7 +71,7 @@ class AppAllowListStore private constructor(context: Context) :
      * Returns true if the agent may act in [packageName] permanently (mode ALWAYS).
      * Never inserts a row: unknown apps are "ask", which the gate prompts for.
      */
-    fun isAllowed(packageName: String): Boolean = modeFor(packageName) == AppAppAccessMode.ALWAYS
+    fun isAllowed(packageName: String): Boolean = modeFor(packageName) == AppAccessMode.ALWAYS
 
     /**
      * Current access mode, or null when the app has never been seen.
@@ -79,7 +79,7 @@ class AppAllowListStore private constructor(context: Context) :
      */
     fun modeFor(packageName: String): AppAccessMode? = getEntry(packageName)?.mode
 
-    /** Mode with a safe default for unknown apps ([AppAppAccessMode.ASK]). */
+    /** Mode with a safe default for unknown apps ([AppAccessMode.ASK]). */
     fun modeOrDefault(packageName: String): AppAccessMode = modeFor(packageName) ?: AppAccessMode.ASK
 
     /**
@@ -98,7 +98,7 @@ class AppAllowListStore private constructor(context: Context) :
         val cv = ContentValues().apply {
             put(COL_PKG, packageName)
             put(COL_LABEL, label)
-            put(COL_ALLOWED, if (mode == AppAppAccessMode.ALWAYS) 1 else 0)
+            put(COL_ALLOWED, if (mode == AppAccessMode.ALWAYS) 1 else 0)
             put(COL_MODE, mode.storageValue)
             put(COL_FIRST_SEEN, now)
             put(COL_UPDATED, now)
@@ -122,7 +122,7 @@ class AppAllowListStore private constructor(context: Context) :
             // appeared concurrently.
             writableDatabase.execSQL(
                 "UPDATE $TABLE SET $COL_MODE = ?, $COL_ALLOWED = ?, $COL_UPDATED = ? WHERE $COL_PKG = ?",
-                arrayOf(mode.storageValue, if (mode == AppAppAccessMode.ALWAYS) 1 else 0, now, packageName)
+                arrayOf(mode.storageValue, if (mode == AppAccessMode.ALWAYS) 1 else 0, now, packageName)
             )
         } else {
             writableDatabase.execSQL(
@@ -130,11 +130,11 @@ class AppAllowListStore private constructor(context: Context) :
                     (if (label.isNotBlank()) ", $COL_LABEL = ?" else "") + " WHERE $COL_PKG = ?",
                 if (label.isNotBlank()) {
                     arrayOf<Any>(
-                        mode.storageValue, if (mode == AppAppAccessMode.ALWAYS) 1 else 0, now, label, packageName
+                        mode.storageValue, if (mode == AppAccessMode.ALWAYS) 1 else 0, now, label, packageName
                     )
                 } else {
                     arrayOf<Any>(
-                        mode.storageValue, if (mode == AppAppAccessMode.ALWAYS) 1 else 0, now, packageName
+                        mode.storageValue, if (mode == AppAccessMode.ALWAYS) 1 else 0, now, packageName
                     )
                 }
             )
@@ -163,7 +163,7 @@ class AppAllowListStore private constructor(context: Context) :
                     AppEntry(
                         packageName = cursor.getString(0),
                         label = cursor.getString(1),
-                        allowed = mode == AppAppAccessMode.ALWAYS,
+                        allowed = mode == AppAccessMode.ALWAYS,
                         firstSeenAt = cursor.getLong(3),
                         mode = mode,
                     )
@@ -192,7 +192,7 @@ class AppAllowListStore private constructor(context: Context) :
                 return AppEntry(
                     packageName = cursor.getString(0),
                     label = cursor.getString(1),
-                    allowed = mode == AppAppAccessMode.ALWAYS,
+                    allowed = mode == AppAccessMode.ALWAYS,
                     firstSeenAt = cursor.getLong(3),
                     mode = mode,
                 )
