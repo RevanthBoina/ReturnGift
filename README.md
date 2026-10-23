@@ -183,6 +183,16 @@ User Task → Tier 1 Deterministic Parser → Direct Intent/Tool
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v3.3.0
+- **No token ceiling**: the hard 200K-token abort (and its constant) is gone — token state is now purely informational and `TaskBudget` is the only cost stop.
+- **Permission requests open the app's own UI**: the ReturnGift permission card (`PermissionPromptActivity`) comes to the foreground with a heads-up mirror, parks the agent thread and returns your answer (Allow once / Always allow / Cancel). Timeouts resolve to "cancelled" instead of pretending to proceed.
+- **Mid-task micro-steps**: a 73-rule catalog plans the small follow-up steps in the middle of a task (e.g. after typing, press Enter/Send and verify the screen changed) and refuses a premature "done" until the send actually happened.
+- **Permission toggles (Settings → Permissions → App permissions)**: switch ask-before-new-app, remember-choices-permanently (temporary vs permanent grants), open-the-card-in-front, background notification, and mid-task-step enforcement on or off at any time.
+- **Per-app access is tri-state**: **Always allow / Ask / Blocked** instead of a plain switch, with a one-tap reset back to first-encounter. New apps default to Ask instead of being silently allowed.
+- **Better app UI**: the permission screen lists the apps actually installed on the device (Chrome, LinkedIn, YouTube, WhatsApp, …) with icons, search, filters and a one-line description of what the agent will do in each; the permission card shows the same "how the agent will use this app" steps.
+- **Better model use of installed apps**: curated per-app recipes and UI surfaces (address bar, post composer, search field, chat composer, …) are injected into the system prompt for device tasks, limited to apps named in the request or installed on the device.
+- Database migration: the allow-list moves to v2 with a `mode` column (existing ON → Always allow, OFF → Blocked); no data is lost.
+
 ### v2.1.0
 - **Shared Persistent Memory Across Chats**: Added `SharedKnowledgeStore` persistent cross-chat key-value memory layer storing user preferences, discovered facts, and app states that persist across conversations without polluting short-term dialogue context.
 - **Execution Trajectory Tracker**: Integrated `ExecutionTracker` recording append-only structured trajectories (observations, thoughts, tool actions, latencies, and outcomes) inspired by Browser Use and OpenHands event streams.

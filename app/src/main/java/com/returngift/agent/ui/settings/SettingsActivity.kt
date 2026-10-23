@@ -136,8 +136,8 @@ class SettingsActivity : BaseActivity() {
         permAppAccess?.setTrailingText(
             try {
                 val entries = com.returngift.agent.agent.AppAllowListStore.getInstance(this).getAllEntries()
-                val always = entries.count { it.mode == com.returngift.agent.agent.AppAccessMode.ALWAYS }
-                val blocked = entries.count { it.mode == com.returngift.agent.agent.AppAccessMode.BLOCKED }
+                val always = entries.count { it.mode == AppAccessMode.ALWAYS }
+                val blocked = entries.count { it.mode == AppAccessMode.BLOCKED }
                 "$always allowed · $blocked blocked"
             } catch (_: Exception) {
                 "Manage"

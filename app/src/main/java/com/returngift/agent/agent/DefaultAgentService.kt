@@ -1016,7 +1016,11 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                     // mandatory follow-up is outstanding (e.g. the message was typed
                     // but Enter/Send never happened). Users can switch this off in
                     // Settings → App permissions.
-                    if (microStepsEnabled) microStepTracker.blockFinishReason()?.let { microBlock ->
+                    // NOTE: a non-local `continue` inside an inline lambda is not
+                    // supported by the Kotlin version this app compiles with (it only
+                    // landed in 2.2), so keep this as a plain if/else.
+                    val microBlock = if (microStepsEnabled) microStepTracker.blockFinishReason() else null
+                    if (microBlock != null) {
                         XLog.i(TAG, "MicroStepTracker blocked text-only completion: $microBlock")
                         messages.add(UserMessage.from(microBlock))
                         continue
