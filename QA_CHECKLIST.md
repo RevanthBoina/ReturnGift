@@ -1674,8 +1674,9 @@ adb pull /sdcard/Android/data/com.returngift.agent/files/vault/ /tmp/vault/
 
 ## ST — Stall & Token Defense (2026-08-21)
 
-Covers `ObserveStallGuard`, the TokenMonitor CRITICAL hard abort, and the StuckDetector
-wiring fix in `DefaultAgentService.runAgentLoop`. Reference patterns: android_world m3a
+Covers `ObserveStallGuard`, the StuckDetector wiring fix in
+`DefaultAgentService.runAgentLoop`, and (since 2026-10-23) the REMOVAL of the TokenMonitor
+CRITICAL 200K hard abort. Reference patterns: android_world m3a
 per-step history as progress signal, droidrun bounded action history.
 
 ### ST.1 Observe-only stall hint `[ADB] [LLM-CLOUD] [LOGCAT-DEBUG]`
@@ -1691,11 +1692,16 @@ per-step history as progress signal, droidrun bounded action history.
   `ExecutionTracker.endTask` records outcome `STALL_ABORT`, and the user sees a completion
   message saying the task was stopped for re-reading an unchanged screen (with token usage).
 
-### ST.3 Token CRITICAL hard abort `[ADB] [LLM-CLOUD]`
-- **Act**: temporarily lower the CRITICAL threshold (or drive token usage past 200K, e.g.
-  repeated web_fetch of long pages) with TaskBudget set above the threshold.
-- **PASS**: the task aborts with outcome `BUDGET_ABORT` and a user-visible "safety ceiling"
-  message even though the user-configured budget was not reached; no further LLM calls occur.
+### ST.3 Token usage is UNBOUNDED (no ceiling) `[ADB] [LLM-CLOUD] [UNIT]`
+- **Act**: with no TaskBudget configured (Settings → task budget = Unlimited), drive usage past
+  the old 200K ceiling (repeated long web_fetch or a long multi-step task).
+- **PASS**: the task keeps running; logcat shows no `Token CRITICAL hard abort`, the floating pill
+  shows the token count with the WARNING display colour only, and the run ends because the task
+  finished/stopped by the user — never because of a built-in token ceiling.
+- **Unit**: `TokenMonitorTest` (5 cases, incl. 5,000,000 tracked tokens and a reflection guard that
+  `TokenMonitor.Status` carries no `limit`/`ceiling` field).
+- **Regression**: the ONLY cost stop is the user-configured TaskBudget (HARD/SOFT limit paths in
+  `runAgentLoop`); verify it still fires when a budget IS configured.
 
 ### ST.4 StuckDetector real-signal wiring `[ADB] [LOGCAT-DEBUG]`
 - **Act**: run a task whose tool calls fail repeatedly with the same error (e.g. tap a
@@ -4010,3 +4016,103 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 - `[2026-09-07] [CI-PREFLIGHT-PASS] [v3.2.1-followup]` Kotlin compile advanced, Java compile failed at `GetInstalledAppsTool.java` — `AppEntry.label/packageName have private access` (4 errors). Fixed: use the generated getters `entry.getLabel()` / `entry.getPackageName()` in Java to access Kotlin `data class` properties. Documented in `docs/RELEASE_BUILD_DIAGNOSTICS.md` Pitfall 9 cluster (e).
 - Runtime QA for the next tag (v3.2.3): `get_installed_apps` must list apps (with and without a keyword), and `open_app` by label/alias must still resolve (regression check for the getter swap).
 
+
+
+---
+
+## MS — Mid-task micro-step planning (2026-10-23)
+
+Every tool call is followed by a deterministic micro-step plan
+(`agent/exec/micro/`): *type text → press Enter / tap Send*, *tap search icon → focus
+field*, *permission dialog → Allow*, … 73 catalogued cases. The plan is injected into
+the model's history once per rule and a premature `finish` / text-only completion is
+rejected while an actionable micro-step is outstanding.
+
+**Unit coverage (JVM, no device):** `MicroStepPlannerTest` — one test per catalogue case
+(73) + catalogue-shape test (≥50 unique ids) + 8 tracker tests + 4 bridge tests = 86 tests,
+all green (verified locally with a JVM Kotlin compile + real runner, not just reviewed).
+
+### MS.1 Type-then-send is enforced `[ADB] [LLM-CLOUD or LLM-LOCAL] [LOGCAT-DEBUG]`
+- **Act**: "Send Mom a WhatsApp message saying I'll be late" with WhatsApp allow-listed.
+- **PASS**: logcat shows `MicroStep pending (type_chat_tap_send|type_chat_press_enter)` right
+  after `input_text`; the next model input contains `[Micro-step check — rule …]`; the
+  message is actually sent (Send tapped or Enter pressed) before the agent reports done.
+- **Failure guard**: if the model calls `finish` directly after typing, logcat shows
+  `Task guard blocked premature finish … Not finished yet: press Enter …` and the task continues.
+
+### MS.2 No false finish vetoes `[ADB] [LOGCAT-DEBUG]`
+- **Act**: run a normal multi-step task (open app → tap → finish).
+- **PASS**: `finish` is accepted whenever the outstanding plan contains only verification/wait
+  steps (loop-owned); no retry loop of blocked `finish` calls in logcat.
+
+### MS.3 Micro-step guidance does not spam `[ADB] [LOGCAT-DEBUG]`
+- **Act**: type text, then let the model do nothing for 2 rounds.
+- **PASS**: the `[Micro-step check …]` message appears exactly once per outstanding rule.
+
+### MS.4 Catalogue regression `[UNIT]`
+- **Act**: `./gradlew :app:testDebugUnitTest --tests '*MicroStepPlannerTest*'`.
+- **PASS**: 86/86 green; every catalogue id resolves and no rule is shadowed by a broader one.
+
+---
+
+## PM — Permission prompts open the APK interface (2026-10-23)
+
+`PermissionPromptBroker` + `PermissionPromptActivity` (the app's own permission card) are now
+opened whenever ReturnGift asks for an app or system permission. The agent thread parks until
+the user answers; choices are Allow once / Always allow / Cancel (app access) or
+Open settings / Cancel (system capability). A heads-up notification mirrors the same choices
+when the app is in the background.
+
+### PM.1 First-encounter app prompt opens the app UI `[ADB] [LLM-CLOUD]`
+- **Act**: fresh install → "Open Instagram and like the first post" (Instagram never seen).
+- **PASS**: the ReturnGift permission card opens in the foreground with Instagram's icon,
+  title `Allow ReturnGift to act in Instagram?`, and three buttons; logcat shows
+  `AllowListToolGate: permission prompt raised for com.instagram.android`.
+
+### PM.2 Allow once is task-scoped `[ADB]`
+- **Act**: choose **Allow once**, finish the task; then run a second task targeting the same app.
+- **PASS**: the card is shown again on the second task (the grant did not persist);
+  Settings → App Permissions shows the app with the switch OFF after the first task.
+
+### PM.3 Always allow persists `[ADB]`
+- **Act**: choose **Always allow**, finish, then re-run a task against that app.
+- **PASS**: no prompt on the second run; Settings → App Permissions shows the switch ON.
+
+### PM.4 Cancel / timeout blocks honestly `[ADB]`
+- **Act**: choose **Cancel** (and separately: ignore the card for 45s).
+- **PASS**: the tool call is blocked with `Action blocked: permission to act in "<app>" was not
+  granted…` surfaced in chat; the agent does not act inside the app; no crash.
+
+### PM.5 Background task still surfaces the request `[ADB]`
+- **Act**: start a task via the debug receiver/external automation (app in background) targeting
+  a never-seen app.
+- **PASS**: a high-importance "App permissions" notification appears with Allow once /
+  Always allow / Cancel actions; tapping it opens the permission card; answering from the
+  notification resumes the parked task.
+
+### PM.6 Missing accessibility opens the card `[ADB]`
+- **Act**: disable the accessibility service, then send any device task.
+- **PASS**: the ReturnGift permission card opens with an "Accessibility" explanation and an
+  **Open settings** button that lands on the accessibility settings page; Cancel closes it and
+  the chat shows the accessibility-not-enabled error.
+
+### PM.7 Cancel task unparks the prompt `[ADB]`
+- **Act**: with a permission card open, press Stop in ReturnGift (or cancel via the notification).
+- **PASS**: `PermissionPromptBroker` resolves to CANCEL immediately (no 45s hang); logcat shows
+  `Permission prompt cancelled with the task`.
+
+### QA Debug Changelog — token ceiling / permission card / micro-steps (2026-10-23)
+- `[2026-10-23] [UNIT-PASS] [MS.1-MS.4 PM.1-PM.7]`:
+  1. Removed the TokenMonitor `CRITICAL` state and the 200K hard abort; token usage is now
+     unbounded and `State` is a cosmetic display band (NORMAL/CAUTION/WARNING).
+  2. Added the in-app permission card (`ui/permission/PermissionPromptActivity`), the blocking
+     broker, a heads-up notifier + answer receiver, and wired it into `AllowListToolGate`
+     (first encounter / disabled app), `DefaultAgentService.preCheck` (accessibility) and the
+     monitor-setup path; `AppCapabilityCoordinator.requestCapability` is the entry point.
+  3. Added the mid-task micro-step planner (`agent/exec/micro/`, 73 rules), wired into
+     `runAgentLoop` after every tool call and enforced at `finish` + text-only completion.
+  - Verified locally with a JVM compile + runner of the pure Kotlin code: **107 tests green**
+    (86 micro-step + 5 TokenMonitor + 6 PermissionRequest + 10 PermissionPromptBroker — the
+    broker tests run the real latch/timeout machinery on background threads). Android-side
+    compile/device run still requires the next CI/APK build. (See `AGENTS.md`-style sandbox
+    note: this checkout has no Android SDK, so `./gradlew` cannot run here.)

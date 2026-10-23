@@ -33,6 +33,17 @@ This is the repo map for coding agents. Keep canonical information in existing f
 | `app/src/main/java/com/returngift/agent/agent/exec/DeterministicUiExecutor.kt` | Bounded executor with WAIT_FOR_TARGET polling + waitForMs per step |
 | `app/src/main/java/com/returngift/agent/agent/exec/StructuredRoutineRegistry.kt` | Registry of deterministic routines (LinkedInPostRoutine) |
 | `app/src/main/java/com/returngift/agent/agent/exec/routines/LinkedInPostRoutine.kt` | LinkedIn posting routine with hardened selectors + wait |
+| `app/src/main/java/com/returngift/agent/agent/exec/micro/MicroStepCatalog.kt` | 73 mid-task micro-step rules (type → Enter/Send, tap → confirm, permission → Allow…) |
+| `app/src/main/java/com/returngift/agent/agent/exec/micro/MicroStepPlanner.kt` | Deterministic planner: context → mandatory next micro-step(s) + guidance text |
+| `app/src/main/java/com/returngift/agent/agent/exec/micro/MicroStepTracker.kt` | Per-task state machine; vetoes premature `finish` while an action is outstanding |
+| `app/src/main/java/com/returngift/agent/agent/exec/micro/MicroStepBridge.kt` | Tool call (name/params/foreground pkg) → micro-step context |
+| `app/src/main/java/com/returngift/agent/agent/permission/PermissionRequest.kt` | Pure permission-request model (app access vs system capability, choices, decisions) |
+| `app/src/main/java/com/returngift/agent/agent/permission/PermissionPromptBroker.kt` | Blocking bridge: opens the permission card, parks the agent thread, returns the decision |
+| `app/src/main/java/com/returngift/agent/agent/permission/PermissionPromptLauncher.kt` | Foreground launch of the permission card from any context |
+| `app/src/main/java/com/returngift/agent/ui/permission/PermissionPromptActivity.kt` | The APK's permission card (icon, reason, Allow once / Always allow / Cancel, Open settings) |
+| `app/src/main/java/com/returngift/agent/service/PermissionPromptNotifier.kt` | Heads-up mirror with the same choices when the app is in the background |
+| `app/src/main/java/com/returngift/agent/service/PermissionAnswerReceiver.kt` | Notification answer → broker |
+| `app/src/main/java/com/returngift/agent/agent/TokenMonitor.kt` | Token/cost display counters — NO ceiling (the 200K CRITICAL abort was removed) |
 | `app/src/main/java/com/returngift/agent/agent/PipelineRouter.kt` | Tier-1 router with isEscalation param to skip to Tier-3 |
 | `app/src/main/java/com/returngift/agent/agent/Tier1Telemetry.kt` | Escalation tracking for routing quality |
 | `app/src/main/java/com/returngift/agent/agent/dryrun/DryRunRunner.kt` | Preview mode with keep_preview_mode + context-aware Toast |

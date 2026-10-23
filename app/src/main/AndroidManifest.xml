@@ -114,8 +114,22 @@
             </intent-filter>
         </activity>
 
+        <!-- Permission card of the APK: opened (foreground) whenever the agent
+             needs an app or system permission before acting. -->
+        <activity
+            android:name=".ui.permission.PermissionPromptActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density"
+            android:theme="@style/Theme.ReturnGift" />
+
         <receiver
             android:name=".service.ClarificationAnswerReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".service.PermissionAnswerReceiver"
             android:exported="false" />
 
         <receiver

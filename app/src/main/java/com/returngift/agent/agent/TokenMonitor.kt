@@ -8,6 +8,13 @@ import com.returngift.agent.utils.XLog
 /**
  * Tracks token usage and estimated cost during agent task execution.
  * Updated after each LLM call in the agent loop.
+ *
+ * There is NO token ceiling here. Usage is reported for display/telemetry only;
+ * the only thing that can stop a task on cost is the user-configured
+ * [TaskBudget] (Settings → task budget), and it is unlimited unless the user
+ * sets it. The previous absolute 200K "CRITICAL" hard abort was removed on
+ * request: it silently killed long-but-legitimate tasks regardless of the
+ * user's own budget.
  */
 class TokenMonitor(private val modelName: String) {
 
@@ -16,11 +23,14 @@ class TokenMonitor(private val modelName: String) {
     private var totalTokens: Int = 0
     private var currentStep: Int = 0
 
+    /**
+     * Cosmetic display bands only — they never abort a task and carry no limit.
+     * There is deliberately no upper band: token use is unbounded.
+     */
     enum class State {
-        NORMAL,     // 0-30K tokens
-        CAUTION,    // 30K-100K
-        WARNING,    // 100K-200K
-        CRITICAL    // 200K+
+        NORMAL,     // < 30K
+        CAUTION,    // >= 30K
+        WARNING,    // >= 100K
     }
 
     data class Status(
@@ -58,7 +68,6 @@ class TokenMonitor(private val modelName: String) {
     fun getStatus(): Status {
         val cost = ModelPricing.estimateCost(modelName, totalInputTokens, totalOutputTokens)
         val state = when {
-            totalTokens >= 200_000 -> State.CRITICAL
             totalTokens >= 100_000 -> State.WARNING
             totalTokens >= 30_000 -> State.CAUTION
             else -> State.NORMAL
