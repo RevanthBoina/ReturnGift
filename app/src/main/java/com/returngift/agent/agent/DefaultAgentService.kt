@@ -24,6 +24,9 @@ import com.returngift.agent.tool.impl.GetScreenInfoTool
 import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.agent.InterruptDetector
 import com.returngift.agent.agent.AllowListToolGate
+import com.returngift.agent.agent.exec.micro.MicroStepBridge
+import com.returngift.agent.agent.exec.micro.MicroStepPlanner
+import com.returngift.agent.agent.exec.micro.MicroStepTracker
 import com.returngift.agent.agent.UndoManager
 import com.returngift.agent.agent.memory.LearnedProcedureStore
 import com.google.gson.Gson
@@ -513,9 +516,20 @@ class DefaultAgentService : AgentService {
         stepHistory: MutableList<String>? = null,
         taskId: String,
     ) {
-        // Pre-flight check
-        preCheck()?.let {
-            callback.onError(0, RuntimeException(it), 0)
+        // Pre-flight check. When a required capability is missing we OPEN the
+        // permission card (the APK interface) instead of only returning an error
+        // string, so the user can grant it right where the failure happened.
+        preCheck()?.let { message ->
+            try {
+                com.returngift.agent.AppCapabilityCoordinator.requestCapability(
+                    ClawApplication.instance,
+                    com.returngift.agent.AppRequirement.ACCESSIBILITY,
+                )
+                XLog.i(TAG, "preCheck failed — opened the permission card for ACCESSIBILITY")
+            } catch (e: Exception) {
+                XLog.w(TAG, "could not open the permission card from preCheck", e)
+            }
+            callback.onError(0, RuntimeException(message), 0)
             return
         }
 
@@ -532,6 +546,10 @@ class DefaultAgentService : AgentService {
         // Per-task consent grants: one "Allow once" covers ALL tool calls touching
         // that personal surface for the rest of THIS task run (never persisted).
         val taskConsentedSurfaces = mutableSetOf<String>()
+
+        // Per-app "Allow once" grants are per-task too: clear them so a grant from
+        // a previous run can never silently authorize this one.
+        AllowListToolGate.resetTaskGrants()
 
         // ── Personal-content consent gate (Rule 14) ─────────────────────
         // Reading the user's own emails/messages/photos is a supported device
@@ -696,6 +714,23 @@ class DefaultAgentService : AgentService {
             append(emailComposeGuard.buildPromptSection())
             append(directDeviceDataGuard.buildPromptSection())
             append(artifactContract.buildPromptSection())
+            // App usage guide: concrete per-app recipes (Chrome/LinkedIn/YouTube/…)
+            // for the apps this task touches, limited to apps installed on this
+            // device. Knowledge-only tasks skip it entirely.
+            if (taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION) {
+                append(
+                    com.returngift.agent.agent.knowledge.AppUsageGuide.promptSection(
+                        task = rawUserRequest,
+                        installedPackages = try {
+                            com.returngift.agent.agent.knowledge.InstalledApps.packageNames(
+                                ClawApplication.instance
+                            )
+                        } catch (_: Exception) {
+                            emptyList()
+                        },
+                    )
+                )
+            }
             if (allowedTools != null) {
                 append("\n\n## Task type: ").append(taskIntent.intent.name)
                 append("\nThis is NOT a device-control task. Answer directly from knowledge")
@@ -800,6 +835,12 @@ class DefaultAgentService : AgentService {
         var lastToolError: String? = null  // error of the last executed tool, null on success
         var previousScreenTexts: Set<String> = emptySet()
         val tokenMonitor = TokenMonitor(config.modelName)
+        // Mid-task micro-step planning: after every tool call the planner derives the
+        // one action that MUST follow (typed text → press Enter / tap Send, tap → confirm,
+        // permission dialog → grant, …). The tracker vetoes a premature finish below.
+        val microStepTracker = com.returngift.agent.agent.exec.micro.MicroStepTracker()
+        // Respects Settings → App permissions → "Enforce mid-task steps".
+        val microStepsEnabled = com.returngift.agent.agent.prefs.AgentPreferences.enforceMicroSteps
         val stuckDetector = StuckDetector()
         val interactionWatchdog = InteractionWatchdog()
         val observeStallGuard = ObserveStallGuard()
@@ -906,25 +947,9 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                 TaskBudget.Status.OK -> { /* continue normally */ }
             }
 
-            // Absolute runaway-cost guard: abort at TokenMonitor.CRITICAL (200K+) regardless of
-            // the user-configured TaskBudget — the observed 121.8K/74.1K observe-only burns prove
-            // a configured budget alone is not sufficient protection.
-            if (tokenStatus.state == TokenMonitor.State.CRITICAL) {
-                XLog.e(TAG, "Token CRITICAL hard abort at step $iterations: ${tokenStatus.formattedTokens} (${tokenStatus.formattedCost})")
-                ExecutionTracker.endTask(taskId, "BUDGET_ABORT", iterations, totalTokens)
-                callback.onComplete(
-                    iterations,
-                    "Task stopped: token usage reached the safety ceiling (${tokenStatus.formattedTokens} tokens, " +
-                    "${tokenStatus.formattedCost}). The task was aborted to prevent runaway cost. " +
-                    "Please re-run with a narrower instruction.",
-totalTokens,
-                        actualModelName
-                    )
-                    ExecutionTracker.endRound(commit = false)
-                    EngineHolder.releaseFast()
-                    return
-                }
-
+            // NOTE: there is no built-in token ceiling. TokenMonitor.State is a display
+            // band only; the ONLY cost-based stop is the user's TaskBudget above, and
+            // that budget is unlimited unless the user configured one.
             // DEBUG: log raw LLM response for tool calling diagnosis
             XLog.i(TAG, "runAgentLoop iter=$iterations response.text=${llmResponse.text?.take(500)}")
             XLog.i(TAG, "runAgentLoop iter=$iterations hasToolCalls=${llmResponse.hasToolExecutionRequests()} toolCallCount=${llmResponse.toolExecutionRequests?.size ?: 0}")
@@ -987,6 +1012,15 @@ totalTokens,
                         messages.add(UserMessage.from(correction))
                         continue
                     }
+                    // Mid-task micro-step: a text-only "done" is not done while a
+                    // mandatory follow-up is outstanding (e.g. the message was typed
+                    // but Enter/Send never happened). Users can switch this off in
+                    // Settings → App permissions.
+                    if (microStepsEnabled) microStepTracker.blockFinishReason()?.let { microBlock ->
+                        XLog.i(TAG, "MicroStepTracker blocked text-only completion: $microBlock")
+                        messages.add(UserMessage.from(microBlock))
+                        continue
+                    }
                     XLog.i(TAG, "runAgentLoop: text-only response, completing")
                     ExecutionTracker.endTask(taskId, "SUCCESS", iterations, totalTokens)
                     SharedKnowledgeStore.remember(SharedKnowledgeStore.Category.TASK_FACT, rawUserRequest, responseText, sourceTask = rawUserRequest)
@@ -1039,14 +1073,15 @@ totalTokens,
                     } catch (_: Exception) {
                         null
                     }
-                    directDeviceDataGuard.maybeBlockFinish()
+                    (if (microStepsEnabled) microStepTracker.blockFinishReason() else null)
+                        ?: directDeviceDataGuard.maybeBlockFinish()
                         ?: inAppSearchGuard.maybeBlockFinish(screenInfo)
                         ?: emailComposeGuard.maybeBlockFinish(screenInfo)
                         ?: artifactContract.maybeBlockFinish(params["summary"]?.toString() ?: "")
                 } else null
                 if (blockedFinish != null) {
                     val blockedResult = ToolResult.error(blockedFinish)
-                    XLog.i(TAG, "Task guard blocked premature finish for '$userPrompt'")
+                    XLog.i(TAG, "Task guard blocked premature finish for '$userPrompt' (${blockedFinish.take(80)})")
                     callback.onToolCall(iterations, toolName, displayName, toolArgs)
                     callback.onToolResult(iterations, toolName, displayName, params.toString(), blockedResult)
                     messages.add(ToolExecutionResultMessage.from(toolRequest, GSON.toJson(blockedResult)))
@@ -1377,6 +1412,7 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                         if (result.isSuccess) "ok" else "FAILED: ${result.error ?: "unknown error"}"
                 )
                 lastToolError = if (result.isSuccess) null else (result.error ?: "unknown error")
+
                 if (result.isSuccess) {
                     inAppSearchGuard.recordSuccessfulTool(toolName, params)
                     emailComposeGuard.recordSuccessfulTool(toolName)
@@ -1580,6 +1616,40 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                     && !recovery.modelHint.isNullOrBlank()) {
                     messages.add(UserMessage.from(recovery.modelHint))
                 }
+
+                // ── Mid-task micro-step planning ────────────────────────────────
+                // Runs AFTER the tool result message above so the
+                // AI-tool-call → tool-result → guidance ordering stays valid for the
+                // LLM APIs. Turns the tool call into a micro-step context and plans the
+                // ONE follow-up it requires; guidance is injected once per rule and
+                // enforced at the finish / text-only-completion paths.
+                val microForeground = verification?.foregroundPackage
+                    ?: try { ClawAccessibilityService.getInstance()?.getForegroundPackage() } catch (_: Exception) { null }
+                    ?: currentTargetPackage
+                val microPlan = if (!microStepsEnabled) {
+                    com.returngift.agent.agent.exec.micro.MicroPlan("disabled", "micro-steps off", emptyList())
+                } else microStepTracker.observe(
+                    MicroStepBridge.observe(
+                        toolName = toolName,
+                        params = params,
+                        success = result.isSuccess,
+                        foregroundPackage = microForeground,
+                        screenChanged = verification?.outcome !=
+                            ActionVerifier.VerificationOutcome.NO_CHANGE,
+                        stepIndex = iterations,
+                    )
+                )
+                if (!microPlan.isComplete) {
+                    XLog.i(
+                        TAG,
+                        "MicroStep pending (${microPlan.ruleId}) after $toolName: " +
+                            MicroStepPlanner.describe(microPlan.steps.first())
+                    )
+                    microStepTracker.guidanceOnce()?.let { guidance ->
+                        messages.add(UserMessage.from(guidance))
+                    }
+                }
+                // ── End mid-task micro-step planning ────────────────────────────
                 XLog.d(TAG, "displayName:$displayName toolName:$toolName")
             }
 
@@ -1771,6 +1841,8 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
         cancelled.set(true)
         // Unblock a parked ask_user call so the loop thread wakes and exits cleanly.
         com.returngift.agent.agent.clarify.ClarificationManager.cancelPending()
+        // Same for a parked permission prompt: cancel resolves to "do not act".
+        com.returngift.agent.agent.permission.PermissionPromptBroker.cancelPending()
         if (config.provider == LlmProvider.LOCAL) {
             // LiteRT native sendMessage is not interrupt-safe; let the current round yield
             // naturally, then surface Task cancelled after the client closes cleanly.

@@ -265,6 +265,8 @@ class TaskOrchestrator(
         // Unblock a parked ask_user call immediately (belt & braces with
         // DefaultAgentService.cancel — cancelPending is idempotent).
         com.returngift.agent.agent.clarify.ClarificationManager.cancelPending()
+        // Unblock a parked permission prompt too (resolves to "do not act").
+        com.returngift.agent.agent.permission.PermissionPromptBroker.cancelPending()
         if (::agentService.isInitialized) {
             agentService.cancel()
         }

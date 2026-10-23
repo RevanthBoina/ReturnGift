@@ -189,6 +189,53 @@ object AppCapabilityCoordinator {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    /**
+     * Ask for a system capability by opening ReturnGift's own permission card in
+     * the foreground first (the APK interface), with an "Open settings" button
+     * that lands on the exact system page from [openSystemSettings].
+     *
+     * Use this instead of jumping straight into system settings when the request
+     * is raised from the background (agent loop, monitor setup, notifications):
+     * the user always sees WHO is asking and WHY before leaving the app.
+     */
+    fun requestCapability(context: Context, requirement: AppRequirement) {
+        val request = com.returngift.agent.agent.permission.PermissionRequest.forCapability(
+            capabilityId = requirement.name,
+            label = capabilityLabel(requirement),
+            reason = capabilityReason(requirement),
+        )
+        com.returngift.agent.agent.permission.PermissionPromptLauncher.open(context, request)
+    }
+
+    /** User-facing name of a capability (short, used in the permission card title). */
+    fun capabilityLabel(requirement: AppRequirement): String = when (requirement) {
+        AppRequirement.ACCESSIBILITY -> "Accessibility"
+        AppRequirement.NOTIFICATION_PERMISSION -> "Notifications"
+        AppRequirement.NOTIFICATION_ACCESS -> "Notification access"
+        AppRequirement.OVERLAY -> "Display over other apps"
+        AppRequirement.BATTERY_OPTIMIZATION -> "Background running"
+        AppRequirement.STORAGE -> "All files access"
+        AppRequirement.RESTRICTED_SETTINGS -> "Install from this source"
+    }
+
+    /** One-sentence explanation shown on the permission card. */
+    fun capabilityReason(requirement: AppRequirement): String = when (requirement) {
+        AppRequirement.ACCESSIBILITY ->
+            "ReturnGift needs the accessibility service to see and tap the screen for your tasks."
+        AppRequirement.NOTIFICATION_PERMISSION ->
+            "Notifications let ReturnGift tell you when a task needs you while it runs in the background."
+        AppRequirement.NOTIFICATION_ACCESS ->
+            "Notification access is required to read and reply to messages for monitored chats."
+        AppRequirement.OVERLAY ->
+            "Display-over-other-apps lets the running-task pill and confirmations appear above other apps."
+        AppRequirement.BATTERY_OPTIMIZATION ->
+            "Exempting ReturnGift from battery optimisation keeps long tasks from being killed."
+        AppRequirement.STORAGE ->
+            "All-files access is needed to read and save files on your device for your tasks."
+        AppRequirement.RESTRICTED_SETTINGS ->
+            "Android restricts installs from this source; allow it in app info to update ReturnGift."
+    }
+
     fun openSystemSettings(context: Context, requirement: AppRequirement) {
         when (requirement) {
             AppRequirement.ACCESSIBILITY -> {

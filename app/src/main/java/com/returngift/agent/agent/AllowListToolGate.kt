@@ -14,21 +14,38 @@ import com.returngift.agent.utils.XLog
  * Resolves the foreground app package from the accessibility service and checks
  * the allow-list. Returns a non-null block message if the call should be halted.
  *
+ * The decision itself lives in [com.returngift.agent.agent.permission.AppAccessGate]
+ * (shared with the Tier-1 path). For an app that is set to "ask" — the default for
+ * a first encounter — the gate opens ReturnGift's permission card in the
+ * foreground, parks the agent thread and returns the user's decision:
+ *
+ *  - Allow once   → this task only (in-memory grant, not persisted)
+ *  - Always allow → persisted in the allow-list (unless remembering is switched off)
+ *  - Cancel/timeout → the tool call is blocked with an honest message
+ *  - Blocked in Settings → blocked without a prompt
+ *
  * Tools that always pass (never target a specific third-party app):
  *   finish, get_screen_info, get_device_info, get_notifications, get_installed_apps,
- *   take_screenshot, wait, clipboard, system_key, kb_*, find_node_info
+ *   take_screenshot, wait, clipboard, system_key, get_foreground_app, find_node_info
  */
 object AllowListToolGate {
 
     private const val TAG = "AllowListToolGate"
 
-    // Tools that are own-app-only and never act inside a third-party app
+    /** Tools that are own-app-only and never act inside a third-party app. */
     private val PASSTHROUGH_TOOLS = setOf(
         "finish", "get_screen_info", "get_device_info", "get_notifications",
         "get_installed_apps", "take_screenshot", "wait", "clipboard",
-        "system_key", "kb_write", "kb_read", "kb_search",
-        "kb_append", "kb_add_todo", "send_file"
+        "system_key", "get_foreground_app", "find_node_info",
+        "kb_write", "kb_read", "kb_search", "kb_append", "kb_add_todo",
+        "send_file", "web_search", "web_fetch",
     )
+
+    /** "Allow once" grants for the current task run (process memory only). */
+    fun resetTaskGrants() = com.returngift.agent.agent.permission.AppAccessGate.resetTaskGrants()
+
+    /** Packages granted for this task by "Allow once". */
+    fun taskGrants(): Set<String> = com.returngift.agent.agent.permission.AppAccessGate.taskGrants()
 
     /**
      * Returns null if the tool call is allowed, or a user-facing block message if not.
@@ -45,30 +62,22 @@ object AllowListToolGate {
     ): String? {
         if (toolName in PASSTHROUGH_TOOLS) return null
 
-        // Resolve package: explicit for open_app / send_message, foreground window otherwise
+        // Resolve package: explicit for open_app / switch_app, foreground window otherwise
         val targetPackage = resolveTargetPackage(toolName, params)
             ?: return null  // can't determine — allow through (don't block on ambiguity)
 
         // Skip ReturnGift's own package
         if (targetPackage == context.packageName) return null
 
-        val store = AppAllowListStore.getInstance(context)
-
-        return if (store.isFirstEncounter(targetPackage)) {
-            // Insert with default ON — the UI layer will surface the first-time prompt
-            val label = AppAllowListGuard.resolveLabel(context, targetPackage)
-            store.touchApp(targetPackage, label, allowed = true)
-            XLog.i(TAG, "First encounter recorded: $targetPackage — allow-list prompt should surface in UI")
-            // Return special sentinel so caller knows to show the prompt (but still allows this call)
-            null  // default ON means this specific execution proceeds; prompt shown by UI layer
-        } else if (!store.isAllowed(targetPackage)) {
-            val label = AppAllowListGuard.resolveLabel(context, targetPackage)
-            XLog.w(TAG, "Tool $toolName blocked by allow-list for $targetPackage")
-            "Action blocked: the agent is not allowed to act in \"$label\". " +
-            "Enable it in Settings → App Permissions to allow this."
-        } else {
-            null
+        val result = com.returngift.agent.agent.permission.AppAccessGate.evaluate(context, targetPackage)
+        if (!result.allowed) {
+            XLog.w(TAG, "Tool $toolName blocked: ${result.blockMessage}")
+            return result.blockMessage
         }
+        if (!result.automatic) {
+            XLog.i(TAG, "permission granted (${result.decision}) for $targetPackage")
+        }
+        return null
     }
 
     private fun resolveTargetPackage(toolName: String, params: Map<String, Any>): String? {

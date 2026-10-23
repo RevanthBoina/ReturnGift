@@ -509,12 +509,15 @@ class TaskFlowController(
         typedInput?.let { addUser(it) }
         val missing = AppCapabilityCoordinator.missingMonitorRequirements(activity)
         if (missing.isNotEmpty()) {
+            // Open the permission card (the app's own interface) for the first
+            // missing capability instead of only showing a toast: the user can
+            // grant it and come straight back to this task.
             Toast.makeText(
                 activity,
-                "Enable ${missing.joinToString(" & ") { it.label }} in Settings first",
+                "Enable ${missing.joinToString(" & ") { it.label }} to continue",
                 Toast.LENGTH_LONG
             ).show()
-            openSettings()
+            AppCapabilityCoordinator.requestCapability(activity, missing.first())
             onTaskTerminal?.invoke(TaskEvent.Failed("Missing required permissions for monitoring."))
             return
         }

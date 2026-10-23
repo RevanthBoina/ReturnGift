@@ -4,6 +4,7 @@
 package com.returngift.agent.ui.settings
 
 import android.Manifest
+import com.returngift.agent.agent.permission.AppAccessMode
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
@@ -62,6 +63,7 @@ class SettingsActivity : BaseActivity() {
     private var permBattery: com.returngift.agent.widget.MenuItem? = null
     private var permStorage: com.returngift.agent.widget.MenuItem? = null
     private var permRestricted: com.returngift.agent.widget.MenuItem? = null
+    private var permAppAccess: com.returngift.agent.widget.MenuItem? = null
     private var externalAutomationItem: com.returngift.agent.widget.MenuItem? = null
     private var globalPromptItem: com.returngift.agent.widget.MenuItem? = null
     private var customModelUrlItem: com.returngift.agent.widget.MenuItem? = null
@@ -130,6 +132,17 @@ class SettingsActivity : BaseActivity() {
         permOverlay?.setTrailingText(if (capabilities.overlayGranted) "Enabled" else "Disabled")
         permBattery?.setTrailingText(if (capabilities.batteryOptimizationIgnored) "Unrestricted" else "Restricted")
         permStorage?.setTrailingText(if (capabilities.storageAccessGranted) "Enabled" else "Disabled")
+
+        permAppAccess?.setTrailingText(
+            try {
+                val entries = com.returngift.agent.agent.AppAllowListStore.getInstance(this).getAllEntries()
+                val always = entries.count { it.mode == com.returngift.agent.agent.AppAccessMode.ALWAYS }
+                val blocked = entries.count { it.mode == com.returngift.agent.agent.AppAccessMode.BLOCKED }
+                "$always allowed · $blocked blocked"
+            } catch (_: Exception) {
+                "Manage"
+            }
+        )
     }
 
     private fun refreshExternalAutomation() {
@@ -300,6 +313,16 @@ class SettingsActivity : BaseActivity() {
                 }
             },
             showDivider = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        )
+
+        // Per-app access + the permission/micro-step behaviour toggles.
+        permAppAccess = permissionsGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_menu_manage,
+            title = "App permissions",
+            onClick = {
+                startActivity(Intent(this@SettingsActivity, AppAllowListActivity::class.java))
+            },
+            showDivider = true
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

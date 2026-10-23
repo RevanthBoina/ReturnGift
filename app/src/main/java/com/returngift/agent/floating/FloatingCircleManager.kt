@@ -250,7 +250,7 @@ object FloatingCircleManager {
      * @param step current step number
      * @param formattedTokens e.g. "33K"
      * @param formattedCost e.g. "$0.01"
-     * @param tokenState NORMAL/CAUTION/WARNING/CRITICAL
+     * @param tokenState NORMAL/CAUTION/WARNING (display bands only — no ceiling)
      */
     fun updateTokenStatus(step: Int, formattedTokens: String, formattedCost: String, tokenState: com.returngift.agent.agent.TokenMonitor.State) {
         ThreadUtils.runOnUiThread {
@@ -266,7 +266,6 @@ object FloatingCircleManager {
                 com.returngift.agent.agent.TokenMonitor.State.NORMAL -> R.color.colorBrandPrimary
                 com.returngift.agent.agent.TokenMonitor.State.CAUTION -> R.color.colorWarningPrimary
                 com.returngift.agent.agent.TokenMonitor.State.WARNING -> R.color.colorWarningPrimary
-                com.returngift.agent.agent.TokenMonitor.State.CRITICAL -> R.color.colorErrorPrimary
             }
             try {
                 val app = appRef ?: return@runOnUiThread
