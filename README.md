@@ -183,6 +183,15 @@ User Task → Tier 1 Deterministic Parser → Direct Intent/Tool
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v3.4.0
+- **No per-app code, ever**: application support is now *data*, not files. No Kotlin/Java file (app code or test) may be dedicated to a single app — a new app is a row, not a class. The rule is stated in `AGENTS.md` (Hard rules #1) and `CLAUDE.md`, and `scripts/check-app-agnostic.py` fails the build when a per-app filename appears.
+- **App knowledge learned from tasks**: successful steps teach the agent. After three successful, verifiable interactions with a UI surface (search field, chat composer, post composer) the agent stores a learned guide for that app — screens, labels, what worked. Curated guides are only *enriched* (observed labels added); their authored tips are never rewritten. Failure, taps, no-ops and blank input teach nothing.
+- **Knowledge that updates without a release**: guides live in a mergeable runtime store with precedence `learned > connector > built-in`, and an **MCP connector** can push new or overriding guides at runtime. A connector that fails is skipped without breaking anything else.
+- **One routine, many apps**: the posting routine is now capability-based, so “Post <text> on <app>” works for LinkedIn, X, Facebook and Instagram from a single data table, with the clarification prompt and routine id derived from the app instead of hard-coded; a post with no text asks for the text instead of posting junk.
+- **Flow recovery for any app**: the typed-search flow (open → search → submit → wait for results → open a result) is tested against *every* app the registry classifies as search/social/chat, so newly added apps are covered automatically. Generic searches no longer auto-open the first result.
+- **CI honesty**: `scripts/ci-preflight.sh` no longer aborts halfway on a machine without `ANDROID_HOME`, so every guard — including the new app-agnostic check — actually runs.
+- Verification for this build: 199 JVM unit tests green (micro-steps, flow recovery, deep links, blockers, retries, session memory, knowledge store/learner, social routine, permissions); Android assemble is validated by this release pipeline.
+
 ### v3.3.0
 - **No token ceiling**: the hard 200K-token abort (and its constant) is gone — token state is now purely informational and `TaskBudget` is the only cost stop.
 - **Permission requests open the app's own UI**: the ReturnGift permission card (`PermissionPromptActivity`) comes to the foreground with a heads-up mirror, parks the agent thread and returns your answer (Allow once / Always allow / Cancel). Timeouts resolve to "cancelled" instead of pretending to proceed.
