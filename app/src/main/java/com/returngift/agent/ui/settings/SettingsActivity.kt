@@ -64,6 +64,7 @@ class SettingsActivity : BaseActivity() {
     private var permStorage: com.returngift.agent.widget.MenuItem? = null
     private var permRestricted: com.returngift.agent.widget.MenuItem? = null
     private var permAppAccess: com.returngift.agent.widget.MenuItem? = null
+    private var permConnections: com.returngift.agent.widget.MenuItem? = null
     private var externalAutomationItem: com.returngift.agent.widget.MenuItem? = null
     private var globalPromptItem: com.returngift.agent.widget.MenuItem? = null
     private var customModelUrlItem: com.returngift.agent.widget.MenuItem? = null
@@ -323,6 +324,16 @@ class SettingsActivity : BaseActivity() {
                 startActivity(Intent(this@SettingsActivity, AppAllowListActivity::class.java))
             },
             showDivider = true
+        )
+
+        // MCP: remote tools the agent can use without shipping them in the APK.
+        permConnections = permissionsGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_menu_manage,
+            title = "MCP connections",
+            onClick = {
+                startActivity(Intent(this@SettingsActivity, McpServersActivity::class.java))
+            },
+            showDivider = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

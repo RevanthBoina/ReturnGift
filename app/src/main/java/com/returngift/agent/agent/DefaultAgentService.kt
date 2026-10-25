@@ -543,6 +543,72 @@ class DefaultAgentService : AgentService {
         val taskIntent = com.returngift.agent.agent.exec.TaskIntentClassifier.classify(rawUserRequest)
         XLog.i(TAG, "runAgentLoop: intent=${taskIntent.intent} (${taskIntent.reason})")
 
+        // ── Plan-first (AK.7) ────────────────────────────────────────────────
+        // Understand the request, state the steps, and ASK when a required detail is
+        // missing — before touching the device. Deterministic: no model call, no
+        // tokens, identical on the local-model path. Answers are folded back into the
+        // sentence and the plan is rebuilt, so "follow youtube" + "LinkedIn" plans
+        // the LinkedIn flow rather than the old guess.
+        val planContext = com.returngift.agent.agent.plan.PlanContextFactory.build(ClawApplication.instance)
+        var presentation = com.returngift.agent.agent.plan.PlanFirst.plan(rawUserRequest, planContext)
+        if (presentation.showPlan && presentation.markdown.isNotBlank()) {
+            callback.onContent(0, presentation.markdown)
+        }
+        if (presentation.blueprint.needsClarification) {
+            val answers = mutableMapOf<String, String>()
+            for (question in presentation.blueprint.questions.filter { it.blocking }.take(3)) {
+                val answer = com.returngift.agent.agent.clarify.ClarificationManager.request(
+                    question.question,
+                    question.choices,
+                    question.allowFreeText,
+                )
+                if (answer.isNullOrBlank() || answer.equals("Cancel", ignoreCase = true)) {
+                    callback.onComplete(
+                        0,
+                        "Stopped before starting: I need to know \"" + question.question + "\"",
+                        0,
+                        null,
+                    )
+                    return
+                }
+                answers[question.id] = answer
+                // The approval question is a yes/no gate, not new information.
+                if (question.id == "approval" && !answer.startsWith("Yes", ignoreCase = true)) {
+                    callback.onComplete(0, "Cancelled — nothing was changed.", 0, null)
+                    return
+                }
+            }
+            val clarified = com.returngift.agent.agent.plan.PlanClarifier.applyAnswers(
+                rawUserRequest,
+                presentation.blueprint,
+                answers,
+            )
+            presentation = com.returngift.agent.agent.plan.PlanFirst.plan(clarified, planContext)
+            if (presentation.markdown.isNotBlank() && clarified != rawUserRequest) {
+                callback.onContent(0, presentation.markdown)
+            }
+        }
+        if (presentation.blueprint.needsClarification) {
+            callback.onComplete(
+                0,
+                "I still need one detail before starting:\n" +
+                    presentation.blueprint.questions.joinToString("\n") { "- " + it.question },
+                0,
+                null,
+            )
+            return
+        }
+        if (!presentation.executeAfter) {
+            // Explicit "show me the plan" — stop here and wait for a go-ahead.
+            callback.onComplete(0, presentation.markdown + "\n\nSay \"go\" to run this plan.", 0, null)
+            return
+        }
+        val agreedPlanLine = com.returngift.agent.agent.plan.PlanFirst.promptLine(presentation.blueprint)
+        // Remote tools from connected MCP servers, ranked for THIS request (bounded).
+        val mcpSection = runCatching {
+            com.returngift.agent.agent.mcp.McpRuntime.promptSection(rawUserRequest)
+        }.getOrDefault("")
+
         // Per-task consent grants: one "Allow once" covers ALL tool calls touching
         // that personal surface for the rest of THIS task run (never persisted).
         val taskConsentedSurfaces = mutableSetOf<String>()
@@ -731,6 +797,8 @@ class DefaultAgentService : AgentService {
                     )
                 )
             }
+            if (agreedPlanLine.isNotEmpty()) append("\n\n").append(agreedPlanLine)
+            append(mcpSection)
             if (allowedTools != null) {
                 append("\n\n## Task type: ").append(taskIntent.intent.name)
                 append("\nThis is NOT a device-control task. Answer directly from knowledge")

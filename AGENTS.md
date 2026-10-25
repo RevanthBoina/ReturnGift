@@ -28,6 +28,56 @@
    (`SessionBlocker` is the pattern: detect → decide → tell).
 4. **Verify before claiming.** Android/Compose changes cannot be compiled in every
    sandbox; say so instead of implying a green build.
+5. **Plan before acting, ask before guessing.** A multi-step request must produce a
+   readable plan (`agent/plan`, `PlanFirst`) and any missing detail must become a
+   question, not an assumption. Plans are deterministic (no model call) and are
+   derived from `PlanContext` — never from a hard-coded app name.
+6. **Remote tools fail open.** MCP servers, connectors and model providers are
+   enhancements: a dead one is logged and skipped, never allowed to block a task.
+   `agent/mcp/McpRuntime` and `agent/routing/ProviderRouter` are the two patterns.
+
+## Plan-first + MCP + in-app routing (AK pack 2, 2026-10-25)
+
+Three capabilities added together because they share one goal: the agent should
+understand, explain and extend itself instead of guessing or shipping every
+integration in the APK.
+
+**Plan-first** (`agent/plan/`, pure Kotlin):
+- `IntentParser` → `TaskIntent` (capability + entities) from a deterministic grammar.
+- `PlanComposer` → ordered `PlanStep`s using `PlanContext` (installed apps + guide
+  registry). App names and the Companies/People filter come from data.
+- `PlanFirst` decides presentation: AUTO (show + run), PREVIEW ("show me the plan" →
+  stop), SILENT ("just do it" → no plan, questions still asked). Single-step and
+  knowledge requests get no plan.
+- `PlanClarifier` folds answers back into the sentence and re-plans, so a clarified
+  request cannot keep a stale assumption.
+- Wired at the top of `DefaultAgentService.runAgentLoop`; the agreed plan is also
+  added to the system prompt as one line.
+
+**MCP client** (`agent/mcp/`, pure Kotlin + `java.net`):
+- JSON-RPC 2.0 over Streamable HTTP: `initialize`, `notifications/initialized`,
+  `tools/list` (cursor pagination, 48-tool cap), `tools/call`, `resources/read`.
+- Forward-compatible: unknown capabilities/extensions/content types/notifications are
+  ignored (modelled on `openai/mcp-extensions`); legacy `experimental` is read too.
+- Session-aware: `Mcp-Session-Id` echoed; 404 → re-initialize once and retry.
+- `McpToolIndex` ranks tools per task (lexical, capped at 12 in the prompt) so a
+  chatty server cannot flood a local model's context.
+- `McpToolRegistrar` publishes tools into `ToolRegistry` as `mcp__<server>__<tool>`;
+  `McpKnowledgeBridge` exposes a resource as an `AppKnowledgeSource`.
+- UI: Settings → **MCP connections** (`ui/settings/McpServersActivity.kt`).
+
+**In-app model routing** (`agent/routing/`): the useful 5 % of a gateway
+(OmniRoute), without the server.
+- `ProviderCatalog` reads models/prices from `CloudProvider` and adds quality,
+  latency and tools/vision traits (~9 rows, 5 providers — deliberately few).
+- `TokenLedger`: 5-hour + 7-day windows, token/cost budgets, cooldowns.
+- `ProviderRouter`: filters → scores (`AUTO`/`CHEAPEST`/`FASTEST`/`QUALITY`/
+  `LOCAL_FIRST`) → ordered chain + explainable trace; failure taxonomy
+  (rate limit / quota / auth / transient / fatal) with cooldowns.
+- `llm/RoutedLlmClient` executes the chain and records the **actual** provider in the
+  data-egress ledger. Used only for OmniRoute + `auto` when a provider key exists.
+- Reference material: `docs/MCP_AND_MODEL_ROUTING.md` (incl. how OmniRoute bridges
+  the Antigravity CLI, and the measured 436.5 KiB bytecode cost).
 
 ## App-agnostic knowledge layer (AK pack, 2026-10-25)
 - **Rule added (see "Hard rules #1")**: no file dedicated to one app. The previous

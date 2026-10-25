@@ -43,6 +43,9 @@ object ToolRegistry {
             DeviceType.TV -> registerTvTools()
             DeviceType.MOBILE -> registerMobileTools()
         }
+        // MCP tools (if any server is already connected). Network work happens in
+        // the background at startup, so rebuilding the registry stays instant.
+        com.returngift.agent.agent.mcp.McpToolRegistrar.registerCached()
     }
 
     private fun registerCommonTools() {

@@ -20,15 +20,42 @@ object LlmClientFactory {
                 setFileLoggingEnabled(true, DefaultAgentService.FILE_LOGGING_CACHE_DIR)
             }
         }
-        return when (config.provider) {
+        val client = when (config.provider) {
             LlmProvider.OPENAI -> OpenAiLlmClient(config, httpClientBuilder)
             LlmProvider.ANTHROPIC -> AnthropicLlmClient(config, httpClientBuilder)
             LlmProvider.LOCAL -> LocalLlmClient(config)
-            LlmProvider.OMNIROUTE -> OmniRouteLlmClient(config, httpClientBuilder)
-        }.also { client ->
-            // P3.4: Wrap the client to log LEAVE events (data egress to cloud providers)
-            // at the ONE site per AGENTS.md — all providers' response path.
-            wrapWithLeaveTracking(client, config)
+            LlmProvider.OMNIROUTE -> routedOrGateway(config, httpClientBuilder)
+        }
+        // RoutedLlmClient records its own LEAVE rows (the actual provider varies per
+        // call, so the static wrap would mislabel them).
+        if (client is RoutedLlmClient) return client
+        // P3.4: Wrap the client to log LEAVE events (data egress to cloud providers)
+        // at the ONE site per AGENTS.md — all providers' response path.
+        return wrapWithLeaveTracking(client, config)
+    }
+
+    /**
+     * "OmniRoute / auto" means *the user wants routing*, not necessarily a gateway.
+     *
+     * When the device holds keys for any supported provider, routing happens in-app
+     * ([RoutedLlmClient]: direct calls, quota-aware failover, no server). Otherwise
+     * the existing gateway client is used unchanged, so a working gateway setup
+     * keeps working.
+     */
+    private fun routedOrGateway(
+        config: AgentConfig,
+        httpClientBuilder: OkHttpClientBuilderAdapter,
+    ): LlmClient {
+        val wantsAuto = config.modelName.isBlank() || config.modelName.equals("auto", ignoreCase = true)
+        val hasProviderKey = runCatching {
+            com.returngift.agent.agent.routing.RoutingLedger.availableProviders()
+                .any { it in RoutedLlmClient.SUPPORTED }
+        }.getOrDefault(false)
+        return if (wantsAuto && hasProviderKey) {
+            XLog.i("LlmClientFactory", "using in-app routing for 'auto' (no gateway hop)")
+            RoutedLlmClient(config, httpClientBuilder)
+        } else {
+            OmniRouteLlmClient(config, httpClientBuilder)
         }
     }
 

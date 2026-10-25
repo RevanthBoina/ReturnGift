@@ -183,6 +183,15 @@ User Task → Tier 1 Deterministic Parser → Direct Intent/Tool
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v3.5.0
+- **The agent plans before it acts**: every multi-step request produces a readable plan first — for "Follow youtube on LinkedIn" that is *Open LinkedIn → Search "YouTube" → Filter by Companies → Open the official YouTube page → Tap Follow → Verify the button shows Following*. Plans are derived from the device (installed apps + app guides), cost no tokens, and work on the local model too.
+- **It asks instead of guessing**: a missing app, contact, message text or a risky/irreversible action becomes a question. The answer is folded back into the request and the plan is rebuilt, so a clarified task can never run with the old assumption.
+- **You stay in control of planning**: "show me the plan" shows the steps and waits for a go-ahead; "just do it" hides the plan but still asks what it genuinely cannot know. One-step requests and plain questions get no ceremony.
+- **MCP connections**: the agent can now use tools from Model Context Protocol servers — Settings → MCP connections (add a URL + optional token). Tools are discovered at startup, ranked per task and capped, so a chatty server cannot flood the model; a broken server is skipped and never blocks a task. MCP resources can also deliver app knowledge without an app release.
+- **Routing inside the app instead of through a gateway**: with a provider key saved, "auto" now picks the model itself — quality/cost/latency aware, with 5-hour and 7-day quota windows, cooldown on rate limits/quota/auth errors, and automatic failover to the next provider. Every decision is explainable in one log line.
+- **Cost**: the three modules add **436.5 KiB of bytecode (0.32 % of the APK)** and **zero new dependencies** — no vendor SDKs, no Node runtime, no server. Details and measurements: `docs/MCP_AND_MODEL_ROUTING.md`.
+- Verification: 101 new JVM unit tests (planning, MCP protocol/runtime, routing) plus the existing knowledge suite; design notes in `docs/MCP_AND_MODEL_ROUTING.md`.
+
 ### v3.4.0
 - **No per-app code, ever**: application support is now *data*, not files. No Kotlin/Java file (app code or test) may be dedicated to a single app — a new app is a row, not a class. The rule is stated in `AGENTS.md` (Hard rules #1) and `CLAUDE.md`, and `scripts/check-app-agnostic.py` fails the build when a per-app filename appears.
 - **App knowledge learned from tasks**: successful steps teach the agent. After three successful, verifiable interactions with a UI surface (search field, chat composer, post composer) the agent stores a learned guide for that app — screens, labels, what worked. Curated guides are only *enriched* (observed labels added); their authored tips are never rewritten. Failure, taps, no-ops and blank input teach nothing.
