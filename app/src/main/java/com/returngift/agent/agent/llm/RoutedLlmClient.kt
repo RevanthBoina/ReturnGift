@@ -60,6 +60,14 @@ class RoutedLlmClient(
             "OPENROUTER" to "https://openrouter.ai/api/v1",
         )
 
+        /**
+         * Rounds in one task before we stop trying to fail over.
+         *
+         * Bounded on purpose: an exhausted chain that keeps hopping burns quota and
+         * latency. Three attempts covers "primary down, one fallback cold, one retry".
+         */
+        private const val MAX_ATTEMPTS = 3
+
         /** Providers this executor knows how to talk to. */
         val SUPPORTED = OPENAI_COMPATIBLE_BASE_URLS.keys + setOf("ANTHROPIC")
 

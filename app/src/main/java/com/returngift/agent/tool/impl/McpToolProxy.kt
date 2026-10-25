@@ -30,6 +30,9 @@ class McpToolProxy(private val def: McpToolDef) : BaseTool() {
 
     companion object {
         private const val TAG = "McpToolProxy"
+
+        /** A server-supplied description is data; keep it short for the prompt. */
+        private const val MAX_DESCRIPTION_CHARS = 400
         private val ALLOWED_TYPES = setOf("string", "integer", "number", "boolean", "object", "array")
 
         /**
@@ -51,6 +54,24 @@ class McpToolProxy(private val def: McpToolDef) : BaseTool() {
     }
 
     override fun getName(): String = def.qualifiedName
+
+    /**
+     * What this tool does, in the server's own words.
+     *
+     * It is third-party text, so it is bounded and never treated as instructions —
+     * the same rule as its output. `getDescriptionCN` returns the same string: the
+     * description is whatever the remote server wrote, not something we authored in
+     * two languages.
+     */
+    override fun getDescriptionEN(): String = def.description
+        .takeIf { it.isNotBlank() }
+        ?.take(MAX_DESCRIPTION_CHARS)
+        ?: "Remote tool \"${def.name}\" from ${def.serverName}."
+
+    override fun getDescriptionCN(): String = getDescriptionEN()
+
+    /** Prefer the server's human title over the machine name in the UI. */
+    override fun getDisplayName(): String = def.title?.takeIf { it.isNotBlank() } ?: def.name
 
     override fun getParameters(): List<ToolParameter> = parametersFromSchema(def.inputSchema)
 
