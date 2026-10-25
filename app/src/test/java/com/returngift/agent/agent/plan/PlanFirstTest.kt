@@ -164,6 +164,22 @@ object PlanFirstTest {
     }
 
     @Test
+    fun sendAMessageToIsTheSameIntentAsMessage() {
+        val p = PlanFirst.plan("send a message to mom on Messages saying dinner at 8", ctx())
+        Assert.assertEquals(PlanCapability.SEND_MESSAGE, p.blueprint.intent.capability)
+        Assert.assertEquals("mom", p.blueprint.intent.entity)
+        Assert.assertEquals("dinner at 8", p.blueprint.intent.payload)
+        Assert.assertEquals("Open Messages", p.blueprint.steps.first().detail)
+    }
+
+    @Test
+    fun sendATextWithoutAppAsksWhichApp() {
+        val p = PlanFirst.plan("send a text to Ravi", ctx())
+        Assert.assertEquals(PlanCapability.SEND_MESSAGE, p.blueprint.intent.capability)
+        Assert.assertTrue(p.blueprint.questions.any { it.id == "platform" })
+    }
+
+    @Test
     fun postWithoutTextAsksForText() {
         val p = PlanFirst.plan("post on LinkedIn", ctx())
         Assert.assertTrue(p.blueprint.questions.any { it.id == "payload" || it.id == "platform" })

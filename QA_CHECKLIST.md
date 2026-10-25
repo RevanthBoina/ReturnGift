@@ -4353,8 +4353,8 @@ tests green** locally with a real Kotlin compile + runner.
 
 ## AK2 — Plan-first, MCP, in-app routing (2026-10-25)
 
-Coverage: `PlanFirstTest` (30), `PlanClarifierTest` (7), `McpClientTest` (21),
-`McpRuntimeTest` (15), `ProviderRouterTest` (28) — **101 tests**, real Kotlin compile
+Coverage: `PlanFirstTest` (32), `PlanClarifierTest` (7), `McpClientTest` (21),
+`McpRuntimeTest` (15), `ProviderRouterTest` (28) — **103 tests**, real Kotlin compile
 + JVM runner. Knowledge suite re-run unchanged (29 green).
 
 ### AK2.1 A multi-step request is planned before the device is touched `[UNIT] [ADB]`

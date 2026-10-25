@@ -27,7 +27,7 @@ object IntentParser {
         RegexOption.IGNORE_CASE,
     )
     private val MESSAGE = Regex(
-        "^\\s*(?:please\\s+)?(?:message|text|dm|ping)\\s+(.+?)" +
+        "^\\s*(?:please\\s+)?(?:message|text|dm|ping|send (?:a |an )?(?:message|text|dm|note) to)\\s+(.+?)" +
             "(?:\\s+(?:on|in|via)\\s+(.+?))?" +
             "(?:\\s+(?:saying|that says|with(?: the)? text|:)\\s*(.+))?\\s*$",
         RegexOption.IGNORE_CASE,
