@@ -6,6 +6,7 @@ package com.returngift.agent.agent.llm
 import com.returngift.agent.agent.AgentConfig
 import com.returngift.agent.agent.LlmProvider
 import com.returngift.agent.agent.langchain.http.OkHttpClientBuilderAdapter
+import com.returngift.agent.agent.routing.ContextTrimmer
 import com.returngift.agent.agent.routing.ProviderCatalog
 import com.returngift.agent.agent.routing.ProviderRouter
 import com.returngift.agent.agent.routing.RoutingLedger
@@ -14,8 +15,11 @@ import com.returngift.agent.agent.tracker.ExecutionTracker
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 import dev.langchain4j.agent.tool.ToolSpecification
+import com.returngift.agent.agent.routing.RequestProfiler
 import dev.langchain4j.data.message.AiMessage
 import dev.langchain4j.data.message.ChatMessage
+import dev.langchain4j.data.message.SystemMessage
+import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.data.message.UserMessage
 
 /**
@@ -73,8 +77,11 @@ class RoutedLlmClient(
         messages: List<ChatMessage>,
         toolSpecs: List<ToolSpecification>,
         fast: Boolean,
-    ): LlmResponse = withFailover(messages, toolSpecs) { client, route ->
-        client.chat(messages, toolSpecs, fast).also { record(route, messages, it) }
+    ): LlmResponse {
+        val fitted = fitToBudget(messages, toolSpecs)
+        return withFailover(fitted.second) { client, route ->
+            client.chat(fitted.first, toolSpecs, fast).also { record(route, fitted.second, it) }
+        }
     }
 
     override fun chatStreaming(
@@ -82,8 +89,12 @@ class RoutedLlmClient(
         toolSpecs: List<ToolSpecification>,
         listener: StreamingListener,
         fast: Boolean,
-    ): LlmResponse = withFailover(messages, toolSpecs) { client, route ->
-        client.chatStreaming(messages, toolSpecs, listener, fast).also { record(route, messages, it) }
+    ): LlmResponse {
+        val fitted = fitToBudget(messages, toolSpecs)
+        return withFailover(fitted.second) { client, route ->
+            client.chatStreaming(fitted.first, toolSpecs, listener, fast)
+                .also { record(route, fitted.second, it) }
+        }
     }
 
     override fun close() {
@@ -91,20 +102,66 @@ class RoutedLlmClient(
         delegates.clear()
     }
 
+    // ── prompt fitting ──────────────────────────────────────────────────────
+
+    /**
+     * Drop the oldest droppable messages until the prompt fits the largest context
+     * we know about, and return the trimmed list with its (re-measured) facts.
+     *
+     * This happens *before* routing, so the router sees the prompt we will actually
+     * send — not the one we wished we could. The system prompt, the newest messages
+     * and the latest user turn are never dropped ([ContextTrimmer]).
+     */
+    private fun fitToBudget(
+        messages: List<ChatMessage>,
+        toolSpecs: List<ToolSpecification>,
+    ): Pair<List<ChatMessage>, RequestProfiler.Facts> {
+        val facts = factsOf(messages, toolSpecs)
+        val budget = ProviderCatalog.models.maxOfOrNull { it.contextTokens } ?: return messages to facts
+        if (!RequestProfiler.willOverflow(facts, budget)) return messages to facts
+
+        val kinds = messages.map { message ->
+            when (message) {
+                is SystemMessage -> "system"
+                is UserMessage -> "user"
+                is AiMessage -> "assistant"
+                is ToolExecutionResultMessage -> "tool"
+                else -> "other"
+            }
+        }
+        val sizes = messages.map { message ->
+            runCatching { message.toString().length }.getOrDefault(0)
+        }
+        val excess = RequestProfiler.excessChars(facts, budget)
+        val drop = ContextTrimmer.plan(ContextTrimmer.classify(kinds, sizes), excess)
+        if (drop.isEmpty()) {
+            XLog.w(TAG, "prompt exceeds $budget tokens and nothing is safe to drop (${excess} chars over)")
+            return messages to facts
+        }
+        val kept = messages.filterIndexed { index, _ -> index !in drop }
+        val trimmedFacts = factsOf(kept, toolSpecs)
+        XLog.i(
+            TAG,
+            "trimmed ${drop.size} message(s) to fit $budget tokens " +
+                "(${RequestProfiler.estimatePromptTokens(facts)} → " +
+                "${RequestProfiler.estimatePromptTokens(trimmedFacts)})"
+        )
+        return kept to trimmedFacts
+    }
+
     // ── chain execution ─────────────────────────────────────────────────────
 
     private inline fun withFailover(
-        messages: List<ChatMessage>,
-        toolSpecs: List<ToolSpecification>,
+        facts: RequestProfiler.Facts,
         call: (LlmClient, ProviderCatalog.ModelRoute) -> LlmResponse,
     ): LlmResponse {
-        val promptTokens = estimatePromptTokens(messages)
-        val request = ProviderRouter.Request(
-            promptTokens = promptTokens,
-            completionTokens = 800,
-            needsTools = toolSpecs.isNotEmpty(),
-            providers = usableProviders(),
+        // Vision/tools/tokens all come from the real prompt (review fix): the first
+        // version passed tools only, so a screenshot could be routed to a model that
+        // cannot see it, and the large system prompt was missing from the estimate.
+        val request = RequestProfiler.request(
+            facts = facts,
             strategy = ProviderRouter.Strategy.AUTO,
+            providers = usableProviders(),
         )
         var decision = try {
             ProviderRouter.decide(request, ledger)
@@ -178,10 +235,10 @@ class RoutedLlmClient(
 
     private fun record(
         route: ProviderCatalog.ModelRoute,
-        messages: List<ChatMessage>,
+        facts: RequestProfiler.Facts,
         response: LlmResponse,
     ) {
-        val promptTokens = estimatePromptTokens(messages)
+        val promptTokens = RequestProfiler.estimatePromptTokens(facts)
         val outputTokens = response.tokenCount.coerceAtLeast(0)
         RoutingLedger.record(route, promptTokens, outputTokens)
         // Data-egress ledger: one row per real cloud call, with the ACTUAL provider.
@@ -195,16 +252,64 @@ class RoutedLlmClient(
         }
     }
 
-    private fun estimatePromptTokens(messages: List<ChatMessage>): Int {
-        val chars = messages.sumOf { message ->
+    /**
+     * Measure everything that is actually sent: system rules, user turns, assistant
+     * turns, tool results, tool schemas and images.
+     *
+     * Message *types* are matched on the known langchain4j classes; image detection
+     * is done reflectively so an API change cannot break the build — it only means
+     * images stop being counted (and we log that once).
+     */
+    private fun factsOf(
+        messages: List<ChatMessage>,
+        toolSpecs: List<ToolSpecification>,
+    ): RequestProfiler.Facts {
+        var system = 0
+        var user = 0
+        var assistant = 0
+        var toolResults = 0
+        var images = 0
+        messages.forEach { message ->
             when (message) {
-                is UserMessage -> message.singleText().length
-                is AiMessage -> message.text().length
-                else -> 0
+                is SystemMessage -> system += message.text().length
+                is UserMessage -> {
+                    user += textLengthSafely(message)
+                    images += imageCountOf(message)
+                }
+                is AiMessage -> assistant += message.text().length
+                is ToolExecutionResultMessage -> toolResults += message.text().length
+                else -> user += message.toString().length
             }
         }
-        return (chars / 4).coerceAtLeast(1)
+        val schemaChars = toolSpecs.sumOf { spec ->
+            runCatching { spec.name().length + spec.description().length + 120 }.getOrDefault(120)
+        }
+        return RequestProfiler.Facts(
+            systemChars = system,
+            userChars = user,
+            assistantChars = assistant,
+            toolResultChars = toolResults,
+            imageCount = images,
+            messageCount = messages.size,
+            toolSpecCount = toolSpecs.size,
+            toolSchemaChars = schemaChars,
+        )
     }
+
+    /** `singleText()` throws when a user turn holds several parts (e.g. text + image). */
+    private fun textLengthSafely(message: UserMessage): Int =
+        runCatching { message.singleText().length }
+            .getOrElse { runCatching { message.contents().sumOf { it.toString().length } }.getOrDefault(0) }
+
+    /** Count image parts without binding to a specific content class name. */
+    private fun imageCountOf(message: UserMessage): Int = runCatching {
+        val contents = message.javaClass.getMethod("contents").invoke(message) as? List<*>
+            ?: return 0
+        contents.count { part ->
+            val name = part?.javaClass?.simpleName.orEmpty()
+            name.contains("Image", ignoreCase = true)
+        }
+    }.getOrDefault(0)
 
     /** Pull an HTTP status out of whatever the vendor client threw, if it has one. */
     private fun httpStatusOf(e: Throwable): Int? {

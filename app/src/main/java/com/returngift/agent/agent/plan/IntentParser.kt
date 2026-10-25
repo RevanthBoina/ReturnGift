@@ -67,6 +67,39 @@ object IntentParser {
         RegexOption.IGNORE_CASE,
     )
 
+    /**
+     * Strong clause boundaries: a later clause is a *separate* instruction.
+     *
+     * Only unambiguous separators are listed. A bare "and" is not one — "message
+     * John and say hi" is a single instruction, and splitting it would invent a
+     * second task.
+     */
+    private val CLAUSE_BOUNDARY = Regex(
+        "\\s*(?:;|,\\s*then\\b|\\bthen\\b|\\band\\s+then\\b|\\bafter\\s+that\\b|\\bafterwards\\b)\\s*",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** A clause that starts by forbidding an action does not ask for that action. */
+    private val LEADING_NEGATION = Regex(
+        "^\\s*(?:please\\s+)?(?:do\\s+not|don'?t|never|stop|avoid|no\\s+need\\s+to)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** "don't forget to X" is a request *to* do X — the negation is inverted. */
+    private val NEGATION_INVERTED = Regex("\\b(?:don'?t|do\\s+not)\\s+forget\\b", RegexOption.IGNORE_CASE)
+
+    /** Leading "don't forget to" is dropped so the real verb can anchor the match. */
+    private val FORGET_PREFIX = Regex("^\\s*(?:and\\s+)?(?:don'?t|do\\s+not)\\s+forget\\s+(?:to\\s+)?", RegexOption.IGNORE_CASE)
+
+    /** A quoted span, delimiters included. */
+    private val QUOTED_SPAN = Regex("\"[^\"]*\"|\u201c[^\u201d]*\u201d|'[^']*'")
+
+    /** "on/to/in/via <app>" at the end of the sentence, outside quotes. */
+    private val PLATFORM_PHRASE = Regex(
+        "\\b(?:on|in|via|using|through)\\s+([A-Za-z][A-Za-z0-9 .&'-]{1,30}?)\\s*$",
+        RegexOption.IGNORE_CASE,
+    )
+
     /** Phrases that mean "show me the plan and stop" instead of executing. */
     private val PREVIEW_HINT = Regex(
         "\\b(show me the plan|what'?s the plan|what is your plan|just the plan|" +
@@ -82,6 +115,9 @@ object IntentParser {
     )
 
     /** Device settings the agent can flip without opening a third-party app. */
+    /** Clauses inspected before giving up on finding an actionable one. */
+    private const val MAX_CLAUSES = 4
+
     private val SETTINGS = listOf(
         "wifi", "wi-fi", "bluetooth", "airplane mode", "mobile data", "flashlight",
         "torch", "do not disturb", "dnd", "auto-rotate", "rotation", "hotspot",
@@ -112,22 +148,133 @@ object IntentParser {
     /**
      * Parse [rawText] into a [TaskIntent].
      *
+     * A request may hold several instructions ("open YouTube then search cats").
+     * The plan describes the **first actionable clause** — the one the agent will do
+     * first — while the whole sentence still travels to the model, so nothing is
+     * dropped. Clauses that *forbid* an action are skipped rather than inverted:
+     * "don't follow them" must never become "follow them".
+     *
      * @param ctx device knowledge; app names are resolved here and nowhere else.
      */
     fun parse(rawText: String, ctx: PlanContext): TaskIntent {
         val text = stripControlPhrases(rawText).trim().ifEmpty { rawText.trim() }
         if (text.isEmpty()) return TaskIntent(PlanCapability.NONE, rawText)
+        val parts = clauses(text).take(MAX_CLAUSES)
+        for (part in parts) {
+            // "don't forget to follow X" is a request to follow, so normalise the
+            // inverted negation away before the anchored verb patterns see it.
+            val normalized = FORGET_PREFIX.replace(part, "").trim().ifEmpty { part }
+            if (isForbidden(normalized)) continue
+            val intent = parseClause(normalized, rawText, ctx)
+            if (intent.capability != PlanCapability.NONE) return intent
+        }
+        // Nothing actionable up front: the general agent handles the whole sentence
+        // (a direct question keeps its entity for the Q&A path).
+        return parseClause(text, rawText, ctx)
+    }
+
+    /** Split a request at unambiguous clause boundaries. */
+    fun clauses(text: String): List<String> = CLAUSE_BOUNDARY.split(text)
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+
+    /** True when this clause *forbids* its action instead of asking for it. */
+    fun isForbidden(clause: String): Boolean =
+        LEADING_NEGATION.containsMatchIn(clause.replace(NEGATION_INVERTED, " "))
+
+    /** Content of the first quoted span — the message body when the user quoted it. */
+    fun firstQuoted(text: String): String? {
+        val range = quotedRanges(text).firstOrNull() ?: return null
+        return text.substring(range.first, range.last + 1).trim().ifEmpty { null }
+    }
+
+    /**
+     * Character ranges of quoted spans (delimiters excluded).
+     *
+     * An apostrophe inside a word (`don't`) is not a quote; treating it as one would
+     * mask the rest of the sentence.
+     */
+    fun quotedRanges(text: String): List<IntRange> {
+        val ranges = mutableListOf<IntRange>()
+        var index = 0
+        while (index < text.length) {
+            val open = text[index]
+            val close = when (open) {
+                '"' -> '"'
+                '\u201c' -> '\u201d'
+                '\'' -> '\''
+                else -> null
+            }
+            val insideWord = open == '\'' && index > 0 && text[index - 1].isLetter()
+            if (close == null || insideWord) {
+                index++
+                continue
+            }
+            val end = text.indexOf(close, index + 1)
+            if (end <= index + 1) {
+                index++
+                continue
+            }
+            ranges += (index + 1) until end
+            index = end + 1
+        }
+        return ranges
+    }
+
+    /** [text] with quoted spans blanked out, so a phrase inside quotes is not a target. */
+    fun unquoted(text: String): String {
+        val builder = StringBuilder(text)
+        quotedRanges(text).forEach { range ->
+            for (i in range) if (i in builder.indices) builder[i] = ' '
+        }
+        return builder.toString()
+    }
+
+    /** A platform captured by a regex, unless it was actually inside quotes. */
+    private fun platformGroup(group: MatchGroup?, text: String): String? {
+        if (group == null) return null
+        val value = group.value.trim()
+        if (value.isEmpty()) return null
+        val range = group.range
+        // Overlap (not containment): a capture can start or end on a quote mark.
+        val quoted = quotedRanges(text).any { range.first <= it.last && range.last >= it.first }
+        return value.takeUnless { quoted }
+    }
+
+    /** Remove a trailing "on <app>" from a captured body (the target is not content). */
+    private fun stripPlatformPhrase(body: String, platformName: String?): String {
+        if (platformName.isNullOrBlank()) return body
+        val suffix = Regex(
+            "(?:^|\\s+)(?:on|to|in|via)\\s+" + Regex.escape(platformName) + "\\s*$",
+            RegexOption.IGNORE_CASE,
+        )
+        return body.replace(suffix, "").trim()
+    }
+
+    /** Resolve "… on <app>" from the parts of [text] that are not quoted. */
+    private fun platformFromText(text: String, ctx: PlanContext): Pair<AppRef?, String?>? {
+        val masked = unquoted(text)
+        val match = PLATFORM_PHRASE.find(masked) ?: return null
+        val name = match.groupValues[1].trim()
+        if (name.isEmpty()) return null
+        return (ctx.resolveApp(name) as? AppMatch.Found)?.app to name
+    }
+
+    private fun parseClause(text: String, rawText: String, ctx: PlanContext): TaskIntent {
 
         UNFOLLOW.find(text)?.let { m ->
-            return buildEntityIntent(PlanCapability.UNFOLLOW_ENTITY, rawText, m, ctx)
+            return buildEntityIntent(PlanCapability.UNFOLLOW_ENTITY, rawText, text, m, ctx)
         }
         FOLLOW.find(text)?.let { m ->
-            return buildEntityIntent(PlanCapability.FOLLOW_ENTITY, rawText, m, ctx)
+            return buildEntityIntent(PlanCapability.FOLLOW_ENTITY, rawText, text, m, ctx)
         }
         MESSAGE.find(text)?.let { m ->
-            val recipient = cleanEntity(m.groupValues[1])
-            val platformText = m.groupValues[2].ifBlank { null }
-            val payload = m.groupValues[3].ifBlank { null }?.let { cleanPayload(it) }
+            val quoted = firstQuoted(text)
+            // "message John \"running late\"" — the recipient is what precedes the
+            // quoted body, not the body itself.
+            val recipient = cleanEntity(m.groupValues[1].replace(QUOTED_SPAN, " "))
+            val platformText = platformGroup(m.groups[2], text)
+            val payload = (quoted ?: m.groupValues[3].ifBlank { null })?.let { cleanPayload(it) }
             if (recipient.isNotEmpty() && (platformText != null || payload != null || recipient.length > 2)) {
                 return TaskIntent(
                     capability = PlanCapability.SEND_MESSAGE,
@@ -140,21 +287,34 @@ object IntentParser {
             }
         }
         POST.find(text)?.let { m ->
-            val body = cleanPayload(m.groupValues[1])
-            val platformText = m.groupValues[2].ifBlank { null }
-            if (body.isNotEmpty() && (platformText != null || body.length > 1)) {
+            // The quoted text is the post body; without quotes the regex capture is.
+            val quoted = firstQuoted(text)
+            var platformText = platformGroup(m.groups[2], text)
+            var platform = resolvePlatform(platformText, ctx)
+            if (platform == null) {
+                platformFromText(text, ctx)?.let { (app, name) ->
+                    platform = app
+                    platformText = name
+                }
+            }
+            // "post on LinkedIn" captures "on LinkedIn" as the body; that is the
+            // target, not the text, so the user must be asked what to post.
+            val body = cleanPayload(
+                quoted ?: stripPlatformPhrase(m.groupValues[1], platformText)
+            )
+            if (body.isNotEmpty() || platformText != null) {
                 return TaskIntent(
                     capability = PlanCapability.POST_UPDATE,
                     rawText = rawText,
-                    payload = body,
-                    platform = resolvePlatform(platformText, ctx),
+                    payload = body.takeIf { it.isNotEmpty() },
+                    platform = platform,
                     platformName = platformText,
                 )
             }
         }
         SEARCH.find(text)?.let { m ->
             val query = cleanEntity(m.groupValues[1])
-            val platformText = m.groupValues[2].ifBlank { null }
+            val platformText = platformGroup(m.groups[2], text)
             return TaskIntent(
                 capability = PlanCapability.SEARCH_AND_OPEN,
                 rawText = rawText,
@@ -166,7 +326,7 @@ object IntentParser {
         }
         PLAY.find(text)?.let { m ->
             val media = cleanEntity(m.groupValues[1])
-            val platformText = m.groupValues[2].ifBlank { null }
+            val platformText = platformGroup(m.groups[2], text)
             if (media.isNotEmpty()) {
                 return TaskIntent(
                     capability = PlanCapability.PLAY_MEDIA,
@@ -223,11 +383,12 @@ object IntentParser {
     private fun buildEntityIntent(
         capability: PlanCapability,
         rawText: String,
+        text: String,
         m: MatchResult,
         ctx: PlanContext,
     ): TaskIntent {
         val entity = cleanEntity(m.groupValues[2])
-        val platformText = m.groupValues[3].ifBlank { null }
+        val platformText = platformGroup(m.groups[3], text)
         return TaskIntent(
             capability = capability,
             rawText = rawText,

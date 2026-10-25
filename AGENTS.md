@@ -79,6 +79,47 @@ integration in the APK.
 - Reference material: `docs/MCP_AND_MODEL_ROUTING.md` (incl. how OmniRoute bridges
   the Antigravity CLI, and the measured 436.5 KiB bytecode cost).
 
+## Review remediation pack (AK3, 2026-10-25)
+
+Acting on the review of the AK2 pack. These are rules now, not suggestions.
+
+**Security (P0) — MCP servers are untrusted principals**
+1. Never store a bearer token in a server row or in `KVUtils`: tokens live in
+   `McpSecretStore` as AES-GCM blobs under an `AndroidKeyStore` key
+   (`KeystoreSecretCipher`). No cipher → fail closed with an error, never plaintext.
+2. Never send a token over cleartext: `https` only, except loopback
+   (`localhost`/`127.0.0.1`/`[::1]`/`10.0.2.2`) for development.
+3. Never log or hand an error string to the model without `McpRedaction.redact(...)`.
+4. Never trust a server's annotation to *downgrade* risk: `McpToolPolicy` takes the
+   higher of annotation/name risk, an unknown tool is a WRITE, and destructive verbs
+   (`send`, `delete`, `pay`, …) always ask — even with `autoApproveWrites`.
+5. Policy precedence is fixed: master switch → blocked server → deny pattern →
+   explicit allow → risk default. A deny always wins.
+6. Never dispatch a remote tool by name surgery: `McpRuntime` routes on the exact
+   `(serverId, toolName)` pair captured before de-duplication.
+7. Never put raw remote output in the prompt: it goes through `McpResultFormatter`
+   (bounded, fenced, marked "data, not instructions").
+
+**Plan contract (P1)**
+8. A plan that is shown must be enforced: `PlanContract.observe` records evidence,
+   `gate("finish")` refuses completion while a step that promised an outcome is
+   unproven. Do not add a `finish` path that bypasses both.
+9. Failed actions stay on their step; skipped `requiresEvidence` steps still block
+   completion. Do not "help" by marking steps done.
+10. Persist progress with `PlanCheckpointStore` (keyed by request fingerprint, 30-min
+    TTL). Never resume a checkpoint whose request or plan does not match.
+
+**Routing (P1)**
+11. Never estimate tokens from user text alone: use `RequestProfiler` (system prompt,
+    tool results, tool schemas, images, margin, completion reserve).
+12. Never route to a provider the user has not configured or has excluded; never claim
+    a capability (vision/tools) that the payload does not actually need.
+13. Trim locally with `ContextTrimmer` before spending a failing provider round trip.
+
+**Reporting**
+14. Never claim a build/test is green without having run it. State plainly which
+    suites ran on the JVM and that Android assemble needs CI when no SDK is present.
+
 ## App-agnostic knowledge layer (AK pack, 2026-10-25)
 - **Rule added (see "Hard rules #1")**: no file dedicated to one app. The previous
   `LinkedInSearchFlowTest.kt` became `AppFlowRecoveryTest.kt` (scenarios loop over every

@@ -56,6 +56,20 @@ class ClawApplication : BaseApp() {
         com.returngift.agent.agent.routing.RoutingLedger.hasCredentials = { providerId ->
             runCatching { KVUtils.getApiKeyForProvider(providerId).isNotBlank() }.getOrDefault(false)
         }
+        // MCP credentials: tokens are encrypted with an Android Keystore key and are
+        // never written into a server row. Installing the cipher is a startup step so
+        // any screen that forgets it fails closed instead of storing plaintext.
+        com.returngift.agent.agent.mcp.McpSecretStore.cipher =
+            com.returngift.agent.agent.mcp.KeystoreSecretCipher()
+        // Remote tools are untrusted third parties: restore the user's standing
+        // decisions (blocked servers, auto-approvals) before anything can call one.
+        com.returngift.agent.agent.mcp.McpPolicyStore.install()
+        // v3.4 kept the bearer token inside the server row. Move it once to encrypted
+        // storage; Keystore work is slow the first time, so it runs off the main thread.
+        Thread({
+            runCatching { com.returngift.agent.agent.mcp.McpServerStore.migrateLegacySecrets() }
+                .onFailure { XLog.w(TAG, "MCP secret migration failed", it) }
+        }, "mcp-secret-migration").start()
         // MCP: connect configured servers off the main thread; a dead server never
         // delays startup (failures are logged and skipped).
         com.returngift.agent.agent.mcp.McpToolRegistrar.refreshAsync()

@@ -50,9 +50,10 @@ class McpClient(
 
         val params = Json.obj(
             "protocolVersion" to Json.str(McpProtocol.PREFERRED_VERSION),
-            "capabilities" to Json.obj(
-                "roots" to Json.obj("listChanged" to Json.bool(false)),
-            ),
+            // Empty on purpose: we advertise only what we actually implement.
+            // (The first version advertised `roots` but never answered
+            // `roots/list`, which is a false claim to the server.)
+            "capabilities" to JsonValue.Obj(),
             "clientInfo" to Json.obj(
                 "name" to Json.str(McpProtocol.CLIENT_NAME),
                 "version" to Json.str(McpProtocol.CLIENT_VERSION),
@@ -69,6 +70,14 @@ class McpClient(
             )
         }
         negotiatedVersion = version
+        if (version !in McpProtocol.CONFORMANCE_TESTED) {
+            // Honest reporting: we accept it, but only the tested revision is what
+            // this client was verified against — say so instead of implying parity.
+            log(
+                "${config.id} negotiated MCP $version (supported; conformance-tested: " +
+                    McpProtocol.CONFORMANCE_TESTED.joinToString() + ")"
+            )
+        }
 
         val serverInfoObj = result.obj("serverInfo")
         val caps = result.obj("capabilities")
@@ -104,6 +113,9 @@ class McpClient(
 
     fun serverInfo(): McpServerInfo? = serverInfo
 
+    /** Version negotiated with the server (null before `initialize`). */
+    fun negotiatedVersion(): String? = negotiatedVersion
+
     /** All tools, following pagination cursors. Cached until [force] or invalidation. */
     fun listTools(force: Boolean = false): List<McpToolDef> {
         cachedTools?.let { if (!force) return it }
@@ -126,6 +138,7 @@ class McpClient(
                     title = tool.str("title"),
                     description = tool.str("description").orEmpty(),
                     inputSchema = tool["inputSchema"],
+                    annotations = tool["annotations"],
                 )
             }
             cursor = result.str("nextCursor")
@@ -145,7 +158,8 @@ class McpClient(
         val params = Json.obj("name" to Json.str(name), "arguments" to arguments)
         val result = sendRequest("tools/call", params).asObject("tools/call result")
         val contents = mutableListOf<McpContent>()
-        result.arr("content")?.items?.forEach { block ->
+        // A server is untrusted: cap how much of its response we keep.
+        result.arr("content")?.items?.take(McpLimits.MAX_CONTENT_ITEMS)?.forEach { block ->
             val obj = block as? JsonValue.Obj ?: return@forEach
             contents += when (obj.str("type")) {
                 "text" -> McpContent.Text(obj.str("text").orEmpty())

@@ -40,6 +40,33 @@ object McpProtocol {
 
     /** How many pages of `tools/list` we will follow before giving up. */
     const val MAX_TOOL_PAGES = 8
+
+    /** Versions this client has been exercised against (conformance matrix). */
+    val CONFORMANCE_TESTED = listOf("2025-06-18")
+}
+
+/**
+ * Hard bounds on everything a remote server can put into our memory or our prompt.
+ *
+ * A server is an **untrusted principal**: it can return a 40 MB body, a thousand
+ * content blocks, or one block of 10 MB of text. None of that may reach the model
+ * unmetered.
+ */
+object McpLimits {
+    /** Largest HTTP body we will read (bytes, UTF-8). */
+    const val MAX_BODY_BYTES = 2 * 1024 * 1024
+
+    /** Largest number of content blocks kept from one `tools/call`. */
+    const val MAX_CONTENT_ITEMS = 64
+
+    /** Largest per-block text kept. */
+    const val MAX_BLOCK_CHARS = 16_000
+
+    /** Largest total text handed to the model from one call. */
+    const val MAX_RESULT_CHARS = 24_000
+
+    /** Largest encoded row/tool JSON we will parse. */
+    const val MAX_JSON_CHARS = 1 * 1024 * 1024
 }
 
 /** A configured MCP server (a row — never a per-server class). */
@@ -54,17 +81,37 @@ data class McpServerConfig(
 ) {
     val isHttp: Boolean get() = url.startsWith("https://") || url.startsWith("http://")
 
+    private val host: String
+        get() = url.substringAfter("://", "").substringBefore('/').substringBefore(':').lowercase()
+
+    /**
+     * Loopback / emulator host. Cleartext is only defensible here: the traffic never
+     * leaves the device (or the emulator's host bridge).
+     */
+    val isLoopback: Boolean
+        get() = host in setOf("localhost", "127.0.0.1", "::1", "[::1]", "10.0.2.2")
+
+    /** True when the token would travel under TLS. */
+    val isSecureTransport: Boolean
+        get() = url.startsWith("https://") || (url.startsWith("http://") && isLoopback)
+
     /** Row shown in settings/tests; the token is never included. */
     fun describe(): String = "$name ($url)" + if (enabled) "" else " [disabled]"
 
     /**
      * Validation shared by the settings screen and the store, so a bad row can
      * never reach the network layer (and the user gets the same message both ways).
+     *
+     * Cleartext to a non-loopback host is rejected outright: the bearer token in
+     * [authToken] is reusable and would be readable by anything on the path.
      */
     fun validationError(): String? = when {
         id.isBlank() -> "A server id is required."
         url.isBlank() -> "A server URL is required."
-        !isHttp -> "The URL must start with https:// or http://"
+        !isHttp -> "The URL must start with https:// (http:// only for localhost)."
+        !isSecureTransport ->
+            "Plain HTTP would send your token unencrypted. Use https:// — " +
+                "http:// is accepted only for localhost / the emulator."
         timeoutMs <= 0L -> "The timeout must be positive."
         else -> null
     }
@@ -78,6 +125,12 @@ data class McpToolDef(
     val title: String? = null,
     val description: String = "",
     val inputSchema: JsonValue? = null,
+    /**
+     * Server-provided annotations (`readOnlyHint`, `destructiveHint`, …).
+     * According to the MCP spec these are **hints, not authority** — the policy in
+     * `McpToolPolicy` treats them as one input, never as permission.
+     */
+    val annotations: JsonValue? = null,
 ) {
     /**
      * Name as the agent sees it. Namespaced so two servers may expose the same
@@ -107,12 +160,19 @@ sealed class McpContent {
     /** A content type this client does not render — kept rather than dropped. */
     data class Other(val type: String, val raw: JsonValue) : McpContent()
 
-    /** Flatten to text for the agent loop / knowledge connectors. */
-    fun asPromptText(): String = when (this) {
-        is Text -> text
-        is Image -> "[image $mimeType, ${base64.length} b64 chars]"
-        is Link -> if (text.isNullOrBlank()) uri else "$text ($uri)"
-        is Other -> "[$type]"
+    /** Flatten to text for the agent loop / knowledge connectors (bounded). */
+    fun asPromptText(): String {
+        val raw = when (this) {
+            is Text -> text
+            is Image -> "[image $mimeType, ${base64.length} b64 chars]"
+            is Link -> if (text.isNullOrBlank()) uri else "$text ($uri)"
+            is Other -> "[$type]"
+        }
+        return if (raw.length <= McpLimits.MAX_BLOCK_CHARS) {
+            raw
+        } else {
+            raw.take(McpLimits.MAX_BLOCK_CHARS) + "\n[… truncated ${raw.length - McpLimits.MAX_BLOCK_CHARS} chars]"
+        }
     }
 }
 
@@ -122,7 +182,17 @@ data class McpCallResult(
     val contents: List<McpContent>,
     val structured: JsonValue? = null,
 ) {
-    val text: String get() = contents.joinToString("\n") { it.asPromptText() }
+    /** Model-facing text: bounded in total, never the whole of a hostile response. */
+    val text: String
+        get() {
+            val joined = contents.joinToString("\n") { it.asPromptText() }
+            return if (joined.length <= McpLimits.MAX_RESULT_CHARS) {
+                joined
+            } else {
+                joined.take(McpLimits.MAX_RESULT_CHARS) +
+                    "\n[… truncated ${joined.length - McpLimits.MAX_RESULT_CHARS} chars]"
+            }
+        }
 }
 
 /** Server identity + negotiated capabilities. */
