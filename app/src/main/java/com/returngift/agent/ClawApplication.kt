@@ -44,6 +44,13 @@ class ClawApplication : BaseApp() {
         registerNetworkCallback()
         appViewModelInstance = getAppViewModelProvider()[AppViewModel::class.java]
         KVUtils.init(this)
+        // App knowledge: let the learner resolve real app labels without pulling
+        // Android into the (unit-tested) knowledge layer.
+        com.returngift.agent.agent.knowledge.AppGuideLearner.labelResolver = { pkg ->
+            runCatching {
+                com.returngift.agent.agent.knowledge.InstalledApps.labelOf(applicationContext, pkg)
+            }.getOrNull()
+        }
         // C4: process-death reconciliation — if a previous task was interrupted by app restart,
         // clear the state and notify the channel.
         val activeTask = KVUtils.getString(TaskOrchestrator.KEY_ACTIVE_TASK, "")

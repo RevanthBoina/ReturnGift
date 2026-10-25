@@ -86,6 +86,10 @@ object MicroStepBridge {
      * @param loading          a progress indicator was visible
      * @param dialogVisible    a modal dialog (not a permission dialog) is on screen
      * @param textEntered      the text that was actually typed (defaults to params["text"])
+     * @param screenText       visible text of the screen after the action (only fetched
+     *                         by the loop when the action failed or nothing changed);
+     *                         used to recognise login walls, consent prompts and
+     *                         throttling instead of retrying blindly
      */
     fun observe(
         toolName: String,
@@ -101,6 +105,7 @@ object MicroStepBridge {
         textEntered: String? = null,
         label: String? = null,
         stepIndex: Int = 0,
+        screenText: String = "",
     ): MicroStepContext {
         val tool = toolName.lowercase()
         val pkg = foregroundPackage.orEmpty()
@@ -121,6 +126,10 @@ object MicroStepBridge {
                 base == AppSurface.UNKNOWN && looksLikeSearch(tappedLabel, params) -> AppSurface.SEARCH_FIELD
                 base == AppSurface.UNKNOWN && looksLikeChat(tappedLabel) -> AppSurface.CHAT_COMPOSER
                 base == AppSurface.UNKNOWN && looksLikeForm(params) -> AppSurface.FORM
+                // Social apps report their feed/composer surface for the whole app,
+                // but typing into their search box is a search, not a post.
+                base == AppSurface.SOCIAL_POST && looksLikeSearch(tappedLabel, params) ->
+                    AppSurface.SEARCH_FIELD
                 else -> base
             }
         }
@@ -166,6 +175,7 @@ object MicroStepBridge {
             screenChanged = screenChanged,
             resultsVisible = resultsVisible,
             fieldEmpty = text.isBlank(),
+            blocker = com.returngift.agent.agent.flow.SessionBlockerDetector.detect(screenText),
             stepIndex = stepIndex,
         )
     }

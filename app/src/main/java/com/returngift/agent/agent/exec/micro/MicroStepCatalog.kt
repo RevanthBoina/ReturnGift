@@ -26,6 +26,9 @@ import com.returngift.agent.agent.exec.micro.MicroSteps.verifyGone
 import com.returngift.agent.agent.exec.micro.MicroSteps.verifyText
 import com.returngift.agent.agent.exec.micro.MicroSteps.wait
 import com.returngift.agent.agent.exec.micro.MicroSteps.waitResults
+import com.returngift.agent.agent.flow.FlowRetry
+import com.returngift.agent.agent.flow.SessionBlocker
+import com.returngift.agent.agent.flow.SessionBlockerDetector
 
 /**
  * The mid-task micro-step catalogue.
@@ -164,6 +167,28 @@ object MicroStepCatalog {
             build = { listOf(tap("Open"), wait(), verifyChanged()) },
         ),
         rule(
+            "linkedin_search_submit",
+            "LinkedIn query typed into search → press Enter, wait for the result list, open the first result",
+            P_SPECIFIC + 6,
+            match = {
+                pkgIn(it, PKG_LINKEDIN) &&
+                    (typedInto(it, AppSurface.SEARCH_FIELD) || typedInto(it, AppSurface.LIST))
+            },
+            build = { listOf(enter(), waitResults(), firstResult(), wait()) },
+        ),
+        rule(
+            "linkedin_deeplink_verify",
+            "LinkedIn was opened via a deep link → verify the target screen actually appeared before typing",
+            P_SPECIFIC + 7,
+            match = {
+                pkgIn(it, PKG_LINKEDIN) && it.lastAction == LastAction.OPENED_APP && !it.screenChanged
+            },
+            build = { listOf(
+                verifyChanged(),
+                tap("Search", note = "the deep link did not land — use the in-app search control instead"),
+            ) },
+        ),
+        rule(
             "youtube_search",
             "YouTube query typed → press Enter, wait for results, play the first video",
             P_SPECIFIC + 5,
@@ -220,7 +245,12 @@ object MicroStepCatalog {
             "post_composer_publish",
             "Social post/composer text typed → tap Post and verify it published",
             P_SURFACE + 3,
-            match = { typedInto(it, AppSurface.SOCIAL_POST) },
+            // A search box inside a social app reports the same surface as the
+            // composer. Typing a search term there must never hit "Post".
+            match = {
+                typedInto(it, AppSurface.SOCIAL_POST) &&
+                    !labelHas(it, "search", "find", "filter")
+            },
             build = { listOf(tap("Post"), verifyChanged()) },
         ),
         rule(
@@ -450,6 +480,85 @@ object MicroStepCatalog {
             P_FALLBACK + 30,
             match = { it.dialogVisible },
             build = { listOf(dialogOption(""), observe()) },
+        ),
+
+        // ═══════════════════════════════════════════════════════════════════
+        // C2. Session blockers — stop, ask, or back off instead of guessing
+        // ═══════════════════════════════════════════════════════════════════
+
+        rule(
+            "blocker_login_wall",
+            "A sign-in wall is up → stop and ask the user to sign in (never type credentials)",
+            P_CHAT + 60,
+            match = { it.blocker == SessionBlocker.LOGIN_REQUIRED },
+            build = {
+                val app = it.packageName.ifBlank { "the app" }
+                listOf(stop(
+                    SessionBlockerDetector.message(SessionBlocker.LOGIN_REQUIRED, app) +
+                        " Do not type an email or password — report this to the user and stop."
+                ))
+            },
+        ),
+        rule(
+            "blocker_captcha",
+            "A human-verification screen is up → stop; only a person can clear it",
+            P_CHAT + 59,
+            match = { it.blocker == SessionBlocker.CAPTCHA_REQUIRED },
+            build = {
+                listOf(stop(
+                    SessionBlockerDetector.message(
+                        SessionBlocker.CAPTCHA_REQUIRED,
+                        it.packageName.ifBlank { "the app" },
+                    )
+                ))
+            },
+        ),
+        rule(
+            "blocker_account_chooser",
+            "An account chooser is up → stop and ask which account to use",
+            P_CHAT + 58,
+            match = { it.blocker == SessionBlocker.ACCOUNT_CHOOSER },
+            build = {
+                listOf(stop(
+                    SessionBlockerDetector.message(
+                        SessionBlocker.ACCOUNT_CHOOSER,
+                        it.packageName.ifBlank { "the app" },
+                    )
+                ))
+            },
+        ),
+        rule(
+            "blocker_consent_accept",
+            "A cookie/terms consent prompt is up → accept it once, then continue",
+            P_CHAT + 57,
+            match = { it.blocker == SessionBlocker.CONSENT_REQUIRED },
+            build = { listOf(dialogOption("Accept all"), wait(), verifyChanged()) },
+        ),
+        rule(
+            "blocker_rate_limited",
+            "The app is throttling requests → wait out the backoff instead of retrying immediately",
+            P_CHAT + 56,
+            match = { it.blocker == SessionBlocker.RATE_LIMITED },
+            build = {
+                listOf(
+                    wait(),
+                    observe(),
+                    stop(FlowRetry.guidance(SessionBlocker.RATE_LIMITED)),
+                )
+            },
+        ),
+        rule(
+            "blocker_network_error",
+            "The app lost connectivity → wait briefly, re-read the screen, report if it persists",
+            P_CHAT + 55,
+            match = { it.blocker == SessionBlocker.NETWORK_ERROR },
+            build = {
+                listOf(
+                    wait(),
+                    observe(),
+                    stop(FlowRetry.guidance(SessionBlocker.NETWORK_ERROR)),
+                )
+            },
         ),
 
         // ═══════════════════════════════════════════════════════════════════

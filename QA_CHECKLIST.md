@@ -4199,3 +4199,151 @@ green locally with a real Kotlin compile + runner.
      rows (icons, labels, hints) for every installed app.
   - Local verification: JVM compile + runner → **136 tests green**. Android compile/device
     run still requires the next CI/APK build.
+
+
+---
+
+## LF — App flow recovery: "Open LinkedIn → search 'zip'" (2026-10-25)
+
+The LinkedIn search flow is the reference case for everything that makes app
+automation fragile: an expired session, a search box that reports the same
+surface as the post composer, server-side throttling, a consent banner in front,
+and navigation that can silently do nothing. Each is now handled explicitly
+instead of ending in a silent failure.
+
+**Unit coverage (JVM):** `LinkedInSearchFlowTest` (15), `SessionBlockerTest` (15),
+`AppDeepLinkTest` (8), `FlowRetryTest` (8), `AppSessionMemoryTest` (10) — plus the
+existing micro-step and permission suites; **171 tests green** locally with a real
+Kotlin compile + runner.
+
+### LF.1 Deep link is tried first `[ADB] [LOGCAT-DEBUG]`
+- **Act**: ask for `search 'zip' on LinkedIn` (or call
+  `open_app(package_name="com.linkedin.android", uri="linkedin://search?keywords=zip")`).
+- **PASS**: logcat shows `OpenAppTool: deep link dispatched: linkedin://search?keywords=zip`;
+  if the app lands on the search results, no search-icon tap is needed.
+- **Act (fallback)**: use an app/URI with no handler → the tool logs
+  `falling back to a normal launch` and still opens the app.
+
+### LF.2 A deep link that does not land falls back to the in-app search `[ADB]`
+- **Act**: force a stale LinkedIn build where the search URI is ignored.
+- **PASS**: rule `linkedin_deeplink_verify` fires (guidance says "verify the screen
+  changed" + "use the in-app search control"), and the flow continues with the
+  search icon instead of typing into the feed.
+
+### LF.3 Search typing never taps "Post" `[ADB] [LOGCAT-DEBUG]`
+- **Act**: type `zip` into LinkedIn's search box.
+- **PASS**: `MicroStep pending (linkedin_search_submit)` — steps are Enter → wait for
+  results → open the first result. No `post_composer_publish` ("tap Post") plan.
+- **Act (composer)**: type a real post into "What do you want to talk about?" →
+  `post_composer_publish` still fires and taps **Post**.
+
+### LF.4 Login wall stops the task with an honest message `[ADB] [LOGCAT-DEBUG]`
+- **Act**: sign out of LinkedIn, then ask for the search.
+- **PASS**: no credentials are typed; logcat shows rule `blocker_login_wall`; the
+  chat says *"Login required — open LinkedIn and sign in, then ask me again.
+  Nothing was sent or changed."*
+- **Act**: sign back in and repeat → the flow completes normally.
+
+### LF.5 Captcha / account chooser stop, never guess `[ADB]`
+- **Act**: trigger a verification screen (or the multi-account sheet).
+- **PASS**: rules `blocker_captcha` / `blocker_account_chooser` fire; the task stops
+  with the corresponding message and no taps land behind the dialog.
+
+### LF.6 Consent is accepted once and remembered `[ADB]`
+- **Act**: fresh install, cookie banner up, ask for the search.
+- **PASS**: `blocker_consent_accept` taps **Accept all** once; the second run in the
+  same app shows no consent tap (`AppSessionMemory` remembers it for 30 days;
+  row **Reset** in Settings → App permissions clears it).
+
+### LF.7 Throttling backs off instead of spamming `[ADB]`
+- **Act**: search repeatedly until LinkedIn answers "Too many requests".
+- **PASS**: rule `blocker_rate_limited` waits (500 ms → 8 s, max 5 attempts), then
+  reports; guidance says "Do not spam the search".
+
+### LF.8 The screen is only read when it matters `[LOGCAT-DEBUG]`
+- **Act**: run a normal task where each action visibly changes the screen.
+- **PASS**: no extra screen-tree dumps between successful actions (the tree is read
+  only after a failure or a no-change action), so latency does not regress.
+
+### QA Debug Changelog — app flow recovery (2026-10-25)
+- `[2026-10-25] [UNIT-PASS] [LF.1-LF.8]`:
+  1. `agent/flow/AppDeepLink.kt` — documented vs best-effort deep links, URI encoding,
+     search-term extraction, prompt section.
+  2. `open_app` gained an optional `uri` parameter with a normal-launch fallback.
+  3. `agent/flow/SessionBlocker.kt` — login / captcha / account-chooser / consent /
+     throttling / network detection with user-facing messages.
+  4. `agent/flow/FlowRetry.kt` — per-flow retry budgets with capped, deterministic
+     exponential backoff (search 5, navigation 3, network 4, save 2).
+  5. `agent/flow/AppSessionMemory.kt` — consent (30 d) and signed-in (7 d) facts per
+     app; Reset in Settings clears them.
+  6. Micro-step catalogue: `linkedin_search_submit`, `linkedin_deeplink_verify`,
+     `blocker_login_wall`, `blocker_captcha`, `blocker_account_chooser`,
+     `blocker_consent_accept`, `blocker_rate_limited`, `blocker_network_error`
+     (73 → 81 rules), and `post_composer_publish` no longer fires for a search box.
+  - Local verification: JVM compile + runner → **171 tests green**. Android compile /
+    device run still requires the next CI build.
+
+
+---
+
+## AK — App-agnostic knowledge layer (2026-10-25)
+
+**Rule now enforced repo-wide:** no Kotlin/Java file (main or test) may be dedicated to a
+single app. App behaviour is data — built-in rows, task-learned rows, or connector rows —
+so a new app is a row, never a file. `scripts/check-app-agnostic.py` fails CI on a
+per-app file name; the rule is stated in `AGENTS.md` (Hard rules #1) and `CLAUDE.md`.
+
+**Unit coverage (JVM):** `AppKnowledgeTest` (22), `SocialPostRoutineTest` (9),
+`AppFlowRecoveryTest` (15, rewritten to loop over registry-derived packages) — **179
+tests green** locally with a real Kotlin compile + runner.
+
+### AK.1 No per-app files `[CI]`
+- **Act**: `python3 scripts/check-app-agnostic.py`.
+- **PASS**: `OK no-per-app-files`. Creating e.g. `LinkedInKnowledgeTest.kt` turns it red
+  with the suggested rename.
+
+### AK.2 Preflight actually runs every guard `[CI]`
+- **Act**: `bash scripts/ci-preflight.sh` on a machine without `ANDROID_HOME`.
+- **PASS**: the script reaches the final summary (previously it aborted at the
+  `no-bare-apksigner-in-release` guard under `set -u`), and `no-per-app-files` is listed.
+
+### AK.3 A learned row reaches the prompt `[ADB] [LOGCAT-DEBUG]`
+- **Act**: in an app with no guide, type + submit a search successfully three times.
+- **PASS**: logcat shows `AppGuideStore: stored LEARNED guide for <pkg>`; the next task's
+  system prompt contains a guide line for that app; Settings → App permissions shows the
+  hint. One or two runs must NOT be enough.
+
+### AK.4 A curated row is enriched, never rewritten `[UNIT]`
+- **Act**: repeat successful searches in an app that already has a built-in row.
+- **PASS**: the row keeps its authored tips; only `searchLabels` grows (asserted in
+  `AppKnowledgeTest`).
+
+### AK.5 A connector can update knowledge without a release `[UNIT]` `[ADB]`
+- **Act**: register a `ConnectorKnowledgeSource("mcp:app-guides") { payload }` and call
+  `refresh()`.
+- **PASS**: its rows win over built-ins for the same package, new packages appear in the
+  prompt, a throwing connector is skipped without breaking the prompt, and
+  `AppKnowledge.persist(...)` survives a restart.
+
+### AK.6 One routine covers every social app `[ADB]`
+- **Act**: "post \"shipped v2\" on <app>" for any profile in
+  `SocialPostRoutine.profiles`.
+- **PASS**: the same four-state spec runs (open composer → type → publish → verify);
+  a request without text asks "What should the <app> post say?"; routine ids are unique
+  and end in `_post`.
+
+### QA Debug Changelog — app-agnostic knowledge (2026-10-25)
+- `[2026-10-25] [UNIT-PASS] [AK.1-AK.6]`:
+  1. `LinkedInSearchFlowTest.kt` → `AppFlowRecoveryTest.kt`; fixtures now come from
+     `AppUsageGuide`, so new apps are covered automatically.
+  2. `exec/routines/LinkedInPostRoutine.kt` deleted → `SocialPostRoutine` with
+     `profiles` rows (LinkedIn, X, Facebook, Instagram); `StructuredRoutineRegistry`
+     iterates them and carries an app-named clarification prompt.
+  3. New knowledge pipeline: `AppGuide`, `AppGuideCodec`, `AppGuideStore`,
+     `AppKnowledgeSource`/`AppKnowledge` (MCP seam), `AppGuideLearner`.
+  4. `AppUsageGuide` read path merges runtime knowledge; learner fed from the agent loop;
+     label resolver injected from `ClawApplication`.
+  5. `scripts/check-app-agnostic.py` + preflight wiring; preflight unbound-variable bug
+     fixed so all guards run locally.
+  - Local verification: JVM compile + runner → **179 tests green**. Android compile /
+    device run still requires the next CI build.

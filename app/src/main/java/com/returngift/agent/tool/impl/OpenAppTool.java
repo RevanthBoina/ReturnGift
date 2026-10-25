@@ -56,18 +56,26 @@ public class OpenAppTool extends BaseTool {
 
     @Override
     public String getDescriptionEN() {
-        return "Open an application by its package name (e.g. 'com.android.settings').";
+        return "Open an application by its package name (e.g. 'com.android.settings'). "
+                + "Optionally pass 'uri' to jump straight to a screen inside the app "
+                + "(e.g. linkedin://search?keywords=zip, vnd.youtube://results?search_query=zip, "
+                + "market://search?q=notes, geo:0,0?q=coffee).";
     }
 
     @Override
     public String getDescriptionCN() {
-        return "Open an app by package name (e.g. 'com.android.settings').";
+        return "Open an app by package name (e.g. 'com.android.settings'). "
+                + "Optionally pass 'uri' to open a specific screen inside the app.";
     }
 
     @Override
     public List<ToolParameter> getParameters() {
-        return Collections.singletonList(
-                new ToolParameter("package_name", "string", "The package name of the app to open", true)
+        return Arrays.asList(
+                new ToolParameter("package_name", "string", "The package name of the app to open", true),
+                new ToolParameter("uri", "string",
+                        "Optional deep link to a specific screen inside the app, e.g. "
+                                + "linkedin://search?keywords=zip. The URI must be percent-encoded. "
+                                + "If it does not resolve, the app is opened normally.", false)
         );
     }
 
@@ -99,6 +107,27 @@ public class OpenAppTool extends BaseTool {
             }
         }
 
+        // Deep link first (skips the in-app search ladder). A URI that does not
+        // resolve falls through to the normal launch, so this is never worse.
+        String uri = params.get("uri") != null ? String.valueOf(params.get("uri")).trim() : "";
+        if (uri.isEmpty()) {
+            uri = params.get("deep_link") != null ? String.valueOf(params.get("deep_link")).trim() : "";
+        }
+        if (!uri.isEmpty()) {
+            if (openDeepLink(packageName, uri)) {
+                AdaptiveSettleController.INSTANCE.waitForSettle();
+                dismissChainLaunchDialog(service);
+                if (service.isForeground(packageName)) {
+                    return ToolResult.success(
+                            "Opened " + packageName + " via deep link " + uri + " (confirmed in foreground). "
+                                    + "Verify the expected screen is visible; if not, use the in-app navigation.");
+                }
+                XLog.w(TAG, "deep link " + uri + " did not leave " + packageName + " in the foreground");
+            } else {
+                XLog.w(TAG, "deep link " + uri + " has no handler — falling back to a normal launch");
+            }
+        }
+
         com.returngift.agent.core.telemetry.AppLifecycleManager.LaunchResult result =
                 com.returngift.agent.core.telemetry.AppLifecycleManager.INSTANCE.launchAndVerify(service, packageName);
 
@@ -125,6 +154,39 @@ public class OpenAppTool extends BaseTool {
         }
 
         return ToolResult.success("Opened app: " + packageName + " (confirmed in foreground)");
+    }
+
+    /**
+     * Fire an ACTION_VIEW intent for a deep link.
+     *
+     * @return true when some activity accepted the intent
+     */
+    private boolean openDeepLink(String packageName, String uri) {
+        try {
+            android.net.Uri parsed = android.net.Uri.parse(uri);
+            if (parsed.getScheme() == null) {
+                XLog.w(TAG, "refusing deep link without a scheme: " + uri);
+                return false;
+            }
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, parsed);
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            // Prefer the requested app's handler but do not hard-fail if it does not
+            // declare one (some builds handle their own scheme without a package filter).
+            intent.setPackage(packageName);
+            try {
+                ClawApplication.Companion.getInstance().startActivity(intent);
+                XLog.i(TAG, "deep link dispatched: " + uri);
+                return true;
+            } catch (android.content.ActivityNotFoundException notFound) {
+                intent.setPackage(null);
+                ClawApplication.Companion.getInstance().startActivity(intent);
+                XLog.i(TAG, "deep link dispatched without an explicit package: " + uri);
+                return true;
+            }
+        } catch (Exception e) {
+            XLog.w(TAG, "deep link failed for " + uri + ": " + e.getMessage());
+            return false;
+        }
     }
 
     /**
