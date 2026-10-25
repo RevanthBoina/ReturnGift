@@ -27,6 +27,24 @@ object McpRuntimeTest {
         override fun remove(key: String) { map.remove(key) }
     }
 
+    /** Secrets need a cipher; tests use a reversible stand-in for the Keystore. */
+    private object FakeCipher : McpSecretStore.SecretCipher {
+        override val isSecure: Boolean = true
+        override fun encrypt(plaintext: String): String = "enc:" + plaintext.reversed()
+        override fun decrypt(blob: String): String? =
+            if (blob.startsWith("enc:")) blob.removePrefix("enc:").reversed() else null
+    }
+
+    /** Tokens live in their own store; tests give it a fake so nothing touches MMKV. */
+    private val secretStorage = FakeStorage()
+
+    @org.junit.Before
+    fun setUpSecrets() {
+        McpSecretStore.cipher = FakeCipher
+        McpSecretStore.storage = secretStorage
+        secretStorage.map.clear()
+    }
+
     private fun row(id: String, name: String = id) = McpServerConfig(
         id = id,
         name = name,
@@ -186,7 +204,7 @@ object McpRuntimeTest {
             McpRuntime.call("mcp__missing__x")
             Assert.fail("expected McpException")
         } catch (e: McpException) {
-            Assert.assertTrue(e.message!!.contains("not connected"))
+            Assert.assertTrue(e.message!!.contains("unknown MCP tool"))
         }
         McpRuntime.reset()
     }

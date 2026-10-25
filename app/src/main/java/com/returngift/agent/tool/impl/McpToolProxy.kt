@@ -5,25 +5,49 @@ package com.returngift.agent.tool.impl
 
 import com.returngift.agent.agent.mcp.Json
 import com.returngift.agent.agent.mcp.JsonValue
+import com.returngift.agent.agent.mcp.McpRedaction
+import com.returngift.agent.agent.mcp.McpResultFormatter
 import com.returngift.agent.agent.mcp.McpRuntime
 import com.returngift.agent.agent.mcp.McpToolDef
+import com.returngift.agent.agent.mcp.McpToolPolicy
+import com.returngift.agent.agent.clarify.ClarificationManager
 import com.returngift.agent.tool.BaseTool
 import com.returngift.agent.tool.ToolParameter
 import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.utils.XLog
 
 /**
- * Exposes one MCP tool to the agent loop as a normal device tool.
+ * Exposes one MCP tool to the agent loop as a normal device tool — behind the trust
+ * policy.
  *
- * The proxy is deliberately thin: schema → [ToolParameter]s, arguments → JSON,
- * result → [ToolResult]. Everything protocol-specific stays in `agent/mcp`, so a
- * server that misbehaves yields a tool error, not a crashed task.
+ * Flow: classify (read / write / destructive) → decide (allow / ask / deny) → only
+ * then call. An ASK parks the loop on the same clarification bridge `ask_user` uses,
+ * so an approval is a real user decision in the chat, not a prompt-level hope.
+ *
+ * Output is fenced as untrusted data ([McpResultFormatter]) before the model sees it.
  */
 class McpToolProxy(private val def: McpToolDef) : BaseTool() {
 
     companion object {
         private const val TAG = "McpToolProxy"
         private val ALLOWED_TYPES = setOf("string", "integer", "number", "boolean", "object", "array")
+
+        /**
+         * Seam for tests/hosts: `(question) -> true` approves.
+         * Default answers through the chat clarification card, and treats a timeout
+         * or cancellation as **no**.
+         */
+        @Volatile
+        var confirmer: (String) -> Boolean = { question ->
+            val answer = try {
+                ClarificationManager.request(question, listOf("Allow", "Cancel"), false)
+            } catch (e: Exception) {
+                XLog.w("McpToolProxy", "approval dialog failed; denying", e)
+                null
+            }
+            answer?.trim()?.startsWith("Allow", ignoreCase = true) == true ||
+                answer?.trim()?.startsWith("Yes", ignoreCase = true) == true
+        }
     }
 
     override fun getName(): String = def.qualifiedName
@@ -31,16 +55,45 @@ class McpToolProxy(private val def: McpToolDef) : BaseTool() {
     override fun getParameters(): List<ToolParameter> = parametersFromSchema(def.inputSchema)
 
     override fun execute(params: @JvmSuppressWildcards Map<String, Any>): ToolResult {
+        val arguments = toJsonObject(params)
+        val preview = Json.write(arguments)
+
+        when (val decision = McpToolPolicy.decide(def)) {
+            is McpToolPolicy.Decision.Deny ->
+                return ToolResult.error("Blocked: ${decision.reason}")
+
+            is McpToolPolicy.Decision.Ask -> {
+                val question = McpToolPolicy.approvalQuestion(def, preview)
+                if (!confirmer(question)) {
+                    return ToolResult.error(
+                        "Not run: approval for '${def.name}' (${def.serverName}) was declined."
+                    )
+                }
+            }
+
+            McpToolPolicy.Decision.Allow -> Unit
+        }
+
         return try {
-            val result = McpRuntime.call(def.qualifiedName, toJsonObject(params))
+            val result = McpRuntime.call(def.qualifiedName, arguments)
+            val text = result.text
             if (result.isError) {
-                ToolResult.error(result.text.ifBlank { "MCP tool '${def.name}' reported an error" })
+                ToolResult.error(
+                    McpResultFormatter.format(def.serverName, def.name, isError = true, body = text)
+                )
             } else {
-                ToolResult.success(result.text.ifBlank { "ok (no content returned by ${def.name})" })
+                ToolResult.success(
+                    McpResultFormatter.format(
+                        def.serverName,
+                        def.name,
+                        isError = false,
+                        body = text.ifBlank { "ok (no content returned by ${def.name})" },
+                    )
+                )
             }
         } catch (e: Exception) {
             XLog.w(TAG, "MCP call '${def.qualifiedName}' failed", e)
-            ToolResult.error("MCP tool '${def.name}' failed: ${e.message}")
+            ToolResult.error("MCP tool '${def.name}' failed: ${McpRedaction.redact(e.message)}")
         }
     }
 
@@ -56,10 +109,21 @@ class McpToolProxy(private val def: McpToolDef) : BaseTool() {
         return properties.fields.map { (name, raw) ->
             val spec = raw as? JsonValue.Obj
             val type = spec?.str("type")?.takeIf { it in ALLOWED_TYPES } ?: "string"
+            val enumHint = spec?.arr("enum")?.items
+                ?.mapNotNull { (it as? JsonValue.Str)?.value }
+                ?.takeIf { it.isNotEmpty() }
+                ?.joinToString(" | ")
+            val description = buildString {
+                append(spec?.str("description").orEmpty())
+                if (enumHint != null) {
+                    if (isNotEmpty()) append(' ')
+                    append("One of: ").append(enumHint).append('.')
+                }
+            }
             ToolParameter(
                 name = name,
                 type = type,
-                description = spec?.str("description").orEmpty(),
+                description = description,
                 isRequired = name in required,
             )
         }

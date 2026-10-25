@@ -38,9 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.returngift.agent.agent.mcp.McpPolicyStore
 import com.returngift.agent.agent.mcp.McpRuntime
 import com.returngift.agent.agent.mcp.McpServerConfig
 import com.returngift.agent.agent.mcp.McpServerStore
+import com.returngift.agent.agent.mcp.McpToolPolicy
 import com.returngift.agent.base.BaseActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,6 +56,10 @@ import kotlinx.coroutines.withContext
  *
  * The screen is honest about state: a server shows "N tools" only after a real
  * `initialize` + `tools/list` succeeded in this process.
+ *
+ * It is also where trust is granted. A remote server is a third party, so the
+ * defaults are the cautious ones; every relaxation here is a visible switch the user
+ * can turn back off, and it persists (see `McpPolicyStore`).
  */
 class McpServersActivity : BaseActivity() {
 
@@ -74,6 +80,10 @@ fun McpServersScreen(onBack: () -> Unit) {
     var url by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var policy by remember { mutableStateOf(McpToolPolicy.settings) }
+    var blockedTools by remember {
+        mutableStateOf(McpToolPolicy.settings.denyPatterns.sorted().joinToString(", "))
+    }
 
     // Network work always off the main thread; a failing server leaves the row but
     // contributes no tools.
@@ -134,16 +144,43 @@ fun McpServersScreen(onBack: () -> Unit) {
                 ServerCard(
                     server = server,
                     toolCount = toolCounts[server.id] ?: 0,
+                    trusted = policy.trustedServers.contains(server.id),
+                    blocked = policy.blockedServers.contains(server.id),
                     onToggle = { enabled ->
                         McpServerStore.setEnabled(server.id, enabled)
                         servers = McpServerStore.all()
                         refreshTick++
                     },
+                    onTrustChange = { trusted ->
+                        policy = McpPolicyStore.setServerTrusted(server.id, trusted)
+                    },
+                    onBlockChange = { blocked ->
+                        policy = McpPolicyStore.setServerBlocked(server.id, blocked)
+                    },
                     onDelete = {
                         McpRuntime.removeServer(server.id)
+                        McpPolicyStore.setServerTrusted(server.id, false)
+                        McpPolicyStore.setServerBlocked(server.id, false)
+                        policy = McpToolPolicy.settings
                         servers = McpServerStore.all()
                         toolCounts = toolCounts - server.id
                     },
+                )
+            }
+
+            item {
+                PolicyCard(
+                    policy = policy,
+                    blockedTools = blockedTools,
+                    onBlockedToolsChange = { text ->
+                        blockedTools = text
+                        policy = policy.copy(denyPatterns = text.split(',').map { it.trim().lowercase() }
+                            .filter { it.isNotEmpty() }.toSet())
+                        McpPolicyStore.save(policy)
+                    },
+                    onEnabledChange = { on -> policy = policy.copy(enabled = on); McpPolicyStore.save(policy) },
+                    onReadsChange = { on -> policy = policy.copy(autoApproveReads = on); McpPolicyStore.save(policy) },
+                    onWritesChange = { on -> policy = policy.copy(autoApproveWrites = on); McpPolicyStore.save(policy) },
                 )
             }
 
@@ -212,7 +249,11 @@ fun McpServersScreen(onBack: () -> Unit) {
 private fun ServerCard(
     server: McpServerConfig,
     toolCount: Int,
+    trusted: Boolean,
+    blocked: Boolean,
     onToggle: (Boolean) -> Unit,
+    onTrustChange: (Boolean) -> Unit,
+    onBlockChange: (Boolean) -> Unit,
     onDelete: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -233,6 +274,76 @@ private fun ServerCard(
                 Switch(checked = server.enabled, onCheckedChange = onToggle)
                 TextButton(onClick = onDelete) { Text("Remove") }
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Trust reads", fontSize = 13.sp)
+                    Text(
+                        "Read-only tools from this server run without asking.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = trusted, enabled = !blocked, onCheckedChange = onTrustChange)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Block server", fontSize = 13.sp)
+                    Text(
+                        "No tool from this server may run, even reads.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = blocked, onCheckedChange = onBlockChange)
+            }
+        }
+    }
+}
+
+/**
+ * Global switches for remote tools. Writes are off by default; a destructive call
+ * always asks regardless of these settings (that decision lives in `McpToolPolicy`).
+ */
+@Composable
+private fun PolicyCard(
+    policy: McpToolPolicy.Settings,
+    blockedTools: String,
+    onBlockedToolsChange: (String) -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+    onReadsChange: (Boolean) -> Unit,
+    onWritesChange: (Boolean) -> Unit,
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text("Remote tool safety", fontWeight = FontWeight.SemiBold)
+            Text(
+                "Servers are third parties: their tool names, descriptions and output are " +
+                    "untrusted. Anything that changes data asks first, and can't-undo " +
+                    "actions always ask.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Allow remote tools", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Switch(checked = policy.enabled, onCheckedChange = onEnabledChange)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Run read-only tools without asking", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Switch(checked = policy.autoApproveReads, onCheckedChange = onReadsChange)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Run writes without asking", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Switch(checked = policy.autoApproveWrites, onCheckedChange = onWritesChange)
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = blockedTools,
+                onValueChange = onBlockedToolsChange,
+                label = { Text("Never run tools named (comma separated)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

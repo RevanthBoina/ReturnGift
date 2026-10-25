@@ -31,6 +31,25 @@ object McpRuntime {
     private val clients = LinkedHashMap<String, McpClient>()
     private var tools: List<McpToolDef> = emptyList()
 
+    /**
+     * Exposed tool name → the server's **original** tool name.
+     *
+     * The exposed name is sanitised (`mcp__<server>__<tool>` may only contain
+     * `[A-Za-z0-9_-]`), so it cannot be split back into the original name: a server
+     * tool called `search/v2` would otherwise be called as `search_v2` and fail.
+     * Dispatch therefore goes through this map, never through string surgery.
+     */
+    private var routes: Map<String, Route> = emptyMap()
+
+    internal data class Route(val serverId: String, val toolName: String)
+
+    /** Qualified names that collided (two tools sanitising to the same name). */
+    private var collisions: List<String> = emptyList()
+
+    /** Diagnostics/tests: names dropped because they collided after sanitising. */
+    @Synchronized
+    fun collisions(): List<String> = collisions
+
     internal fun setFactoryForTest(newFactory: ClientFactory) {
         factory = newFactory
         reset()
@@ -41,6 +60,8 @@ object McpRuntime {
         clients.values.forEach { runCatching { it.close() } }
         clients.clear()
         tools = emptyList()
+        routes = emptyMap()
+        collisions = emptyList()
     }
 
     /**
@@ -63,14 +84,29 @@ object McpRuntime {
                     XLog.i(TAG, "${config.id} exposes no tools (caps=${info.capabilities})")
                 }
             } catch (e: McpAuthException) {
-                XLog.w(TAG, "MCP ${config.id} auth failed: ${e.message}")
+                XLog.w(TAG, "MCP ${config.id} auth failed: ${McpRedaction.redact(e.message)}")
             } catch (e: Throwable) {
                 // Keep the previously discovered tools for this server, if any.
                 XLog.w(TAG, "MCP ${config.id} unavailable: ${e.message}")
                 discovered += tools.filter { it.serverId == config.id }
             }
         }
+        // Build the exact dispatch table from what the servers actually returned,
+        // BEFORE de-duplication, so two distinct tools that sanitise to the same
+        // exposed name are reported instead of silently collapsed.
+        val newRoutes = LinkedHashMap<String, Route>()
+        val clashes = mutableListOf<String>()
+        discovered.forEach { def ->
+            val route = Route(def.serverId, def.name)
+            val previous = newRoutes.putIfAbsent(def.qualifiedName, route)
+            if (previous != null && previous != route) clashes += def.qualifiedName
+        }
         tools = McpToolIndex.dedupe(discovered)
+        routes = newRoutes
+        collisions = clashes
+        if (clashes.isNotEmpty()) {
+            XLog.w(TAG, "MCP tool name collisions (first wins): ${clashes.joinToString()}")
+        }
         // Forget clients for servers that were removed or disabled.
         clients.keys.filterNot { it in alive }.forEach { id ->
             runCatching { clients.remove(id)?.close() }
@@ -97,15 +133,15 @@ object McpRuntime {
      * Throws [McpException] only for protocol errors; callers translate to tool errors.
      */
     fun call(qualifiedName: String, arguments: JsonValue.Obj = JsonValue.Obj()): McpCallResult {
-        val parts = qualifiedName.split("__")
-        if (parts.size < 3 || parts[0] != "mcp") {
-            throw McpException("not an MCP tool name: $qualifiedName")
-        }
-        val serverId = parts[1]
-        val toolName = parts.drop(2).joinToString("__")
-        val client = synchronized(this) { clients[serverId] }
-            ?: throw McpException("MCP server '$serverId' is not connected")
-        return client.callTool(toolName, arguments)
+        val route = synchronized(this) { routes[qualifiedName] }
+            ?: throw McpException(
+                "unknown MCP tool '$qualifiedName' — it is not among the tools discovered " +
+                    "from the connected servers"
+            )
+        val client = synchronized(this) { clients[route.serverId] }
+            ?: throw McpException("MCP server '${route.serverId}' is not connected")
+        // Exact original name: no re-derivation from the sanitised exposed name.
+        return client.callTool(route.toolName, arguments)
     }
 
     @Synchronized
@@ -133,6 +169,7 @@ object McpRuntime {
         McpServerStore.remove(id)
         synchronized(this) {
             tools = tools.filterNot { it.serverId == id }
+            routes = routes.filterValues { it.serverId != id }
             runCatching { clients.remove(id)?.close() }
         }
     }
