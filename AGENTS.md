@@ -1,5 +1,63 @@
 # AGENTS.md — ReturnGift repository memory
 
+## ⛔ Hard rules (read before writing any code)
+
+1. **No per-app files.** Never create a Kotlin/Java file (main *or* test) that is
+   dedicated to one app — no `LinkedInSearchFlowTest.kt`, `WhatsAppFlow.kt`,
+   `TwitterRoutine.kt`, … A file must be named after the **capability** and work for
+   any app. App-specific knowledge is **data**, and it may arrive three ways:
+   - **built-in rows** — `agent/knowledge/AppUsageGuide.kt` (guides),
+     `agent/flow/AppDeepLink.kt` (deep links), `agent/exec/routines/SocialPostRoutine.kt`
+     (`.profiles` — one row per app, one routine for all of them);
+   - **learned from tasks** — `AppGuideLearner` → `AppGuideStore` (evidence-gated,
+     success-only, on-device);
+   - **connectors** — implement `AppKnowledgeSource` and register it with
+     `AppKnowledge.register(...)`; an MCP server that exposes app knowledge maps onto
+     `ConnectorKnowledgeSource` and needs no other code change.
+   Tests follow the same rule: derive fixtures from the registry (see
+   `AppFlowRecoveryTest`, `SocialPostRoutineTest`) so a new app is covered without a
+   new file.
+   *Allowed exceptions (by design, not by accident):* `app/src/main/assets/playbooks/**`
+   and `skill_library/**` are data; `channel/<service>/**` and `connectors/**` are
+   external-service integrations (the same role as an MCP connector) — not app automation.
+   **Enforced by** `scripts/check-app-agnostic.py` (wired into `scripts/ci-preflight.sh`);
+   it fails the build on a per-app file name.
+
+2. **No numeric token ceiling.** Token state is cosmetic; `TaskBudget` is the only cost stop.
+3. **No silent failures.** Every blocking condition must reach the user with a message
+   (`SessionBlocker` is the pattern: detect → decide → tell).
+4. **Verify before claiming.** Android/Compose changes cannot be compiled in every
+   sandbox; say so instead of implying a green build.
+
+## App-agnostic knowledge layer (AK pack, 2026-10-25)
+- **Rule added (see "Hard rules #1")**: no file dedicated to one app. The previous
+  `LinkedInSearchFlowTest.kt` became `AppFlowRecoveryTest.kt` (scenarios loop over every
+  package the registry classifies as search/social/chat), and the old
+  `exec/routines/LinkedInPostRoutine.kt` was deleted in favour of
+  `exec/routines/SocialPostRoutine.kt` — one routine, `profiles` rows for LinkedIn / X /
+  Facebook / Instagram, `StructuredRoutineRegistry` iterating them (routine ids are
+  derived from the package, and the clarification prompt now names the app from the row).
+- **Knowledge pipeline** (`agent/knowledge/`): `AppGuide` (row model + `GuideSource`
+  BUILTIN/CONNECTOR/LEARNED + precedence `beats`/`mergedWith`), `AppGuideCodec`
+  (dependency-free `\u001f`/`\u001e` wire format used by both the store and connectors),
+  `AppGuideStore` (KV-backed, max 64 rows, merge base), `AppKnowledgeSource`
+  (`BuiltinKnowledgeSource`, `StoreKnowledgeSource`, `ConnectorKnowledgeSource` +
+  `AppKnowledge.register/reset` — the MCP seam), `AppGuideLearner` (≥3 successful
+  observations of a typed surface → learned row; curated rows are only *enriched* with
+  observed labels, never rewritten).
+- **Read path**: `AppUsageGuide.all()/forPackage()/matchingTask()` now merge
+  `AppKnowledge.guides(builtins)`, so connectors and learned rows reach the system
+  prompt, the permission card and the micro-step planner with no extra wiring. The
+  learner is fed from the agent loop (`DefaultAgentService`, success + settled only) and
+  `ClawApplication` injects the label resolver (`InstalledApps`) so the layer stays free
+  of Android imports.
+- **Guard**: `scripts/check-app-agnostic.py` (fail-on-violation, verified by creating a
+  deliberately per-app test file) runs inside `scripts/ci-preflight.sh`. Preflight also
+  stopped dying locally at the `no-bare-apksigner-in-release` check (unbound
+  `$ANDROID_HOME` under `set -u`) — all guards now actually execute outside CI.
+- QA: QA_CHECKLIST section AK (AK.1–AK.6) + changelog. Tests: `AppKnowledgeTest` (22),
+  `SocialPostRoutineTest` (9), `AppFlowRecoveryTest` (rewritten, 15).
+
 ## Repo hygiene audit + local streaming (HY pack, 2026-08-22)
 - **Audit rule that held up**: never trust a grep-only "unused" verdict — the four-signal gate (literal `git grep` across kt/java/xml/kts + manifest view + doc-pointer rule + fixture disambiguation) invalidated most "zero references" candidates. **LIVE (do not delete)**: `core/` 15/16 files (all wired: `ScreenTreeTokenOptimizer`/`SemanticNodeFlattener`/`OcclusionDetector`/`ModalInterceptor`/`FuzzyNodeMatcher` in `ClawAccessibilityService.getScreenTree`, `TouchInputLayer`/`DynamicIMEInjector`/`DirectActionDispatcher` in input tools, `AdaptiveSettleController` in tap/scroll tools, `AppLifecycleManager` in OpenAppTool, `VisualGroundingFallbackEngine` in getScreenTree, `RealtimeGameController` in the service); `server/` all 4 (`ConfigServerManager`+`CloudDeepAgentManager` auto-start from `ClawApplication`; `ConfigServer`/`CloudDeepAgentService` are their impl classes); root `fixtures/` (referenced by `playbooks/ask-external-ai.yaml` + `skill_definitions_v2.yaml` SHA-256 hash workflow); `golden_transcripts/` (referenced by `assets/skills/handle-interrupt.md`); `docs/` website (published Pages site: sitemap/robots/og-image; `demo.html` iframed by `index.html`); `prototype/` (design history); `demo/` (now embedded in README).
 - **Removed**: `core/telemetry/DirectTelemetryTools.kt` (zero refs, redundant with `GetDeviceInfoTool`/`GetForegroundAppTool`), root `lint-baseline.xml` (diverged duplicate — Gradle reads ONLY `app/lint-baseline.xml` per `app/build.gradle.kts`), empty `source_repo/` gitlink, stale `Expert_tasks.md` → pointer stub to `EXPERT_REVIEW_TASKS.md` (contains PokeClaw attribution, keep it).

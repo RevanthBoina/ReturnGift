@@ -31,8 +31,8 @@ This is the repo map for coding agents. Keep canonical information in existing f
 | `app/src/main/java/com/returngift/agent/agent/knowledge/AppCatalog.kt` | App address registry — built at setup, persists JSON + vault markdown |
 | `app/src/main/java/com/returngift/agent/agent/exec/TargetSpecGate.kt` | Pure Kotlin gate detecting enumeration-without-names (e.g., "open 5 apps") |
 | `app/src/main/java/com/returngift/agent/agent/exec/DeterministicUiExecutor.kt` | Bounded executor with WAIT_FOR_TARGET polling + waitForMs per step |
-| `app/src/main/java/com/returngift/agent/agent/exec/StructuredRoutineRegistry.kt` | Registry of deterministic routines (LinkedInPostRoutine) |
-| `app/src/main/java/com/returngift/agent/agent/exec/routines/LinkedInPostRoutine.kt` | LinkedIn posting routine with hardened selectors + wait |
+| `app/src/main/java/com/returngift/agent/agent/exec/StructuredRoutineRegistry.kt` | Registry of deterministic routines (data-driven, one entry per capability) |
+| `app/src/main/java/com/returngift/agent/agent/exec/routines/SocialPostRoutine.kt` | "Post <text> on <social app>" routine — app labels live in `profiles` rows, never in code |
 | `app/src/main/java/com/returngift/agent/agent/exec/micro/MicroStepCatalog.kt` | 73 mid-task micro-step rules (type → Enter/Send, tap → confirm, permission → Allow…) |
 | `app/src/main/java/com/returngift/agent/agent/exec/micro/MicroStepPlanner.kt` | Deterministic planner: context → mandatory next micro-step(s) + guidance text |
 | `app/src/main/java/com/returngift/agent/agent/exec/micro/MicroStepTracker.kt` | Per-task state machine; vetoes premature `finish` while an action is outstanding |
@@ -51,6 +51,12 @@ This is the repo map for coding agents. Keep canonical information in existing f
 | `app/src/main/java/com/returngift/agent/agent/knowledge/AppUsageGuide.kt` | Per-app recipes + surfaces (Chrome, LinkedIn, YouTube, WhatsApp, …) for prompt + UI |
 | `app/src/main/java/com/returngift/agent/agent/knowledge/InstalledApps.kt` | Cached launchable-app list (PackageManager) |
 | `app/src/main/java/com/returngift/agent/ui/settings/AppAllowListActivity.kt` | Settings → App permissions: toggles + per-app Always/Ask/Blocked rows with hints |
+| `app/src/main/java/com/returngift/agent/agent/knowledge/AppGuide.kt` | App knowledge ROW model + `GuideSource` (builtin/connector/learned) + precedence |
+| `app/src/main/java/com/returngift/agent/agent/knowledge/AppGuideCodec.kt` | Dependency-free wire format for rows (store + connectors) |
+| `app/src/main/java/com/returngift/agent/agent/knowledge/AppGuideStore.kt` | Runtime rows learned on device / cached from connectors (KV, max 64) |
+| `app/src/main/java/com/returngift/agent/agent/knowledge/AppKnowledgeSource.kt` | Knowledge-source seam (builtin / store / MCP connector) + `AppKnowledge` merge |
+| `app/src/main/java/com/returngift/agent/agent/knowledge/AppGuideLearner.kt` | Distils successful task steps into learned guides (evidence-gated) |
+| `scripts/check-app-agnostic.py` | CI guard: fails on any file dedicated to a single app |
 | `app/src/main/java/com/returngift/agent/agent/flow/AppDeepLink.kt` | Deep-link registry (documented vs best effort), URI encoding, search-term extraction |
 | `app/src/main/java/com/returngift/agent/agent/flow/SessionBlocker.kt` | Detects login walls, captcha, account chooser, consent, throttling, network errors + user messages |
 | `app/src/main/java/com/returngift/agent/agent/flow/FlowRetry.kt` | Retry budgets with capped exponential backoff (search/navigation/network/save) |

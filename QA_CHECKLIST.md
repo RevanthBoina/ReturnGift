@@ -4282,3 +4282,68 @@ Kotlin compile + runner.
      (73 → 81 rules), and `post_composer_publish` no longer fires for a search box.
   - Local verification: JVM compile + runner → **171 tests green**. Android compile /
     device run still requires the next CI build.
+
+
+---
+
+## AK — App-agnostic knowledge layer (2026-10-25)
+
+**Rule now enforced repo-wide:** no Kotlin/Java file (main or test) may be dedicated to a
+single app. App behaviour is data — built-in rows, task-learned rows, or connector rows —
+so a new app is a row, never a file. `scripts/check-app-agnostic.py` fails CI on a
+per-app file name; the rule is stated in `AGENTS.md` (Hard rules #1) and `CLAUDE.md`.
+
+**Unit coverage (JVM):** `AppKnowledgeTest` (22), `SocialPostRoutineTest` (9),
+`AppFlowRecoveryTest` (15, rewritten to loop over registry-derived packages) — **179
+tests green** locally with a real Kotlin compile + runner.
+
+### AK.1 No per-app files `[CI]`
+- **Act**: `python3 scripts/check-app-agnostic.py`.
+- **PASS**: `OK no-per-app-files`. Creating e.g. `LinkedInKnowledgeTest.kt` turns it red
+  with the suggested rename.
+
+### AK.2 Preflight actually runs every guard `[CI]`
+- **Act**: `bash scripts/ci-preflight.sh` on a machine without `ANDROID_HOME`.
+- **PASS**: the script reaches the final summary (previously it aborted at the
+  `no-bare-apksigner-in-release` guard under `set -u`), and `no-per-app-files` is listed.
+
+### AK.3 A learned row reaches the prompt `[ADB] [LOGCAT-DEBUG]`
+- **Act**: in an app with no guide, type + submit a search successfully three times.
+- **PASS**: logcat shows `AppGuideStore: stored LEARNED guide for <pkg>`; the next task's
+  system prompt contains a guide line for that app; Settings → App permissions shows the
+  hint. One or two runs must NOT be enough.
+
+### AK.4 A curated row is enriched, never rewritten `[UNIT]`
+- **Act**: repeat successful searches in an app that already has a built-in row.
+- **PASS**: the row keeps its authored tips; only `searchLabels` grows (asserted in
+  `AppKnowledgeTest`).
+
+### AK.5 A connector can update knowledge without a release `[UNIT]` `[ADB]`
+- **Act**: register a `ConnectorKnowledgeSource("mcp:app-guides") { payload }` and call
+  `refresh()`.
+- **PASS**: its rows win over built-ins for the same package, new packages appear in the
+  prompt, a throwing connector is skipped without breaking the prompt, and
+  `AppKnowledge.persist(...)` survives a restart.
+
+### AK.6 One routine covers every social app `[ADB]`
+- **Act**: "post \"shipped v2\" on <app>" for any profile in
+  `SocialPostRoutine.profiles`.
+- **PASS**: the same four-state spec runs (open composer → type → publish → verify);
+  a request without text asks "What should the <app> post say?"; routine ids are unique
+  and end in `_post`.
+
+### QA Debug Changelog — app-agnostic knowledge (2026-10-25)
+- `[2026-10-25] [UNIT-PASS] [AK.1-AK.6]`:
+  1. `LinkedInSearchFlowTest.kt` → `AppFlowRecoveryTest.kt`; fixtures now come from
+     `AppUsageGuide`, so new apps are covered automatically.
+  2. `exec/routines/LinkedInPostRoutine.kt` deleted → `SocialPostRoutine` with
+     `profiles` rows (LinkedIn, X, Facebook, Instagram); `StructuredRoutineRegistry`
+     iterates them and carries an app-named clarification prompt.
+  3. New knowledge pipeline: `AppGuide`, `AppGuideCodec`, `AppGuideStore`,
+     `AppKnowledgeSource`/`AppKnowledge` (MCP seam), `AppGuideLearner`.
+  4. `AppUsageGuide` read path merges runtime knowledge; learner fed from the agent loop;
+     label resolver injected from `ClawApplication`.
+  5. `scripts/check-app-agnostic.py` + preflight wiring; preflight unbound-variable bug
+     fixed so all guards run locally.
+  - Local verification: JVM compile + runner → **179 tests green**. Android compile /
+    device run still requires the next CI build.

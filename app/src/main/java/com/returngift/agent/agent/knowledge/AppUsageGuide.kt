@@ -18,22 +18,13 @@ import com.returngift.agent.agent.exec.micro.AppSurface
  *  2. Settings → App Permissions (per-app "how the agent will use this" hint),
  * so the UI and the model can never disagree about how an app works.
  *
+ * This file is a **data registry, not an app implementation**: adding an app is a
+ * row here (or, better, a row that arrives at runtime — see [AppKnowledge],
+ * [AppGuideStore] and [AppGuideLearner]). No per-app classes or files exist.
+ *
  * Pure Kotlin — unit tested in `AppUsageGuideTest`.
  */
 object AppUsageGuide {
-
-    data class AppGuide(
-        val packageName: String,
-        val label: String,
-        val surface: AppSurface,
-        /** Lower-case tokens the user may type instead of the label. */
-        val aliases: List<String>,
-        /** Ordered, concrete actions the agent should take inside the app. */
-        val tips: List<String>,
-    ) {
-        /** One-line hint for the settings row. */
-        val shortHint: String get() = tips.firstOrNull().orEmpty()
-    }
 
     private val GUIDES: List<AppGuide> = listOf(
         AppGuide(
@@ -237,14 +228,22 @@ object AppUsageGuide {
         ),
     )
 
-    fun all(): List<AppGuide> = GUIDES
+    /** Compiled-in rows only (the merge base). */
+    fun builtinGuides(): List<AppGuide> = GUIDES
+
+    /**
+     * Effective rows: built-ins merged with everything [AppKnowledge] can see
+     * (connector rows, task-learned rows). Precedence lives in [AppGuide.beats].
+     */
+    fun all(): List<AppGuide> = AppKnowledge.guides(GUIDES)
 
     /** Guide for an installed package (exact first, then substring for variants). */
     fun forPackage(packageName: String?): AppGuide? {
         val pkg = packageName?.trim()?.lowercase().orEmpty()
         if (pkg.isEmpty()) return null
-        GUIDES.firstOrNull { it.packageName.equals(pkg, ignoreCase = true) }?.let { return it }
-        return GUIDES.firstOrNull {
+        val guides = all()
+        guides.firstOrNull { it.packageName.equals(pkg, ignoreCase = true) }?.let { return it }
+        return guides.firstOrNull {
             pkg.contains(it.packageName.lowercase()) || it.packageName.lowercase().contains(pkg)
         }
     }
@@ -256,7 +255,7 @@ object AppUsageGuide {
     fun matchingTask(task: String): List<AppGuide> {
         val lower = task.lowercase()
         if (lower.isBlank()) return emptyList()
-        return GUIDES.filter { guide ->
+        return all().filter { guide ->
             guide.aliases.any { alias -> containsToken(lower, alias) } ||
                 containsToken(lower, guide.label.lowercase())
         }

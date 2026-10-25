@@ -17,6 +17,24 @@ ReturnGift is a private/internal Android mobile-agent harness built on a single 
 | `RELEASING.md` | Signing and release workflow | When the release process changes |
 | `BACKLOG.md` | Features, bugs, ideas with priority | When new items come in or items get done |
 
+## App-Agnostic Rule (MANDATORY)
+
+**Never create a file dedicated to a single app.** No `LinkedIn…`, `WhatsApp…`,
+`YouTube…` Kotlin/Java files — in `main/` or in `test/`. Name files after the
+capability (`SocialPostRoutine`, `AppFlowRecoveryTest`) and keep app specifics as
+data:
+
+- built-in rows: `agent/knowledge/AppUsageGuide.kt`, `agent/flow/AppDeepLink.kt`,
+  `agent/exec/routines/SocialPostRoutine.profiles`;
+- learned from tasks: `AppGuideLearner` → `AppGuideStore`;
+- connectors: implement `AppKnowledgeSource`, register via `AppKnowledge.register`
+  (MCP servers map onto `ConnectorKnowledgeSource`).
+
+Tests must derive fixtures from the registry, not name one app. Data-only paths
+(`app/src/main/assets/playbooks/**`, `skill_library/**`) and external-service
+connectors (`channel/**`) are the documented exceptions. Enforced by
+`scripts/check-app-agnostic.py` via `scripts/ci-preflight.sh`.
+
 ## Repository Structure Rules
 
 - **agent-core/** — pure Kotlin/JVM, zero `android.*` imports. All agent logic lives here.

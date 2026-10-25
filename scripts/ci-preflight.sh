@@ -19,6 +19,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 fail=0
+pass=0
 red() { printf '\033[31m%s\033[0m\n' "$*"; }
 grn() { printf '\033[32m%s\033[0m\n' "$*"; }
 
@@ -67,7 +68,7 @@ run_check "no-compose-runtime-optin-import" \
 # Pitfall 10 (tag v3.0.12, 2026-09-04): apksigner is in build-tools, not PATH.
 run_check "no-bare-apksigner-in-release" \
   '^[[:space:]]*apksigner[[:space:]]+verify' \
-  "release.yml must resolve apksigner under $ANDROID_HOME/build-tools instead of assuming it is on PATH." ".github/workflows/release.yml"
+  "release.yml must resolve apksigner under \${ANDROID_HOME:-<sdk>}/build-tools instead of assuming it is on PATH." ".github/workflows/release.yml"
 
 # Pitfall 3 (pre-existing on main, surfaced 2026-08-18): Java tool files that use a type
 # from com.returngift.agent.tool without importing it. The tv/* tools live in a sub-package
@@ -218,6 +219,16 @@ run_check "no-istaskmode-assignment" \
   '^\s*(var|val)\s+isTaskMode\s*=' \
   "isTaskMode is now a read-only parameter in ChatScreen — use onTaskModeChange(...) instead of assignment." \
   "--include=*.kt"
+
+# Repo rule: no code or test file may be dedicated to a single app. App behaviour is
+# data (agent/knowledge registries, playbooks, skills) or arrives through a connector.
+# A per-app class/file rots with the app's UI and makes the next app a code change.
+if python3 scripts/check-app-agnostic.py; then
+  pass=$((pass + 1))
+else
+  red "FAIL no-per-app-files"
+  fail=$((fail + 1))
+fi
 
 if [ "$fail" -ne 0 ]; then
   red ""

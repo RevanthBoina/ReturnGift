@@ -1657,6 +1657,22 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                         screenText = microScreenText,
                     )
                 )
+                // Learn app knowledge from what actually worked (typed + submitted in
+                // an app we have no guide for). Evidence-gated, success-only, and it
+                // never overrides a curated row — see AppGuideLearner.
+                if (result.isSuccess && microPlan.isComplete) {
+                    com.returngift.agent.agent.knowledge.AppGuideLearner.observeStep(
+                        toolName = toolName,
+                        packageName = microForeground,
+                        params = params,
+                        success = true,
+                        surface = com.returngift.agent.agent.knowledge.AppUsageGuide
+                            .surfaceFor(microForeground)
+                            ?: com.returngift.agent.agent.exec.micro.AppSurface.UNKNOWN,
+                        screenChanged = verification?.outcome !=
+                            ActionVerifier.VerificationOutcome.NO_CHANGE,
+                    )
+                }
                 // Remember (or forget) the app's session facts so the next task does not
                 // rediscover a login wall or a consent prompt.
                 if (microPlan.ruleId == "blocker_login_wall" || microPlan.ruleId == "blocker_captcha") {
@@ -1772,9 +1788,9 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
 
         // W7: Missing post text - ask user via ClarificationManager before proceeding
         if (match.spec.steps.isEmpty()) {
-            XLog.i(TAG, "LinkedIn routine matched but no post text provided — asking user")
+            XLog.i(TAG, "Post routine matched (${match.routineId}) but no post text — asking user")
             val answer = com.returngift.agent.agent.clarify.ClarificationManager.request(
-                question = "What should the LinkedIn post say?",
+                question = match.askPrompt,
                 choices = emptyList(),
                 allowFreeText = true,
                 timeoutMs = 120_000L // 2 minutes
@@ -1785,8 +1801,17 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                 return
             }
             // Rebuild spec with the user's answer
-            val newSpec = com.returngift.agent.agent.exec.routines.LinkedInPostRoutine.buildSpec(answer)
-            val newMatch = com.returngift.agent.agent.exec.StructuredRoutineRegistry.Match(match.routineId, newSpec)
+            val profile = com.returngift.agent.agent.exec.routines.SocialPostRoutine
+                .profileFor(match.spec.targetPackage)
+            if (profile == null) {
+                XLog.w(TAG, "no post profile for ${match.spec.targetPackage} — cancelling")
+                callback.onError(1, RuntimeException("Cancelled — unsupported app"), 0)
+                return
+            }
+            val newSpec = com.returngift.agent.agent.exec.routines.SocialPostRoutine
+                .buildSpec(answer, profile)
+            val newMatch = com.returngift.agent.agent.exec.StructuredRoutineRegistry
+                .Match(match.routineId, newSpec, match.askPrompt)
             return runStructuredRoutine(newMatch, rawUserRequest, callback, stepHistory)
         }
 
