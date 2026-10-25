@@ -4347,3 +4347,81 @@ tests green** locally with a real Kotlin compile + runner.
      fixed so all guards run locally.
   - Local verification: JVM compile + runner → **179 tests green**. Android compile /
     device run still requires the next CI build.
+
+
+---
+
+## AK2 — Plan-first, MCP, in-app routing (2026-10-25)
+
+Coverage: `PlanFirstTest` (32), `PlanClarifierTest` (7), `McpClientTest` (21),
+`McpRuntimeTest` (15), `ProviderRouterTest` (28) — **103 tests**, real Kotlin compile
++ JVM runner. Knowledge suite re-run unchanged (29 green).
+
+### AK2.1 A multi-step request is planned before the device is touched `[UNIT] [ADB]`
+- **Act**: send "Follow youtube on linkedin".
+- **PASS**: the chat shows `1. Open LinkedIn … 6. Verify the button shows Following`
+  before any screen interaction; the system prompt contains the one-line agreed plan.
+
+### AK2.2 The plan names apps from the device, not from code `[UNIT]`
+- **Act**: rename the platform in `PlanContext` (test fixture) and re-run the same prompt.
+- **PASS**: plan follows the fixture; no app name appears that is not in the context.
+
+### AK2.3 Missing detail becomes a question, and the answer changes the plan `[UNIT] [ADB]`
+- **Act**: send "follow youtube" (no app) → answer the prompt with an app.
+- **PASS**: the first plan has no steps and one blocking question; after answering, the
+  rebuilt plan opens the chosen app (asserted in `PlanClarifierTest`).
+
+### AK2.4 "Show me the plan" stops; "just do it" proceeds `[UNIT]`
+- **PASS**: PREVIEW → plan shown, `executeAfter=false`, chat asks for "go";
+  SILENT → plan hidden but a required question is still asked.
+
+### AK2.5 A missing app is never silently browsed `[UNIT]`
+- **Act**: "follow youtube on <app not installed>".
+- **PASS**: question "…is not installed on this device. Use <browser> instead?" with the
+  browser fallback steps underneath.
+
+### AK2.6 MCP tools are discovered, bounded and callable `[UNIT] [ADB]`
+- **Act**: Settings → MCP connections → add a server → Refresh.
+- **PASS**: row shows "N tool(s) available"; `McpRuntime.toolsFor(task)` returns ≤12
+  ranked tools; the model can call `mcp__<server>__<tool>` and gets the text back.
+
+### AK2.7 A broken MCP server never blocks a task `[UNIT]`
+- **Act**: configure a dead URL next to a working one.
+- **PASS**: the working server's tools are still discovered; the dead one logs and is
+  skipped; app start is not delayed (refresh is on a background thread).
+
+### AK2.8 Session loss and auth failure are handled honestly `[UNIT]`
+- **PASS**: 404 after a session existed → one re-initialize + retry; 401 → skipped
+  server (not an infinite retry); malformed payload → ignored with a log line.
+
+### AK2.9 Knowledge can arrive through MCP `[UNIT]`
+- **PASS**: an encoded resource becomes `mcp:<server>` knowledge; the merged guide
+  shows the connector row with `GuideSource.CONNECTOR`; unregister removes it.
+
+### AK2.10 Routing picks, explains and fails over `[UNIT]`
+- **PASS**: CHEAPEST/FASTEST/QUALITY pick the expected model; exhausted or cooling
+  providers are excluded with a reason; a 429 cools the provider and moves to the next
+  candidate; the chain returns null when everything is exhausted.
+
+### AK2.11 Quota windows roll over `[UNIT]`
+- **PASS**: +5 h clears the short window but keeps the 7-day total; +7 d clears both;
+  spend limits count as exhausted.
+
+### AK2.12 Size stays small `[MEASURED]`
+- **Act**: compile the three pure modules and sum `.class` bytes.
+- **PASS**: 447,022 B total (436.5 KiB) = **0.316 %** of the 141.6 MB APK, with zero new
+  dependencies (numbers and method in `docs/MCP_AND_MODEL_ROUTING.md`).
+
+### QA Debug Changelog — plan-first, MCP, routing (2026-10-25)
+- `[2026-10-25] [UNIT-PASS] [AK2.1-AK2.12]`:
+  1. `agent/plan/` (model, parser, composer, policy, clarifier) + wiring at the top of
+     `DefaultAgentService.runAgentLoop`; agreed plan also added to the system prompt.
+  2. `agent/mcp/` (JSON-RPC client, HTTP transport, store, tool index, runtime,
+     registrar, knowledge bridge) + Settings → MCP connections screen + manifest entry.
+  3. `agent/routing/` (catalog, ledger, router) + `RoutedLlmClient`; `auto` now routes
+     in-app when a provider key exists, otherwise the gateway path is unchanged.
+  4. New hard rules #5 (plan before acting) and #6 (remote tools fail open) in `AGENTS.md`.
+  5. Design/analysis: `docs/MCP_AND_MODEL_ROUTING.md` (incl. measured storage cost).
+  - Local verification: **101 new tests green**, knowledge suite **29 green**;
+    `kotlin-structure-check` and `check-app-agnostic` clean. Android assemble still
+    needs CI (no SDK in this sandbox).

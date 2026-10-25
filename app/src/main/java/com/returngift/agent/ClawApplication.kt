@@ -51,6 +51,14 @@ class ClawApplication : BaseApp() {
                 com.returngift.agent.agent.knowledge.InstalledApps.labelOf(applicationContext, pkg)
             }.getOrNull()
         }
+        // In-app model routing: which providers this device can actually call.
+        // Read from the per-provider key slots the settings screen already writes.
+        com.returngift.agent.agent.routing.RoutingLedger.hasCredentials = { providerId ->
+            runCatching { KVUtils.getApiKeyForProvider(providerId).isNotBlank() }.getOrDefault(false)
+        }
+        // MCP: connect configured servers off the main thread; a dead server never
+        // delays startup (failures are logged and skipped).
+        com.returngift.agent.agent.mcp.McpToolRegistrar.refreshAsync()
         // C4: process-death reconciliation — if a previous task was interrupted by app restart,
         // clear the state and notify the channel.
         val activeTask = KVUtils.getString(TaskOrchestrator.KEY_ACTIVE_TASK, "")

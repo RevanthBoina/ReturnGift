@@ -51,6 +51,25 @@ This is the repo map for coding agents. Keep canonical information in existing f
 | `app/src/main/java/com/returngift/agent/agent/knowledge/AppUsageGuide.kt` | Per-app recipes + surfaces (Chrome, LinkedIn, YouTube, WhatsApp, …) for prompt + UI |
 | `app/src/main/java/com/returngift/agent/agent/knowledge/InstalledApps.kt` | Cached launchable-app list (PackageManager) |
 | `app/src/main/java/com/returngift/agent/ui/settings/AppAllowListActivity.kt` | Settings → App permissions: toggles + per-app Always/Ask/Blocked rows with hints |
+| `app/src/main/java/com/returngift/agent/agent/plan/PlanModel.kt` | Plan data model (`TaskIntent`, `PlanStep`, `PlanQuestion`, `TaskBlueprint`, renderer) |
+| `app/src/main/java/com/returngift/agent/agent/plan/IntentParser.kt` | Deterministic NL → intent (follow/message/post/search/play/open/toggle) + entity typing |
+| `app/src/main/java/com/returngift/agent/agent/plan/PlanComposer.kt` | Intent + installed apps → readable, executable steps (capability-based, never per-app) |
+| `app/src/main/java/com/returngift/agent/agent/plan/PlanFirst.kt` | Mode/presentation policy: AUTO, PREVIEW ("show me the plan"), SILENT ("just do it") |
+| `app/src/main/java/com/returngift/agent/agent/plan/PlanClarifier.kt` | Folds answers into the request and re-plans (no stale assumptions) |
+| `app/src/main/java/com/returngift/agent/agent/plan/PlanContextFactory.kt` | Android glue: installed-app census + guide registry → `PlanContext` |
+| `app/src/main/java/com/returngift/agent/agent/mcp/McpClient.kt` | MCP JSON-RPC client: initialize, tools/list (paged), tools/call, resources/read, session recovery |
+| `app/src/main/java/com/returngift/agent/agent/mcp/McpJson.kt` | Dependency-free JSON for the protocol layer (keeps it JVM-testable) |
+| `app/src/main/java/com/returngift/agent/agent/mcp/HttpMcpTransport.kt` | Streamable-HTTP transport on `HttpURLConnection` (no new dependency) |
+| `app/src/main/java/com/returngift/agent/agent/mcp/McpRuntime.kt` | Connects servers, keeps the bounded tool index, routes calls, fails open |
+| `app/src/main/java/com/returngift/agent/agent/mcp/McpToolIndex.kt` | Ranks MCP tools per task and caps how many reach the prompt |
+| `app/src/main/java/com/returngift/agent/agent/mcp/McpServerStore.kt` | Persisted connection rows (KV seam, validated, max 16) |
+| `app/src/main/java/com/returngift/agent/agent/mcp/McpKnowledgeBridge.kt` | MCP resource → `AppKnowledgeSource` (knowledge without a release) |
+| `app/src/main/java/com/returngift/agent/agent/mcp/McpToolRegistrar.kt` | Publishes MCP tools into `ToolRegistry` (sync cache + async refresh) |
+| `app/src/main/java/com/returngift/agent/agent/routing/ProviderCatalog.kt` | Model catalog for routing: prices from `CloudProvider` + quality/latency/capabilities |
+| `app/src/main/java/com/returngift/agent/agent/routing/TokenLedger.kt` | Token/cost ledger with 5 h + 7 d windows, budgets and cooldowns |
+| `app/src/main/java/com/returngift/agent/agent/routing/ProviderRouter.kt` | Strategy scoring, filters, ordered failover chain, failure classification |
+| `app/src/main/java/com/returngift/agent/agent/llm/RoutedLlmClient.kt` | Executes the routing chain with real provider clients and records egress |
+| `docs/MCP_AND_MODEL_ROUTING.md` | Design + repo study (mcp-extensions, OpenWA, hive, OmniRoute/Antigravity) + size measurements |
 | `app/src/main/java/com/returngift/agent/agent/knowledge/AppGuide.kt` | App knowledge ROW model + `GuideSource` (builtin/connector/learned) + precedence |
 | `app/src/main/java/com/returngift/agent/agent/knowledge/AppGuideCodec.kt` | Dependency-free wire format for rows (store + connectors) |
 | `app/src/main/java/com/returngift/agent/agent/knowledge/AppGuideStore.kt` | Runtime rows learned on device / cached from connectors (KV, max 64) |
