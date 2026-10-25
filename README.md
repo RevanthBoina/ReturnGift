@@ -183,6 +183,13 @@ User Task → Tier 1 Deterministic Parser → Direct Intent/Tool
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v3.5.1
+- **MCP servers are treated as untrusted principals.** Plain HTTP is refused (only loopback is exempt), bearer tokens are encrypted with an Android Keystore key instead of sitting in a server row, and credentials are masked in logs and error text. Each server has its own trust switch, tools can be blocked by name, and anything that changes remote state asks first — destructive verbs ask every time. Tool output is bounded and fenced as untrusted data before the model reads it.
+- **The plan is now a contract, not a hint.** Every tool call is attributed to a step, the tool's real result is that step's evidence, and `finish` is refused while a step that promised an outcome is unproven. Off-plan actions are recorded (or refused in strict mode), failed steps stay on their step instead of silently advancing, and an interrupted task resumes from a saved checkpoint rather than restarting and reporting success.
+- **The planner reads requests more carefully**: quoted text is treated as content (`post "we're live on LinkedIn"` posts *about* LinkedIn, it does not post *to* LinkedIn), a clause that forbids an action is never inverted into that action, and multi-clause requests plan the first instruction without swallowing the rest.
+- **Routing is honest about the payload**: the token estimate now counts the system prompt, tool results, tool schemas and images — so a screenshot can no longer be routed to a vision-less model, and an over-long conversation is trimmed locally instead of failing at the provider.
+- Verification: 248 JVM unit tests green locally (plan 89, MCP 94, routing 65) with a real Kotlin compile + runner; pre-flight and structure checks clean. Android assemble still needs CI — no SDK in this sandbox.
+
 ### v3.5.0
 - **The agent plans before it acts**: every multi-step request produces a readable plan first — for "Follow youtube on LinkedIn" that is *Open LinkedIn → Search "YouTube" → Filter by Companies → Open the official YouTube page → Tap Follow → Verify the button shows Following*. Plans are derived from the device (installed apps + app guides), cost no tokens, and work on the local model too.
 - **It asks instead of guessing**: a missing app, contact, message text or a risky/irreversible action becomes a question. The answer is folded back into the request and the plan is rebuilt, so a clarified task can never run with the old assumption.

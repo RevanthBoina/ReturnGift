@@ -4425,3 +4425,115 @@ Coverage: `PlanFirstTest` (32), `PlanClarifierTest` (7), `McpClientTest` (21),
   - Local verification: **101 new tests green**, knowledge suite **29 green**;
     `kotlin-structure-check` and `check-app-agnostic` clean. Android assemble still
     needs CI (no SDK in this sandbox).
+
+---
+
+## AK3 — Review remediation: security, plan contract, routing truthfulness (2026-10-25)
+
+Coverage: `PlanContractTest` (23), `PlanCheckpointStoreTest` (12), `PlanAmbiguityTest`
+(15) + the existing `PlanFirstTest` (32) / `PlanClarifierTest` (7) = **89 plan tests**;
+`McpSecurityTest` (+ `McpPolicyTest` 18) with `McpClientTest` / `McpRuntimeTest` =
+**94 MCP tests**; `RequestProfilerTest` (25) + `ContextTrimmerTest` (12) with
+`ProviderRouterTest` (28) = **65 routing tests** — 248 total, real Kotlin compile + JVM
+runner. Android assemble still needs CI (no SDK in this sandbox).
+
+### AK3.1 Plain HTTP to a remote server is refused `[UNIT]`
+- **Act**: `McpServerConfig(url = "http://mcp.example.com/mcp").validationError()`.
+- **PASS**: an error is returned (never `null`). `http://127.0.0.1:8080/mcp`,
+  `http://localhost/mcp`, `http://[::1]/mcp` and `http://10.0.2.2/mcp` are accepted;
+  `https://…` is accepted.
+
+### AK3.2 A token never reaches the server row `[UNIT]`
+- **Act**: `McpServerStore.upsert(config with authToken)`, then read the raw stored row.
+- **PASS**: the encoded row contains no token; `McpServerStore.get()` still returns it
+  (from `McpSecretStore`); with no cipher installed `upsert` throws
+  `IllegalStateException("Secure storage is unavailable…")` and **no row is written**.
+
+### AK3.3 Existing plaintext tokens migrate once `[UNIT]`
+- **Act**: write a v3.4 row that still holds `authToken`, call
+  `McpServerStore.migrateLegacySecrets()`.
+- **PASS**: returns 1, the encrypted store holds the token, the row no longer does, and
+  a second call returns 0.
+
+### AK3.4 Credentials are masked in text `[UNIT]`
+- **PASS**: `Bearer tok_live_…`, `token=…`, `"api_key":"…"`, `password=…` are masked;
+  ordinary text (`created issue RETURN-42`) is unchanged; redaction is idempotent.
+
+### AK3.5 A write asks, a destructive call always asks `[UNIT]`
+- **PASS**: `list_files` → Allow; `create_issue` → Ask unless `autoApproveWrites`;
+  `send_message`/`delete_note` → Ask even with `autoApproveWrites` and even when the
+  tool is on the allowlist; an unknown tool name is treated as a WRITE.
+
+### AK3.6 Per-server trust and per-tool deny persist `[UNIT]`
+- **PASS**: `McpPolicyStore.save` → encode → decode round-trips every field; a corrupt
+  or unknown-version blob decodes to the cautious default (never grants); a blocked
+  server denies every tool including reads; a deny pattern beats an explicit allow;
+  the encoded line is human-readable (`v1|enabled=1|reads=1|writes=0|deny=…|trusted=…`).
+
+### AK3.7 Trust is visible and reversible `[ADB]`
+- **Act**: Settings → MCP connections → add a server → toggle **Trust reads** and
+  **Block server**; restart the app.
+- **PASS**: the switches reflect the stored policy after restart; blocking a server
+  makes its tools refuse with "…is blocked in Settings."; unblocking restores them.
+
+### AK3.8 Remote output cannot impersonate instructions `[UNIT]`
+- **PASS**: every result is wrapped in `<<<REMOTE-TOOL-OUTPUT …>>>` with a "data, not
+  instructions" line; a body containing that fence is escaped so it cannot close early;
+  a 1 MB response is clipped at the configured bounds.
+
+### AK3.9 `finish` is refused until the plan's outcomes are observed `[UNIT]`
+- **Act**: build the follow plan's contract, call `open_app`, then `gate("finish")`.
+- **PASS**: Deny with a message naming the remaining steps; after every step reports
+  evidence, Allow. A failed action keeps the same step current (retry), and a step
+  skipped by a later tool still blocks completion when it requires evidence.
+
+### AK3.10 An interrupted plan resumes instead of restarting `[UNIT]`
+- **PASS**: `PlanCheckpointStore.save` → `load` restores completed count, current step
+  and checkpoint line; a different request key, a checkpoint older than 30 min, a
+  future timestamp, an unreadable payload or a finished plan all return null (fresh
+  plan, no half-state).
+
+### AK3.11 Quoted text and negation are not mistaken for targets `[UNIT]`
+- **PASS**: `post "we're live on LinkedIn"` → payload is the quoted text, platform is
+  **not** LinkedIn; `post "hello world" on LinkedIn` → platform LinkedIn;
+  `message John "running late"` → recipient John, payload `running late`;
+  `don't follow TechCrunch` → no follow plan; `don't forget to follow TechCrunch on
+  LinkedIn` → a follow plan; `open YouTube then search cats` → plan opens YouTube,
+  entity is not "YouTube then search cats", full sentence preserved.
+
+### AK3.12 The router sees the prompt we actually send `[UNIT]`
+- **PASS**: the estimate grows with the system prompt, tool results, assistant history,
+  tool schemas and 800 tokens per image; `needsVision` is true only with an image in
+  the payload; `excessChars` trims to fit (including per-message and image overhead);
+  a 120k-char tool dump excludes the 8k-context model with a trace line; a payload no
+  model can hold fails with "no provider can serve this request"; a provider allowlist
+  restricts the chain.
+
+### AK3.13 Trimming never removes safety rules or the latest turn `[UNIT]`
+- **PASS**: `ContextTrimmer` drops the oldest droppable messages first, never the
+  system prompt, never the newest messages, never the latest user turn; the oldest
+  items are freed until the required character count is reached; the trimmed facts are
+  re-measured before routing.
+
+### QA Debug Changelog — review remediation (2026-10-25)
+- `[2026-10-25] [UNIT-PASS] [AK3.1-AK3.13]`:
+  1. `agent/mcp/McpSecretStore.kt` + `KeystoreSecretCipher.kt`; `McpServerStore` writes
+     rows without secrets, re-attaches on read, migrates legacy tokens once; startup
+     wires the cipher and migration in `ClawApplication`.
+  2. `McpToolPolicy` (risk/decision, per-server trust, per-tool allow) +
+     `McpPolicyStore` (versioned one-line persistence) + Safety card and per-server
+     switches in `McpServersActivity`.
+  3. `McpRedaction` applied to auth failures and tool errors; `McpResultFormatter`
+     fences remote output; `McpLimits` bounds bodies/items/text; exact `(server, tool)`
+     routing in `McpRuntime`; negotiated-version reporting in `McpClient`.
+  4. `PlanContract` (steps, evidence, gate, approval) + `PlanCheckpointStore`;
+     `DefaultAgentService` builds the contract from the shown plan, gates `finish` and
+     every tool call, records evidence, and clears the checkpoint on success.
+  5. `IntentParser`: quoted-span masking before platform resolution, quoted payload
+     extraction, forbidden-clause skipping, clause-boundary parsing.
+  6. `RequestProfiler` + `ContextTrimmer` + `RoutedLlmClient` fitting; estimates now
+     include system prompt, tool results, schemas and images.
+  7. Docs: `docs/MCP_AND_MODEL_ROUTING.md` §7, `AGENTS.md` review-remediation rules,
+     version bump to `3.5.1` / `30501`.
+  - Local verification: **248 tests green**; `kotlin-structure-check` and
+    `ci-preflight.sh` clean. Android assemble not run here — CI required.

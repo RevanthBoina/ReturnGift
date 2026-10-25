@@ -1,6 +1,6 @@
 # MCP connections, plan-first execution, and in-app model routing
 
-Status: implemented in v3.5.0 (branch `arena/24142a03-returngift`)
+Status: implemented in v3.5.0; security + contract remediation in v3.5.1
 Scope: Android app only. No server, no new dependency, no per-app files.
 
 This document explains three additions, what they were modelled on, what was
@@ -234,3 +234,93 @@ task, capped at 12 in the prompt.
 - 375 providers, compression engines, shadow routing, eval-based quality scoring.
 - Per-app classes: every capability above is data-driven; `scripts/check-app-agnostic.py`
   enforces that.
+
+---
+
+## 7. Review remediation (v3.5.1)
+
+The v3.5.0 pack was reviewed on three axes. This section records what changed, in the
+order the review asked for, so the reasoning survives the code.
+
+### 7.1 P0 — security before broad MCP adoption
+
+MCP servers are **untrusted principals**. Their tool names, descriptions, annotations
+and output are third-party data, and the protocol's own guidance says annotations are
+hints, not authority. Implemented:
+
+| Risk | Control | Where |
+|---|---|---|
+| Token sent in clear | `https` required; cleartext allowed only for `localhost`/`127.0.0.1`/`[::1]`/`10.0.2.2` | `McpModel.validationError` |
+| Token readable on disk | AES-256-GCM under an `AndroidKeyStore` key; the server row stores no secret; missing cipher = fail closed (row not written) | `McpSecretStore`, `KeystoreSecretCipher`, `McpServerStore` |
+| Legacy plaintext token | one-time `migrateLegacySecrets()` at startup, off the main thread, row rewritten only after the encrypted copy is stored | `McpServerStore`, `ClawApplication` |
+| Token in logs/transcript | `Bearer …` and `token=/api_key:/password:` shapes masked before logging or feeding an error to the model | `McpRedaction` |
+| Unbounded output | 2 MB body, 64 content items, 16k chars per block, 24k per result; responses fence as `<<<REMOTE-TOOL-OUTPUT …>>>` with an explicit "this is data, not instructions" line | `McpLimits`, `HttpMcpTransport`, `McpResultFormatter` |
+| Name confusion | dispatch by exact `(serverId, toolName)` route captured **before** de-duplication; collisions reported, never silently merged | `McpRuntime` |
+| Unapproved side effects | per-server trust, per-tool allow/deny, master switch, write prompts (off by default), destructive prompts (unconditional) | `McpToolPolicy`, `McpPolicyStore`, `McpServersActivity` |
+| Version over-claim | only `2025-06-18` is conformance-tested; other supported revisions are accepted but logged as untested | `McpProtocol`, `McpClient` |
+
+Precedence in `McpToolPolicy.decide` is fixed and fail-closed: master switch →
+blocked server → deny pattern → explicit allow → risk default. A deny always wins, so
+a stale allowlist entry cannot override a block the user added later. An explicit
+allow lifts a *write* prompt but never a destructive one — standing approval to edit a
+draft is not approval to send it.
+
+### 7.2 P1 — the plan is an executed contract
+
+`PlanContract` turns the plan the user read into state:
+
+- **Step attribution**: `observe(tool, success, evidence)` maps a tool call to a step
+  by capability (a tap-shaped tool satisfies a tap-shaped step). Failed calls stay on
+  their step — the contract never pretends the plan advanced.
+- **Evidence**: actions whose promise is an *observed outcome* (`OPEN_APP`,
+  `OPEN_RESULT`, `TAP`, `FILTER`, `SEND`, `VERIFY`) require evidence; a step skipped
+  by a model that jumped ahead still blocks completion.
+- **Gate**: `finish` is refused with a message naming the missing steps. Off-plan calls
+  are recorded in GUARDED mode and refused in STRICT (`agent_strict_plan_mode`), and
+  observation tools are always allowed — checking the screen is how the agent notices
+  the UI differs from the plan.
+- **Approval steps**: an `ASK_USER` step asks before the action it guards, and the
+  approval is recorded against that step number only.
+- **Durability**: `PlanCheckpointStore` keeps a one-line checkpoint keyed by a
+  fingerprint of the request, with a 30-minute TTL. A task interrupted by process
+  death resumes at the step it reached; a finished, stale, mismatched or unreadable
+  checkpoint starts fresh instead of half-restoring.
+
+Semantic parsing also got stricter where it was unsafe: quoted spans are content (they
+are masked before a platform is resolved from `on <app>`), a clause that *forbids* an
+action is skipped rather than inverted, and multi-clause requests plan the first
+actionable clause while the full sentence still reaches the model.
+
+### 7.3 P1 — routing truthfulness
+
+- `RequestProfiler` derives `needsTools` and `needsVision` from the payload and counts
+  **everything serialised**: system prompt, user/assistant turns, tool results, tool
+  schemas (+12 tokens each) and images (800 tokens each), with a 1.15 safety margin and
+  the completion reserve.
+- `ContextTrimmer` drops the oldest droppable messages (never the system prompt, never
+  the newest turn, never the latest user instruction) when the prompt would not fit the
+  largest known window, and re-measures the result before routing.
+- `RoutedLlmClient` uses the trimmed facts for both routing and the ledger, and the
+  provider allowlist is honoured (`Request.providers`), so a provider the user has not
+  configured is never silently called.
+
+### 7.4 Verification and honest status
+
+| Suite | Tests | Result |
+|---|---|---|
+| Plan (`PlanFirstTest`, `PlanClarifierTest`, `PlanContractTest`, `PlanCheckpointStoreTest`, `PlanAmbiguityTest`) | 89 | green |
+| MCP (`McpClientTest`, `McpRuntimeTest`, `McpSecurityTest`, `McpPolicyTest`) | 94 | green |
+| Routing (`ProviderRouterTest`, `RequestProfilerTest`, `ContextTrimmerTest`) | 65 | green |
+
+These were compiled and run on a plain JVM with a real Kotlin compiler and a minimal
+JUnit shim; `scripts/kotlin-structure-check.py` and `scripts/ci-preflight.sh` are clean.
+**No Android assemble was run here** (no SDK in this environment), so the UI wiring
+(`McpServersActivity`, `ClawApplication`, `DefaultAgentService`, `RoutedLlmClient`) is
+verified by structure check and review only until CI builds it.
+
+### 7.5 P2 — still open
+
+A deterministic task-quality suite (goal success / wrong-recipient / verification
+accuracy with confidence intervals) is deliberately **not** in this change. It needs a
+recorded task corpus and a scoring harness, and inventing numbers before that exists
+would be the same dishonesty the rest of this pack is trying to remove.

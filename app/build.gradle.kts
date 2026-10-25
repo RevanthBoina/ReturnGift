@@ -77,8 +77,8 @@ android {
         applicationId = "com.returngift.agent"
         minSdk = 28
         targetSdk = 36
-        versionCode = readLocalOrEnvInt("RETURNGIFT_VERSION_CODE", 30500)
-        versionName = readLocalOrEnvString("RETURNGIFT_VERSION_NAME", "3.5.0")
+        versionCode = readLocalOrEnvInt("RETURNGIFT_VERSION_CODE", 30501)
+        versionName = readLocalOrEnvString("RETURNGIFT_VERSION_NAME", "3.5.1")
         buildConfigField("String", "VERSION_INFO", getVersionGit())
         buildConfigField("String", "APP_ORIGIN", "\"ReturnGift — private internal build\"")
         buildConfigField("String", "BUILD_FINGERPRINT", "\"${getBuildFingerprint()}\"")
