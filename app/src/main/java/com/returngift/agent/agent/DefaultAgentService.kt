@@ -604,6 +604,34 @@ class DefaultAgentService : AgentService {
             return
         }
         val agreedPlanLine = com.returngift.agent.agent.plan.PlanFirst.promptLine(presentation.blueprint)
+
+        // ── Plan contract (P1) ──────────────────────────────────────────────
+        // The plan the user just read is *enforced*, not suggested: a tool call is
+        // attributed to a step, the tool's real result is the evidence, and `finish`
+        // is refused until every step that promises an outcome was observed. The
+        // checkpoint is durable, so an interrupted plan resumes where it stopped
+        // instead of restarting and reporting success over the top of it.
+        val planKey = com.returngift.agent.agent.plan.PlanCheckpointStore.keyFor(rawUserRequest)
+        val resumedPlan = try {
+            com.returngift.agent.agent.plan.PlanCheckpointStore.load(planKey, presentation.blueprint)
+        } catch (e: Exception) {
+            XLog.w(TAG, "could not restore plan checkpoint; starting fresh", e)
+            null
+        }
+        val planContract = resumedPlan ?: com.returngift.agent.agent.plan.PlanContract.from(
+            taskId = taskId,
+            blueprint = presentation.blueprint,
+            mode = if (com.returngift.agent.utils.KVUtils.getBoolean("agent_strict_plan_mode", false)) {
+                com.returngift.agent.agent.plan.PlanContract.Mode.STRICT
+            } else {
+                com.returngift.agent.agent.plan.PlanContract.Mode.GUARDED
+            },
+        )
+        if (resumedPlan != null) {
+            val where = planContract.current()?.let { "step ${it.number}: ${it.detail}" } ?: "the last step"
+            XLog.i(TAG, "resuming plan ${planContract.summary().take(120)}")
+            callback.onContent(0, "Resuming the earlier plan — continuing at $where.")
+        }
         // Remote tools from connected MCP servers, ranked for THIS request (bounded).
         val mcpSection = runCatching {
             com.returngift.agent.agent.mcp.McpRuntime.promptSection(rawUserRequest)
@@ -1150,6 +1178,11 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                         ?: inAppSearchGuard.maybeBlockFinish(screenInfo)
                         ?: emailComposeGuard.maybeBlockFinish(screenInfo)
                         ?: artifactContract.maybeBlockFinish(params["summary"]?.toString() ?: "")
+                        // The plan contract is the last word: guards above check a
+                        // specific promise, this one checks the whole step list.
+                        ?: (planContract.gate(
+                            com.returngift.agent.agent.plan.PlanContract.FINISH_TOOL
+                        ) as? com.returngift.agent.agent.plan.PlanContract.Gate.Deny)?.reason
                 } else null
                 if (blockedFinish != null) {
                     val blockedResult = ToolResult.error(blockedFinish)
@@ -1353,6 +1386,47 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                       }
                   }
 
+                // ── plan contract gate: is this the step we're on? ──────────
+                // GUARDED mode records off-plan actions but does not refuse them (a
+                // UI that differs from the plan must not deadlock the task); STRICT
+                // mode refuses. An approval step always asks before its action.
+                when (val contractGate = planContract.gate(toolName, params ?: emptyMap())) {
+                    is com.returngift.agent.agent.plan.PlanContract.Gate.Deny -> {
+                        val reason = contractGate.reason
+                        XLog.i(TAG, "Plan contract denied $toolName: ${reason.take(100)}")
+                        callback.onToolResult(
+                            iterations, toolName, displayName, paramsText, ToolResult.error(reason)
+                        )
+                        messages.add(
+                            ToolExecutionResultMessage.from(toolRequest, GSON.toJson(ToolResult.error(reason)))
+                        )
+                        messages.add(UserMessage.from(reason))
+                        continue
+                    }
+                    is com.returngift.agent.agent.plan.PlanContract.Gate.Ask -> {
+                        val approval = com.returngift.agent.agent.clarify.ClarificationManager.request(
+                            contractGate.reason,
+                            listOf("Allow", "Cancel"),
+                            false,
+                        )
+                        if (approval?.trim()?.startsWith("Allow", ignoreCase = true) != true) {
+                            val reason = "Stopped at the plan's approval step — nothing was changed."
+                            callback.onToolResult(
+                                iterations, toolName, displayName, paramsText, ToolResult.error(reason)
+                            )
+                            messages.add(
+                                ToolExecutionResultMessage.from(
+                                    toolRequest, GSON.toJson(ToolResult.error(reason))
+                                )
+                            )
+                            messages.add(UserMessage.from(reason))
+                            continue
+                        }
+                        planContract.pendingApproval()?.let { planContract.recordApproval(it.number) }
+                    }
+                    com.returngift.agent.agent.plan.PlanContract.Gate.Allow -> Unit
+                }
+
                   // Unified control loop: capture the state BEFORE the action so we can verify
                 // the action's effect afterwards (observe → resolve → act → verify → recover).
                 val a11ySvc = ClawAccessibilityService.getInstance()
@@ -1462,6 +1536,26 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                     }
                 }
 
+                // ── plan contract: the action's real result is the evidence ──
+                // A failed action stays on its step (retry), a successful one advances
+                // it. `finish` is not observable — the gate above already checked it.
+                val planEvidence = listOfNotNull(
+                    result.data?.takeIf { it.isNotBlank() },
+                    result.error?.takeIf { !result.isSuccess && it.isNotBlank() },
+                    verification?.detail,
+                ).joinToString(" | ").ifBlank { null }
+                planContract.observe(toolName, result.isSuccess, planEvidence)?.let { step ->
+                    com.returngift.agent.agent.plan.PlanCheckpointStore.save(planKey, planContract)
+                    val next = planContract.current()?.let { " Next: ${it.number}. ${it.detail}." }
+                    messages.add(
+                        UserMessage.from(
+                            "Plan status: step ${step.number} (${step.detail}) is " +
+                                step.status.name.lowercase() + "." +
+                                (next ?: " All steps are done — you may call finish.")
+                        )
+                    )
+                }
+
                 ExecutionTracker.recordVerifiedAction(
                     taskId = taskId,
                     stepIndex = iterations,
@@ -1508,6 +1602,7 @@ ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
 
                 // finish tool → task complete
                 if (toolName == "finish" && result.isSuccess) {
+                    com.returngift.agent.agent.plan.PlanCheckpointStore.clear()
                     val finishData = result.data
                     ExecutionTracker.endTask(taskId, "SUCCESS", iterations, totalTokens)
                     ExecutionTracker.getTrajectory(taskId)?.let { LearnedProcedureStore.extractAndStore(it) }
