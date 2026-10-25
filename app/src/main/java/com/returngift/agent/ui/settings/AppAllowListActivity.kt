@@ -316,7 +316,11 @@ fun AppAllowListScreen(onBack: () -> Unit) {
                         refreshTick++
                     },
                     onReset = {
+                        // Forget the policy AND what we remembered about the session
+                        // (consent accepted / seen signed in), so the next task starts
+                        // from a clean first-encounter state.
                         store.forget(row.packageName)
+                        com.returngift.agent.agent.flow.AppSessionMemory.forget(row.packageName)
                         refreshTick++
                     },
                 )

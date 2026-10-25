@@ -1630,6 +1630,19 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                 val microForeground = verification?.foregroundPackage
                     ?: try { ClawAccessibilityService.getInstance()?.getForegroundPackage() } catch (_: Exception) { null }
                     ?: currentTargetPackage
+                // The screen is only read when the action failed or changed nothing —
+                // that is when a login wall, consent prompt or throttle banner is the
+                // likely reason, and the read costs one cached tree dump.
+                val microScreenText = if (microStepsEnabled &&
+                    (!result.isSuccess ||
+                        verification?.outcome == ActionVerifier.VerificationOutcome.NO_CHANGE)
+                ) {
+                    try {
+                        ClawAccessibilityService.getInstance()?.screenTree.orEmpty()
+                    } catch (_: Exception) {
+                        ""
+                    }
+                } else ""
                 val microPlan = if (!microStepsEnabled) {
                     com.returngift.agent.agent.exec.micro.MicroPlan("disabled", "micro-steps off", emptyList())
                 } else microStepTracker.observe(
@@ -1641,8 +1654,16 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                         screenChanged = verification?.outcome !=
                             ActionVerifier.VerificationOutcome.NO_CHANGE,
                         stepIndex = iterations,
+                        screenText = microScreenText,
                     )
                 )
+                // Remember (or forget) the app's session facts so the next task does not
+                // rediscover a login wall or a consent prompt.
+                if (microPlan.ruleId == "blocker_login_wall" || microPlan.ruleId == "blocker_captcha") {
+                    com.returngift.agent.agent.flow.AppSessionMemory.markLoginWall(microForeground.orEmpty())
+                } else if (microPlan.ruleId == "blocker_consent_accept") {
+                    com.returngift.agent.agent.flow.AppSessionMemory.markConsentAccepted(microForeground.orEmpty())
+                }
                 if (!microPlan.isComplete) {
                     XLog.i(
                         TAG,

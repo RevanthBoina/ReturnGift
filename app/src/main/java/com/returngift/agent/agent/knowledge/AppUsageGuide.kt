@@ -53,8 +53,10 @@ object AppUsageGuide {
             surface = AppSurface.SOCIAL_POST,
             aliases = listOf("linkedin", "linked in"),
             tips = listOf(
+                "Search: prefer the deep link linkedin://search?keywords=<term>; if the screen does not change, tap the search icon → type → Enter → open the first result row.",
                 "Post: tap \"Start a post\" → type in the composer → tap \"Post\" → verify \"Post successful\".",
-                "Search: tap the search icon → type → Enter → open the first result row.",
+                "A \"Sign in\" / \"Join LinkedIn\" screen means the session expired: stop and ask the user to sign in — never type credentials.",
+                "Cookie/terms banner: tap \"Accept\" once, then continue; do not re-tap it on later steps.",
                 "Feed actions (like/comment) act on the post under the tapped text, not the screen centre.",
             ),
         ),
@@ -295,6 +297,14 @@ object AppUsageGuide {
                 append(guide.tips.joinToString(" "))
                 append('\n')
             }
+            // Deep links skip the in-app navigation ladder entirely; only offered for
+            // apps that actually publish one.
+            append(
+                com.returngift.agent.agent.flow.AppDeepLinks.promptSection(
+                    packages = chosen.map { it.packageName },
+                    query = com.returngift.agent.agent.flow.AppDeepLinks.queryHint(task),
+                )
+            )
         }
     }
 

@@ -51,6 +51,10 @@ This is the repo map for coding agents. Keep canonical information in existing f
 | `app/src/main/java/com/returngift/agent/agent/knowledge/AppUsageGuide.kt` | Per-app recipes + surfaces (Chrome, LinkedIn, YouTube, WhatsApp, …) for prompt + UI |
 | `app/src/main/java/com/returngift/agent/agent/knowledge/InstalledApps.kt` | Cached launchable-app list (PackageManager) |
 | `app/src/main/java/com/returngift/agent/ui/settings/AppAllowListActivity.kt` | Settings → App permissions: toggles + per-app Always/Ask/Blocked rows with hints |
+| `app/src/main/java/com/returngift/agent/agent/flow/AppDeepLink.kt` | Deep-link registry (documented vs best effort), URI encoding, search-term extraction |
+| `app/src/main/java/com/returngift/agent/agent/flow/SessionBlocker.kt` | Detects login walls, captcha, account chooser, consent, throttling, network errors + user messages |
+| `app/src/main/java/com/returngift/agent/agent/flow/FlowRetry.kt` | Retry budgets with capped exponential backoff (search/navigation/network/save) |
+| `app/src/main/java/com/returngift/agent/agent/flow/AppSessionMemory.kt` | Per-app consent (30 d) and signed-in (7 d) facts; cleared by the Settings row Reset |
 | `app/src/main/java/com/returngift/agent/agent/TokenMonitor.kt` | Token/cost display counters — NO ceiling (the 200K CRITICAL abort was removed) |
 | `app/src/main/java/com/returngift/agent/agent/PipelineRouter.kt` | Tier-1 router with isEscalation param to skip to Tier-3 |
 | `app/src/main/java/com/returngift/agent/agent/Tier1Telemetry.kt` | Escalation tracking for routing quality |

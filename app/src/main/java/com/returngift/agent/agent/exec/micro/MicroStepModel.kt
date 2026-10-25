@@ -3,6 +3,8 @@
 
 package com.returngift.agent.agent.exec.micro
 
+import com.returngift.agent.agent.flow.SessionBlocker
+
 /**
  * Mid-task micro-step model.
  *
@@ -103,6 +105,11 @@ data class MicroStepContext(
     val fieldEmpty: Boolean = true,
     /** The semantic target of the step was found on screen. */
     val targetFound: Boolean = true,
+    /**
+     * What is stopping the flow, as recognised from the screen (login wall,
+     * consent, throttling…). [SessionBlocker.NONE] when the screen is clear.
+     */
+    val blocker: SessionBlocker = SessionBlocker.NONE,
     /** 1-based index of the step inside the task (used only for logs/telemetry). */
     val stepIndex: Int = 0,
 )
