@@ -18,7 +18,7 @@ import com.returngift.agent.utils.XLog
  * SYSTEM_ALERT_WINDOW (an allowed exemption) and the caller is usually the
  * foreground-service agent, so the launch normally succeeds. When it does not,
  * the caller mirrors the request as a heads-up notification with the same
- * choices (see [com.returngift.agent.service.PermissionPromptNotifier]), so a
+ * choices (see [com.returngift.agent.service.NotificationPrompter]), so a
  * permission request is never silent.
  */
 object PermissionPromptLauncher {

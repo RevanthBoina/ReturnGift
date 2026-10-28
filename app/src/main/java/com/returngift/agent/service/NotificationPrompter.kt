@@ -353,7 +353,7 @@ object NotificationPrompter {
             action = PermissionAnswerReceiver.ACTION_ANSWER
             putExtra(PermissionAnswerReceiver.EXTRA_REQUEST_ID, request.id)
             putExtra(PermissionAnswerReceiver.EXTRA_CHOICE, choice)
-            putExtra(PermissionAnswerReceiver.EXTRA_ANSWER, nonce)
+            putExtra(EXTRA_NONCE, nonce)
         }
         return PendingIntent.getBroadcast(
             context,

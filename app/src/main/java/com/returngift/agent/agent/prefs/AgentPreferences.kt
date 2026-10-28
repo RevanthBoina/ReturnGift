@@ -36,7 +36,7 @@ object AgentPreferences {
 
     const val DEFAULT_ASK_BEFORE_NEW_APP = true
     const val DEFAULT_REMEMBER_APP_CHOICES = true
-    const val DEFAULT_OPEN_PERMISSION_CARD = true
+    const val DEFAULT_OPEN_PERMISSION_CARD = false
     const val DEFAULT_NOTIFY_PERMISSION = true
     const val DEFAULT_ENFORCE_MICRO_STEPS = true
 

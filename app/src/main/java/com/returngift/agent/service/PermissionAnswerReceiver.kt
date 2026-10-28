@@ -36,6 +36,14 @@ class PermissionAnswerReceiver : BroadcastReceiver() {
         }
         if (pending != null && requestId != null && pending.id != requestId) {
             XLog.w(TAG, "stale permission answer for $requestId (pending=${pending.id})")
+            NotificationPrompter.markStaleAnswer(context)
+            return
+        }
+        // The nonce proves the tap belongs to the question on screen right now.
+        val nonce = intent.getStringExtra(NotificationPrompter.EXTRA_NONCE)
+        if (pending != null && nonce != null && nonce != PermissionPromptBroker.currentNonce()) {
+            XLog.w(TAG, "stale permission nonce — ignored")
+            NotificationPrompter.markStaleAnswer(context)
             return
         }
 

@@ -57,26 +57,46 @@ object PermissionPromptBroker {
      * Overridable so tests can assert the UI/notification seam without Android.
      * Production implementations resolve the app context themselves.
      */
+    /**
+     * The in-app card. Only reached when notifications are blocked, or when the owner
+     * deliberately turns "Open the permission card in front" back on.
+     */
     internal var openUiHook: (PermissionRequest) -> Unit = { request ->
         PermissionPromptLauncher.open(com.returngift.agent.ReturnGiftApplication.instance, request)
     }
 
+    /** The one prompt surface: a notification answered in place. */
     internal var notifyHook: (PermissionRequest) -> Unit = { request ->
-        com.returngift.agent.service.PermissionPromptNotifier.show(
-            com.returngift.agent.ReturnGiftApplication.instance, request
+        com.returngift.agent.service.NotificationPrompter.askPermission(
+            com.returngift.agent.ReturnGiftApplication.instance, request, currentNonce()
         )
+    }
+
+    /** False when Android will not post anything, in which case the card is the fallback. */
+    internal var notificationsAvailableHook: () -> Boolean = {
+        runCatching {
+            com.returngift.agent.service.NotificationPrompter.notificationsAvailable(
+                com.returngift.agent.ReturnGiftApplication.instance
+            )
+        }.getOrDefault(false)
     }
 
     /** Overridable so tests never touch NotificationManager. */
     internal var dismissHook: () -> Unit = {
         try {
-            com.returngift.agent.service.PermissionPromptNotifier.dismiss(
+            com.returngift.agent.service.NotificationPrompter.dismissPermission(
                 com.returngift.agent.ReturnGiftApplication.instance
             )
         } catch (e: Throwable) {
             XLog.w(TAG, "notification dismiss failed", e)
         }
     }
+
+    /** Random tag for the posted buttons; an answer only counts for the live request. */
+    @Volatile
+    private var nonce: String = ""
+
+    fun currentNonce(): String = nonce
 
     fun snapshot(): PermissionRequest? = pending
 
@@ -111,29 +131,19 @@ object PermissionPromptBroker {
             latch = CountDownLatch(1)
             answer = null
             cancelled = false
+            nonce = java.util.UUID.randomUUID().toString().take(8)
         }
 
         XLog.i(TAG, "Permission pending: kind=${request.kind} target=${request.packageName.ifBlank { request.capabilityId }}")
         notifyListeners(request)
 
-        // Toggles from Settings → App Permissions (both default ON). At least one
-        // channel stays on so a parked thread can never be answered by a timeout
-        // with no request ever reaching the user.
+        // The notification is the surface. The card opens only when Android will not
+        // post one, or when the owner asked for it in Settings.
         var opened = false
         var notified = false
+        val canNotify = notificationsAvailableHook() && AgentPreferences.notifyPermission
 
-        // 1) Open ReturnGift's own UI (the "APK interface") in the foreground.
-        if (AgentPreferences.openPermissionCard) {
-            try {
-                openUiHook(request)
-                opened = true
-            } catch (e: Throwable) {
-                XLog.w(TAG, "could not open the permission screen", e)
-            }
-        }
-        // 2) Mirror it as a heads-up notification so a background task can
-        //    never ask silently. No-op without notification permission.
-        if (AgentPreferences.notifyPermission) {
+        if (canNotify) {
             try {
                 notifyHook(request)
                 notified = true
@@ -141,15 +151,16 @@ object PermissionPromptBroker {
                 XLog.w(TAG, "could not post the permission notification", e)
             }
         }
-        if (!AgentPreferences.openPermissionCard && !notified) {
-            // Both channels disabled and the notification failed: fall back to the
-            // card so the request is answerable, and log the user-visible reason.
-            XLog.w(TAG, "no permission channel available — forcing the permission card open")
+        if (!notified || AgentPreferences.openPermissionCard) {
+            if (!notified) {
+                XLog.w(TAG, "notifications are blocked — the permission card is the only way to ask")
+                toastOnce(request)
+            }
             try {
                 openUiHook(request)
                 opened = true
             } catch (e: Throwable) {
-                XLog.w(TAG, "fallback permission card launch failed", e)
+                XLog.w(TAG, "could not open the permission screen", e)
             }
         }
         XLog.i(TAG, "permission request surfaced (card=$opened, notification=$notified)")
@@ -208,6 +219,25 @@ object PermissionPromptBroker {
     }
 
     fun isPending(): Boolean = pending != null
+
+    /**
+     * One line in the app saying why the question is on screen instead of in the shade.
+     * Not a dialog, not a setting: a sentence, once per request.
+     */
+    private fun toastOnce(request: PermissionRequest) {
+        try {
+            val app = com.returngift.agent.ReturnGiftApplication.instance
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(
+                    app,
+                    "Notifications are off, so the permission card has to open. Allow notifications to answer from the shade.",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        } catch (e: Throwable) {
+            XLog.w(TAG, "could not show the fallback notice", e)
+        }
+    }
 
     private fun finishRequest() {
         synchronized(this) {
