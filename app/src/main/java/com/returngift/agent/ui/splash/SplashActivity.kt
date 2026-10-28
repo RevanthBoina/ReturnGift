@@ -36,9 +36,17 @@ class SplashActivity : BaseActivity() {
             override fun handleOnBackPressed() { /* Back press disabled on splash screen */ }
         })
 
-        // Accessibility and notification access are granted to an Android *component*,
-        // so a build that renames those components lands with both switched off. Check
-        // once after such an update: one line, then the settings page that fixes it.
+        // First run: one screen where everything is granted at once. It is never
+        // shown again, and no later task asks for any of it individually.
+        if (!KVUtils.isGuideShown()) {
+            startActivity(Intent(this, com.returngift.agent.ui.guide.GuideActivity::class.java))
+            finish()
+            return
+        }
+
+        // Accessibility and notification access belong to the component that declared
+        // them, not to the app, so an update can land with one or both switched off.
+        // Check once after an update: one line, then the settings page that fixes it.
         if (!KVUtils.getBoolean(KEY_SERVICES_RECONCILED, false)) {
             KVUtils.putBoolean(KEY_SERVICES_RECONCILED, true)
             val needsAccessibility = !ReturnGiftAccessibilityService.isEnabledInSettings(this)
@@ -58,14 +66,6 @@ class SplashActivity : BaseActivity() {
                 finish()
                 return
             }
-        }
-
-        // First run: one screen where everything is granted at once. It is never
-        // shown again, and no later task asks for any of it individually.
-        if (!KVUtils.isGuideShown()) {
-            startActivity(Intent(this, com.returngift.agent.ui.guide.GuideActivity::class.java))
-            finish()
-            return
         }
 
         val intent = Intent(this, ComposeChatActivity::class.java)
