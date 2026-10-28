@@ -88,6 +88,10 @@
             android:exported="false"
             android:screenOrientation="portrait" />
         <activity
+            android:name=".ui.settings.HealthCheckActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
             android:name=".ui.settings.McpServersActivity"
             android:exported="false"
             android:screenOrientation="portrait"

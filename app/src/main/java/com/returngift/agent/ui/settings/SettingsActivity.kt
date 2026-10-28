@@ -64,6 +64,7 @@ class SettingsActivity : BaseActivity() {
     private var permStorage: com.returngift.agent.widget.MenuItem? = null
     private var permRestricted: com.returngift.agent.widget.MenuItem? = null
     private var permAppAccess: com.returngift.agent.widget.MenuItem? = null
+    private var permHealth: com.returngift.agent.widget.MenuItem? = null
     private var permConnections: com.returngift.agent.widget.MenuItem? = null
     private var externalAutomationItem: com.returngift.agent.widget.MenuItem? = null
     private var globalPromptItem: com.returngift.agent.widget.MenuItem? = null
@@ -322,6 +323,16 @@ class SettingsActivity : BaseActivity() {
             title = "App permissions",
             onClick = {
                 startActivity(Intent(this@SettingsActivity, AppAllowListActivity::class.java))
+            },
+            showDivider = true
+        )
+
+        // One tap instead of a checklist: is this install actually working?
+        permHealth = permissionsGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_menu_manage,
+            title = "Health check",
+            onClick = {
+                startActivity(Intent(this@SettingsActivity, HealthCheckActivity::class.java))
             },
             showDivider = true
         )
