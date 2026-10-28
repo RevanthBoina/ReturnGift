@@ -604,7 +604,7 @@ class TaskOrchestratorTier1Test {
 
     // ── F7: Safety-block carve-out with exact string matching ─────────────────────────────
     @Test
-    fun `tool error containing \"blocked\" but not exact safety block escalates`() {
+    fun `tool error containing the word blocked but not an exact safety block escalates`() {
         // "screen is blocked" contains "blocked" but is NOT a safety block
         // It should escalate (not be treated as a safety block)
         router = FakeRouter(
@@ -620,7 +620,7 @@ class TaskOrchestratorTier1Test {
             val latch = CountDownLatch(1)
             orchestrator.taskEventCallback = { event ->
                 terminalEvents.add(event)
-                if (event is TaskEvent.Progress && event.message.contains("switching to AI control")) latch.countDown()
+                if (event is TaskEvent.Progress && event.description.contains("switching to AI control")) latch.countDown()
             }
             
             orchestrator.startNewTask(Channel.LOCAL, "stub_tool", "m1")
