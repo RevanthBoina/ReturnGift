@@ -54,6 +54,25 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class DefaultAgentService : AgentService {
 
+    /**
+     * The process application, or null in a JVM unit test where it was never created.
+     *
+     * Nothing in the loop may die because a string or the app's own package name is
+     * unavailable: a missing context degrades the wording, not the task.
+     */
+    private fun appOrNull(): ReturnGiftApplication? =
+        runCatching { ReturnGiftApplication.instance }.getOrNull()
+
+    private fun str(resId: Int, vararg args: Any?): String {
+        val app = appOrNull() ?: return args.lastOrNull()?.toString() ?: ""
+        return runCatching {
+            if (args.isEmpty()) app.getString(resId) else app.getString(resId, *args)
+        }.getOrDefault(args.lastOrNull()?.toString() ?: "")
+    }
+
+    private val ownPackage: String
+        get() = appOrNull()?.packageName ?: "com.returngift.agent"
+
     companion object {
         private const val TAG = "AgentService"
         private val GSON = Gson()
@@ -252,7 +271,7 @@ class DefaultAgentService : AgentService {
                         XLog.i(TAG, "Agent task cancelled (interrupted)")
                         terminalOutcome = TerminalOutcome.CANCELLED
                         terminalCallback = {
-                            callback.onComplete(0, ReturnGiftApplication.instance.getString(R.string.agent_task_cancel), 0)
+                            callback.onComplete(0, str(R.string.agent_task_cancel), 0)
                         }
                     } else {
                         XLog.e(TAG, "Agent execution error", e)
@@ -302,7 +321,8 @@ class DefaultAgentService : AgentService {
 
     private fun preCheck(): String? {
         if (ReturnGiftAccessibilityService.getInstance() == null) {
-            return ReturnGiftApplication.instance.getString(R.string.agent_accessibility_not_enabled)
+            return str(R.string.agent_accessibility_not_enabled)
+                .ifEmpty { "The accessibility service is off, so I cannot act on the screen." }
         }
         return null
     }
@@ -310,7 +330,8 @@ class DefaultAgentService : AgentService {
     // ==================== Device Context ====================
 
     private fun buildDeviceContext(): String {
-        val app = ReturnGiftApplication.instance
+        val app = appOrNull() ?: return "\n\n## Device Info\n- Brand: " + Build.BRAND +
+            "\n- Model: " + Build.MODEL + "\n" 
         val sb = StringBuilder()
         sb.append("\n\n## Device Info\n")
         sb.append("- Brand: ").append(Build.BRAND).append("\n")
@@ -355,7 +376,7 @@ class DefaultAgentService : AgentService {
         val effectiveSpecs = specs ?: toolSpecs
         var lastException: Exception? = null
         for (attempt in 0 until MAX_API_RETRIES) {
-            if (cancelled.get()) throw RuntimeException(ReturnGiftApplication.instance.getString(R.string.agent_task_cancelled))
+            if (cancelled.get()) throw RuntimeException(str(R.string.agent_task_cancelled))
             try {
                 return if (config.streaming) {
                     val textBuilder = StringBuilder()
@@ -715,7 +736,13 @@ class DefaultAgentService : AgentService {
                 XLog.i(TAG, "TargetSpecGate fired: requested ${missing.requestedCount} ${missing.kind}, explicitly named ${missing.explicitlyNamed} — asking user")
                 
                 // Build choices from AppCatalog with priority ordering
-                val catalog = com.returngift.agent.agent.knowledge.AppCatalog.getInstance(ReturnGiftApplication.instance)
+                val catalog = appOrNull()
+                    ?.let { com.returngift.agent.agent.knowledge.AppCatalog.getInstance(it) }
+                if (catalog == null) {
+                    // No application in a JVM test: run the task instead of hanging on a
+                    // question nothing can answer.
+                    XLog.w(TAG, "TargetSpecGate: no app context — skipping the choice prompt")
+                } else {
                 val allEntries = catalog.getAllEntries()
                 
                 // F6: Priority apps that should appear first in choices
@@ -766,6 +793,7 @@ class DefaultAgentService : AgentService {
                     XLog.w(TAG, "TargetSpecGate: timeout — proceeding with fallback: ${fallbackApps.joinToString(", ")}")
                     val augmentedPrompt = "$rawUserRequest\n\n[Auto-selected ${missing.kind} due to timeout: ${fallbackApps.joinToString(", ")}]"
                     return runAgentLoop(augmentedPrompt, callback, stepHistory, taskId)
+                }
                 }
             }
         }
@@ -1000,14 +1028,14 @@ while (iterations < maxIterations && !cancelled.get()) {
                   llmResponse = chatWithRetry(messages, callback, iterations, runToolSpecs, fast = useFast)
             } catch (e: Exception) {
 XLog.e(TAG, "LLM API call failed after retries", e)
-                 callback.onError(iterations, RuntimeException(ReturnGiftApplication.instance.getString(R.string.agent_api_call_failed, e.message)), totalTokens)
+                 callback.onError(iterations, RuntimeException(str(R.string.agent_api_call_failed, e.message)), totalTokens)
                  ExecutionTracker.endRound(commit = false)
                  EngineHolder.releaseFast()
                  return
              }
 
              if (cancelled.get()) {
-                 callback.onComplete(iterations, ReturnGiftApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+                 callback.onComplete(iterations, str(R.string.agent_task_cancel), totalTokens, actualModelName)
                  ExecutionTracker.endRound(commit = false)
                  EngineHolder.releaseFast()
                  return
@@ -1148,7 +1176,7 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                 // Empty response with no tools — something went wrong, finish
                 XLog.w(TAG, "runAgentLoop: empty response with no tools, finishing")
                 ExecutionTracker.endTask(taskId, "COMPLETED", iterations, totalTokens)
-                callback.onComplete(iterations, ReturnGiftApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
+                callback.onComplete(iterations, str(R.string.agent_task_completed), totalTokens, actualModelName)
                 continue
             }
 
@@ -1157,7 +1185,7 @@ XLog.e(TAG, "LLM API call failed after retries", e)
             for (toolRequest in llmResponse.toolExecutionRequests) {
                 if (cancelled.get()) {
                     ExecutionTracker.endTask(taskId, "CANCELLED", iterations, totalTokens)
-                    callback.onComplete(iterations, ReturnGiftApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+                    callback.onComplete(iterations, str(R.string.agent_task_cancel), totalTokens, actualModelName)
                     ExecutionTracker.endRound(commit = false)
                     EngineHolder.releaseFast()
                     return
@@ -1223,9 +1251,7 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                 }
 
                 // ── Part B: allow-list gate ─────────────────────────────────────────
-                val allowListBlock = AllowListToolGate.check(
-                    ReturnGiftApplication.instance, toolName, params
-                )
+                val allowListBlock = appOrNull()?.let { AllowListToolGate.check(it, toolName, params) }
                 if (allowListBlock != null) {
                     val blockedResult = ToolResult.error(allowListBlock)
                     callback.onToolResult(iterations, toolName, displayName, params.toString(), blockedResult)
@@ -1278,7 +1304,7 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                         && ReturnGiftAccessibilityService.getInstance() != null) {
                     val svc = ReturnGiftAccessibilityService.getInstance()
                     val fg = svc.getForegroundPackage()
-                    if (fg == com.returngift.agent.ReturnGiftApplication.instance.packageName) {
+                    if (fg == ownPackage) {
                         val restore = svc.openAppForeground(currentTargetPackage, 3000L)
                         if (!restore.success) {
                             val msg = "Foreground discipline: skipped $toolName — our own chat was " +
@@ -1512,7 +1538,7 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                     // minimizing the chat until this fires (never for our own package).
                     if (expectedFg != null
                         && verification?.outcome == ActionVerifier.VerificationOutcome.VERIFIED
-                        && expectedFg != ReturnGiftApplication.instance.packageName
+                        && expectedFg != ownPackage
                     ) {
                         callback.onTargetForegroundVerified(expectedFg)
                     }
@@ -1643,7 +1669,7 @@ ExecutionTracker.recordError(taskId, iterations, "System dialog blocked")
                     SharedKnowledgeStore.decay()
                     LearnedProcedureStore.prune()
 
-                    callback.onComplete(iterations, finishData ?: ReturnGiftApplication.instance.getString(R.string.agent_task_completed), totalTokens, actualModelName)
+                    callback.onComplete(iterations, finishData ?: str(R.string.agent_task_completed), totalTokens, actualModelName)
                     ExecutionTracker.endRound(commit = false)
                     EngineHolder.releaseFast()
                     return
@@ -1946,10 +1972,10 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
         }
 
         if (cancelled.get()) {
-            callback.onComplete(iterations, ReturnGiftApplication.instance.getString(R.string.agent_task_cancel), totalTokens, actualModelName)
+            callback.onComplete(iterations, str(R.string.agent_task_cancel), totalTokens, actualModelName)
             EngineHolder.releaseFast()
         } else {
-            callback.onError(iterations, RuntimeException(ReturnGiftApplication.instance.getString(R.string.agent_max_iterations, maxIterations)), totalTokens)
+            callback.onError(iterations, RuntimeException(str(R.string.agent_max_iterations, maxIterations)), totalTokens)
             EngineHolder.releaseFast()
         }
         ExecutionTracker.endRound(commit = false)
@@ -2034,7 +2060,7 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
             executor.execute(match.spec)
         } catch (a: com.returngift.agent.agent.exec.DeterministicUiExecutor.AbortedException) {
             ExecutionTracker.endTask(taskId, "CANCELLED", 1, 0)
-            callback.onComplete(1, ReturnGiftApplication.instance.getString(R.string.agent_task_cancel), 0, null)
+            callback.onComplete(1, str(R.string.agent_task_cancel), 0, null)
             return
         } catch (e: Exception) {
             XLog.e(TAG, "structured routine crashed", e)

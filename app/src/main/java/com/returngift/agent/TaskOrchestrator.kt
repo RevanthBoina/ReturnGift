@@ -145,6 +145,15 @@ class TaskOrchestrator(
         return answer == "Send"
     }
 
+    /** Strings are cosmetic here: an unresolvable resource must not eat the ending. */
+    private fun safeString(resId: Int, vararg args: Any?): String =
+        try {
+            if (args.isEmpty()) appContext.getString(resId) else appContext.getString(resId, *args)
+        } catch (t: Throwable) {
+            XLog.w(TAG, "string lookup failed for $resId", t)
+            args.lastOrNull()?.toString() ?: ""
+        }
+
     /** A terminal UI effect must never be the reason a task never reports it finished. */
     private inline fun quietly(what: String, block: () -> Unit) {
         try {
@@ -680,7 +689,7 @@ class TaskOrchestrator(
                 if (casRelease(messageID) != null) {
                     ForegroundService.resetToIdle(appContext)
                     taskEventCallback?.invoke(TaskEvent.Failed("AI service not ready"))
-                    ChannelManager.sendMessage(channel, appContext.getString(R.string.channel_msg_service_not_ready), messageID)
+                    safeChannelSend(channel, safeString(R.string.channel_msg_service_not_ready), messageID)
                     onTaskFinished()
                 }
                 return
@@ -760,7 +769,6 @@ class TaskOrchestrator(
             }
 
             override fun onToolResult(round: Int, toolId: String, toolName: String, parameters: String, result: ToolResult) {
-                val app = appContext
                 val success = result.isSuccess
                 var data = if (success) result.data else result.error
                 if (data != null && data.length > 300) data = data.substring(0, 300) + "..."
@@ -782,8 +790,8 @@ class TaskOrchestrator(
                     ChannelManager.sendMessage(channel, result.data, messageID)
                 } else {
                     if (roundBuffer.isNotEmpty()) roundBuffer.append("\n")
-                    roundBuffer.append(app.getString(R.string.channel_msg_tool_execution, toolName + parameters,
-                        if (success) app.getString(R.string.channel_msg_tool_success) else app.getString(R.string.channel_msg_tool_failure)))
+                    roundBuffer.append(safeString(R.string.channel_msg_tool_execution, toolName + parameters,
+                        if (success) safeString(R.string.channel_msg_tool_success) else safeString(R.string.channel_msg_tool_failure)))
                 }
             }
 
@@ -811,7 +819,7 @@ class TaskOrchestrator(
                     if (cancelledSession.channel != null && cancelledSession.messageId.isNotEmpty()) {
                         safeChannelSend(
                             cancelledSession.channel,
-                            appContext.getString(R.string.channel_msg_task_cancelled),
+                            safeString(R.string.channel_msg_task_cancelled),
                             cancelledSession.messageId
                         )
                         quietly("flushMessages") { ChannelManager.flushMessages(cancelledSession.channel) }
@@ -864,7 +872,7 @@ class TaskOrchestrator(
                 val failedMessageId = failedSession.messageId.ifEmpty { messageID }
                 safeChannelSend(
                     failedChannel,
-                    appContext.getString(R.string.channel_msg_task_error, error.message),
+                    safeString(R.string.channel_msg_task_error, error.message),
                     failedMessageId
                 )
                 quietly("flushMessages") { ChannelManager.flushMessages(failedChannel) }
@@ -884,7 +892,7 @@ class TaskOrchestrator(
                 val blockedMessageId = blockedSession.messageId.ifEmpty { messageID }
                 safeChannelSend(
                     blockedChannel,
-                    appContext.getString(R.string.channel_msg_system_dialog_blocked),
+                    safeString(R.string.channel_msg_system_dialog_blocked),
                     blockedMessageId
                 )
                 try {
@@ -909,7 +917,7 @@ class TaskOrchestrator(
                 taskEventCallback?.invoke(TaskEvent.Failed(e.message ?: "Task could not be started"))
                 safeChannelSend(
                     channel,
-                    appContext.getString(R.string.channel_msg_task_error, e.message),
+                    safeString(R.string.channel_msg_task_error, e.message),
                     messageID
                 )
                 quietly("resetToIdle") { ForegroundService.resetToIdle(appContext) }
