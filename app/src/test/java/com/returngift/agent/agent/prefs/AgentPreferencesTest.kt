@@ -37,11 +37,13 @@ class AgentPreferencesTest {
     }
 
     @Test
-    fun `everything is on by default`() {
+    fun `permission card is off by default, the rest is on`() {
         val snap = AgentPreferences.snapshot()
         assertTrue(snap.askBeforeNewApp)
         assertTrue(snap.rememberAppChoices)
-        assertTrue(snap.openPermissionCard)
+        // Asks arrive as notifications; the in-app card is only the fallback for when
+        // Android refuses to post them, so it must not appear uninvited.
+        assertFalse(snap.openPermissionCard)
         assertTrue(snap.notifyPermission)
         assertTrue(snap.enforceMicroSteps)
         assertEquals("Permanent", snap.grantLifetimeLabel)
