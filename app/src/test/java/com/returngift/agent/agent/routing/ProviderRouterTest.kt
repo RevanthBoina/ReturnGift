@@ -216,7 +216,7 @@ class ProviderRouterTest {
         ledger.record("P_FAST", 500, 0.01)
         val usage = ledger.usage("P_FAST")
         Assert.assertEquals(1_500, usage.totalTokens)
-        Assert.assertEquals(0.03, usage.totalSpentUsd, )
+        Assert.assertEquals(0.03, usage.totalSpentUsd, 1e-9)
         Assert.assertEquals(1_500, usage.shortTokens)
     }
 
@@ -333,6 +333,6 @@ class ProviderRouterTest {
         val r = route("P_FAST", "m", input = 2.0, output = 8.0)
         ProviderRouter.recordUsage(ledger, r, promptTokens = 1_000_000, completionTokens = 500_000)
         Assert.assertEquals(1_500_000, ledger.usage("P_FAST").totalTokens)
-        Assert.assertEquals(6.0, ledger.usage("P_FAST").totalSpentUsd)
+        Assert.assertEquals(6.0, ledger.usage("P_FAST").totalSpentUsd, 1e-9)
     }
 }

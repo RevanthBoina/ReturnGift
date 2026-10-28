@@ -37,6 +37,8 @@ data class ProvenanceTag(
             if (parts.size != 2) return null
             val kindPrefix = parts[0].lowercase()
             val origin = parts[1]
+            // "screen:" says where the data came from and then stops: no origin, no tag.
+            if (origin.isEmpty()) return null
             // Map the prefix back to a Kind
             val kind = when (kindPrefix) {
                 "screen" -> Kind.SCREEN
