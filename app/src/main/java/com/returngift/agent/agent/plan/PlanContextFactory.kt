@@ -27,6 +27,20 @@ object PlanContextFactory {
     @Volatile private var cached: PlanContext? = null
     @Volatile private var cachedAtMs: Long = 0L
 
+    /**
+     * [build] with the application context when the process has one, and an empty
+     * context otherwise (JVM unit tests, or a task that starts before `onCreate`
+     * finishes). Planning degrades to "no known apps"; it never aborts the task.
+     */
+    fun buildOrEmpty(): PlanContext {
+        val app = runCatching { com.returngift.agent.ReturnGiftApplication.instance }.getOrNull()
+            ?: return PlanContext(apps = emptyList())
+        return runCatching { build(app) }.getOrElse { e ->
+            XLog.w(TAG, "plan context unavailable; planning without the app census", e)
+            PlanContext(apps = emptyList())
+        }
+    }
+
     fun build(context: Context, forceRefresh: Boolean = false): PlanContext {
         val now = System.currentTimeMillis()
         cached?.let { if (!forceRefresh && now - cachedAtMs < CACHE_TTL_MS) return it }

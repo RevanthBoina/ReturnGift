@@ -145,6 +145,21 @@ class TaskOrchestrator(
         return answer == "Send"
     }
 
+    /** A terminal UI effect must never be the reason a task never reports it finished. */
+    private inline fun quietly(what: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (t: Throwable) {
+            XLog.w(TAG, "$what failed", t)
+        }
+    }
+
+    /** Terminal callbacks report to the owner, but a channel failure must not stop them. */
+    private fun safeChannelSend(channel: Channel, content: String, messageId: String) {
+        runCatching { ChannelManager.sendMessage(channel, content, messageId) }
+            .onFailure { XLog.w(TAG, "terminal channel send failed", it) }
+    }
+
     private fun sendChannelMessage(channel: Channel, content: String, messageID: String) {
         val sink = channelMessageSink
         if (sink != null) sink(channel, content, messageID) else ChannelManager.sendMessage(channel, content, messageID)
@@ -792,16 +807,16 @@ class TaskOrchestrator(
                         return
                     }
                     taskEventCallback?.invoke(TaskEvent.Cancelled)
-                    ForegroundService.resetToIdle(appContext)
+                    quietly("resetToIdle") { ForegroundService.resetToIdle(appContext) }
                     if (cancelledSession.channel != null && cancelledSession.messageId.isNotEmpty()) {
-                        ChannelManager.sendMessage(
+                        safeChannelSend(
                             cancelledSession.channel,
                             appContext.getString(R.string.channel_msg_task_cancelled),
                             cancelledSession.messageId
                         )
-                        ChannelManager.flushMessages(cancelledSession.channel)
+                        quietly("flushMessages") { ChannelManager.flushMessages(cancelledSession.channel) }
                     }
-                    FloatingCircleManager.setErrorState()
+                    quietly("setErrorState") { FloatingCircleManager.setErrorState() }
                     onTaskFinished()
                     XLog.d(TAG, "Current task cancelled by user")
                     return
@@ -816,9 +831,9 @@ class TaskOrchestrator(
                     return
                 }
                 taskEventCallback?.invoke(TaskEvent.Completed(answer, modelName))
-                ForegroundService.resetToIdle(appContext)
-                ChannelManager.flushMessages(completedSession.channel ?: channel)
-                FloatingCircleManager.setSuccessState()
+                quietly("resetToIdle") { ForegroundService.resetToIdle(appContext) }
+                quietly("flushMessages") { ChannelManager.flushMessages(completedSession.channel ?: channel) }
+                quietly("setSuccessState") { FloatingCircleManager.setSuccessState() }
                 // Auto-return to ReturnGift after in-app task completes
                 if (completedSession.autoReturnToChat) {
                     XLog.i(TAG, "onComplete: auto-returning to ReturnGift chatroom")
@@ -844,16 +859,16 @@ class TaskOrchestrator(
                     return
                 }
                 taskEventCallback?.invoke(TaskEvent.Failed(error.message ?: "Unknown error"))
-                ForegroundService.resetToIdle(appContext)
+                quietly("resetToIdle") { ForegroundService.resetToIdle(appContext) }
                 val failedChannel = failedSession.channel ?: channel
                 val failedMessageId = failedSession.messageId.ifEmpty { messageID }
-                ChannelManager.sendMessage(
+                safeChannelSend(
                     failedChannel,
                     appContext.getString(R.string.channel_msg_task_error, error.message),
                     failedMessageId
                 )
-                ChannelManager.flushMessages(failedChannel)
-                FloatingCircleManager.setErrorState()
+                quietly("flushMessages") { ChannelManager.flushMessages(failedChannel) }
+                quietly("setErrorState") { FloatingCircleManager.setErrorState() }
                 onTaskFinished()
             }
 
@@ -867,7 +882,7 @@ class TaskOrchestrator(
                 taskEventCallback?.invoke(TaskEvent.Blocked)
                 val blockedChannel = blockedSession.channel ?: channel
                 val blockedMessageId = blockedSession.messageId.ifEmpty { messageID }
-                ChannelManager.sendMessage(
+                safeChannelSend(
                     blockedChannel,
                     appContext.getString(R.string.channel_msg_system_dialog_blocked),
                     blockedMessageId
@@ -884,7 +899,7 @@ class TaskOrchestrator(
                 } catch (e: Exception) {
                     XLog.e(TAG, "Failed to send screenshot for system dialog", e)
                 }
-                FloatingCircleManager.setErrorState()
+                quietly("setErrorState") { FloatingCircleManager.setErrorState() }
                 onTaskFinished()
             }
         })
@@ -892,13 +907,13 @@ class TaskOrchestrator(
             XLog.e(TAG, "startNewTask: executeTask threw before terminal callbacks could fire", e)
             if (casRelease(messageID) != null) {
                 taskEventCallback?.invoke(TaskEvent.Failed(e.message ?: "Task could not be started"))
-                ChannelManager.sendMessage(
+                safeChannelSend(
                     channel,
                     appContext.getString(R.string.channel_msg_task_error, e.message),
                     messageID
                 )
-                ForegroundService.resetToIdle(appContext)
-                FloatingCircleManager.setErrorState()
+                quietly("resetToIdle") { ForegroundService.resetToIdle(appContext) }
+                quietly("setErrorState") { FloatingCircleManager.setErrorState() }
                 onTaskFinished()
             }
         }
