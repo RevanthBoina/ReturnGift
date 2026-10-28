@@ -140,7 +140,8 @@ public class WebFetchTool extends BaseTool {
             }
             XLog.i(TAG, "Fetched " + url + " -> " + text.length() + " chars in " +
                     (System.currentTimeMillis() - startedAt) + "ms, saved=" + saveToVault);
-            return ToolResult.success(result.toString());
+            return ToolResult.success(
+                    com.returngift.agent.agent.UntrustedContent.INSTANCE.wrap("page", result.toString()));
         } catch (IOException e) {
             XLog.e(TAG, "fetch failed: " + url, e);
             return ToolResult.error("Network error fetching " + url + ": " + e.getMessage());

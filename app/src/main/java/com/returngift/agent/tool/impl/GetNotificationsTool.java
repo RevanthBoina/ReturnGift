@@ -112,7 +112,8 @@ public class GetNotificationsTool extends BaseTool {
             }
 
             XLog.d(TAG, "Read " + count + " notifications");
-            return ToolResult.success(sb.toString().trim());
+            return ToolResult.success(
+                    com.returngift.agent.agent.UntrustedContent.INSTANCE.wrap("notifications", sb.toString().trim()));
 
         } catch (Exception e) {
             XLog.e(TAG, "Failed to read notifications", e);

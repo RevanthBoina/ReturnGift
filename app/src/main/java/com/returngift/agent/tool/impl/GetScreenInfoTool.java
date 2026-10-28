@@ -69,6 +69,6 @@ public class GetScreenInfoTool extends BaseTool {
             sanitizedTree = "[Empty screen or custom canvas surface. If the app uses OpenGL/Vulkan/SurfaceView, use take_screenshot for visual inspection.]";
         }
                 
-        return ToolResult.success(sanitizedTree);
+        return ToolResult.success(com.returngift.agent.agent.UntrustedContent.INSTANCE.wrap("screen", sanitizedTree));
     }
 }
