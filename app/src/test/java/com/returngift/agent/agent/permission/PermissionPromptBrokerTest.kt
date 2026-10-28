@@ -34,6 +34,8 @@ class PermissionPromptBrokerTest {
         PermissionPromptBroker.isMainThread = { false }
         PermissionPromptBroker.openUiHook = { openedUi.incrementAndGet() }
         PermissionPromptBroker.notifyHook = { postedNotification.set(true) }
+        // Notifications are the prompt surface; the card is only the blocked-notification fallback.
+        PermissionPromptBroker.notificationsAvailableHook = { true }
         PermissionPromptBroker.dismissHook = { }
         PermissionPromptBroker.cancelPending()
         openedUi = AtomicInteger(0)
@@ -67,10 +69,10 @@ class PermissionPromptBrokerTest {
     }
 
     @Test
-    fun `request opens the APK interface and mirrors a notification`() {
+    fun `request asks in a notification instead of opening the app`() {
         val (_, thread) = requestAsync()
-        assertTrue("permission screen must be opened", openedUi.get() >= 1)
-        assertTrue("heads-up notification must mirror the request", postedNotification.get())
+        assertTrue("the request must be answered in the shade", postedNotification.get())
+        assertEquals("the app must not be pulled to the front for a question", 0, openedUi.get())
         assertNotNull(PermissionPromptBroker.snapshot())
         PermissionPromptBroker.answer("Allow once")
         thread.join(2_000)

@@ -24,6 +24,9 @@ Read this before the older rules below. Where they disagree, this section wins.
    for the owner; anyone else gets a sentence back.
 9. **Credentials stay usable without being readable.** New keys are sealed with the
    platform Keystore and old ones migrate silently on first launch.
+10. **All questions, permission asks and follow-up tasks go through notifications.**
+    The owner answers in the shade or on the lock screen; the chat is a mirror of the
+    transcript, never a place a task waits for a tap.
 
 ## ⛔ Hard rules (read before writing any code)
 

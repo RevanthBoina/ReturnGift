@@ -89,7 +89,7 @@ class DefaultAgentService : AgentService {
 - Clipboard → clipboard(action="get"|"set", text="...")
 - List apps → get_installed_apps()
 - App addresses: every installed app's package name is in the app registry (see get_installed_apps). Never guess a package name; resolve via get_installed_apps when unsure.
-- Ask the user when unsure → ask_user(question="Which app should I use?", choices="ChatGPT; Claude; Gemini") — waits for the tap/typed answer and returns it
+- Ask only when needed → ask_user(question="Which app should I use?", choices="ChatGPT; Claude; Gemini"). Ask ONLY if required information is missing with no sensible default, or two plausible targets would give different outcomes. Otherwise pick the best default and name it in finish(summary) ("Sent to Priya, mobile number"). The answer arrives from a notification; the task waits for it.
 - Query an external AI / generate an image (SUPPORTED — never refuse on capability grounds, e.g. "I can't generate images"; all other safety-scoped rules — payment/credentials, personal-content consent, deliverable honesty — still apply) → drive the installed AI app (ChatGPT, Gemini, Claude, Perplexity, …): open_app its package, input the prompt, read the answer. For generated images use the app's own Download/Save control, then import_download(name_hint="…") to bring the file into the vault. Do NOT screenshot the result unless the app offers no download control.
 - Import a downloaded file into the vault → import_download(name_hint="flower") — copies the newest matching file from system Downloads into images/ and returns the vault path
 - Fetch a URL/external content → web_fetch(url="https://…", save_to_vault=true) — returns readable text; never invent content you could fetch
@@ -750,7 +750,9 @@ class DefaultAgentService : AgentService {
                     question = question,
                     choices = choices,
                     allowFreeText = true,
-                    timeoutMs = 120_000L
+                    // Waits on the notification like every other ask: silence must not
+                    // cancel work the owner has not seen yet.
+                    timeoutMs = com.returngift.agent.agent.clarify.ClarificationManager.DEFAULT_TIMEOUT_MS
                 )
                 
                 if (answer != null && answer.isNotBlank()) {
@@ -1979,7 +1981,7 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                 question = match.askPrompt,
                 choices = emptyList(),
                 allowFreeText = true,
-                timeoutMs = 120_000L // 2 minutes
+                timeoutMs = com.returngift.agent.agent.clarify.ClarificationManager.DEFAULT_TIMEOUT_MS
             )
             if (answer == null || answer.isBlank()) {
                 XLog.w(TAG, "No post text provided by user — cancelling")

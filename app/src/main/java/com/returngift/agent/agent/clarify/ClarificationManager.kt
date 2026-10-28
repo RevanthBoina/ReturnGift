@@ -39,7 +39,16 @@ import kotlinx.coroutines.launch
 object ClarificationManager {
 
     private const val TAG = "ClarificationManager"
-    const val DEFAULT_TIMEOUT_MS = 120_000L
+
+    /**
+     * How long the loop stays parked on a question.
+     *
+     * The owner answers from the notification, not the app, so a short in-app timeout
+     * would cancel work nobody had a chance to answer. This matches the plan
+     * checkpoint's TTL: past it, the question is marked expired and the task stops
+     * honestly instead of guessing.
+     */
+    const val DEFAULT_TIMEOUT_MS = com.returngift.agent.agent.plan.PlanCheckpointStore.DEFAULT_TTL_MS
     private const val POLL_SLICE_MS = 250L
     private const val KEY_PERSISTED_QUESTION = "clarification_pending_question"
 
@@ -50,7 +59,11 @@ data class PendingQuestion(
         val allowFreeText: Boolean,
         val createdAtMs: Long,
         /** Closed vocab: "d3_send_confirm" for the D3 send-confirm flow, "generic" for other clarifications. */
-        val surface: String = "generic"
+        val surface: String = "generic",
+        /** Random tag carried on every notification action; an answer only counts for its own question. */
+        val nonce: String = "",
+        /** The task that is parked, so an answer after a process death can restart it. */
+        val taskText: String = "",
     )
 
     /** True when a question just resolved within [windowMs] — used by the chat
@@ -129,21 +142,51 @@ data class PendingQuestion(
      */
     internal var headsUpHook: (PendingQuestion) -> Unit = { q ->
         try {
-            val ctx = ReturnGiftApplication.instance
-            if (!AppUiState.isForeground) {
-                com.returngift.agent.service.ClarificationNotifier.show(ctx, q)
-            }
+            // One layer, always: the question goes to the notification bar whether or not
+            // the app happens to be on screen. The chat is a mirror of the transcript.
+            com.returngift.agent.service.NotificationPrompter.askQuestion(ReturnGiftApplication.instance, q)
         } catch (e: Exception) {
-            XLog.w(TAG, "heads-up hook failed", e)
+            XLog.w(TAG, "notification question failed", e)
         }
     }
 
     internal var headsUpDismissHook: () -> Unit = {
         try {
-            com.returngift.agent.service.ClarificationNotifier.dismiss(ReturnGiftApplication.instance)
+            com.returngift.agent.service.NotificationPrompter.dismissQuestion(ReturnGiftApplication.instance)
         } catch (e: Exception) {
-            XLog.w(TAG, "heads-up dismiss failed", e)
+            XLog.w(TAG, "question dismiss failed", e)
         }
+    }
+
+    /** Posted when the wait runs out, so the shade never shows a dead question as live. */
+    internal var expireHook: (PendingQuestion?) -> Unit = { q ->
+        try {
+            com.returngift.agent.service.NotificationPrompter.markQuestionExpired(ReturnGiftApplication.instance, q)
+        } catch (e: Exception) {
+            XLog.w(TAG, "question expiry notice failed", e)
+        }
+    }
+
+    /** Listeners told what the owner answered, so the transcript can show "You: …". */
+    private val answeredListeners = CopyOnWriteArrayList<(PendingQuestion, String) -> Unit>()
+
+    fun addAnsweredListener(listener: (PendingQuestion, String) -> Unit) {
+        answeredListeners.add(listener)
+    }
+
+    fun removeAnsweredListener(listener: (PendingQuestion, String) -> Unit) {
+        answeredListeners.remove(listener)
+    }
+
+    /**
+     * Task text that the parked question belongs to. Set by the orchestrator when a task
+     * starts so an answer arriving after the process was killed can restart it.
+     */
+    @Volatile
+    private var currentTaskText: String = ""
+
+    fun noteCurrentTask(text: String) {
+        currentTaskText = text
     }
 
     /**
@@ -209,6 +252,8 @@ data class PendingQuestion(
                 allowFreeText = allowFreeText,
                 createdAtMs = System.currentTimeMillis(),
                 surface = surface,
+                nonce = UUID.randomUUID().toString().take(8),
+                taskText = currentTaskText,
             )
             latch = CountDownLatch(1)
             answer = null
@@ -226,8 +271,10 @@ data class PendingQuestion(
         while (true) {
             val remaining = deadline - System.currentTimeMillis()
             if (remaining <= 0) {
+                val expired = pending
                 finishRequest()
-                XLog.w(TAG, "Clarification timed out after ${timeoutMs}ms: \"$question\"")
+                expireHook(expired)
+                XLog.w(TAG, "Clarification expired after ${timeoutMs}ms: \"$question\"")
                 return null
             }
             try {
@@ -260,10 +307,14 @@ data class PendingQuestion(
         val current = pending ?: return false
         if (!current.allowFreeText && current.choices.isNotEmpty() && text !in current.choices) {
             XLog.w(TAG, "answer: rejecting free-text reply for choice-only question")
-            return true // consumed, but ignored — the card constrains input
+            return true // consumed, but ignored — the question only offered choices
         }
         this.answer = text
         latch?.countDown()
+        answeredListeners.forEach { listener ->
+            runCatching { listener(current, text) }
+                .onFailure { XLog.w(TAG, "answered listener error", it) }
+        }
         return true
     }
 

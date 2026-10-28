@@ -114,12 +114,24 @@ class TaskFlowController(
             val choices = if (q.choices.isNotEmpty())
                 "\n" + q.choices.mapIndexed { i, c -> "${i + 1}. $c" }.joinToString("\n")
             else ""
-            addSystem("❓ ${q.question}$choices")
+            // The chat is a mirror of the transcript: the question is a line, and the
+            // answer arrives from the notification, not from here.
+            addSystem("Asked: ${q.question}$choices")
         }
     }
 
+    /** The owner answered (in the shade, the lock screen, or the fallback card). */
+    private val clarificationAnsweredListener: (ClarificationManager.PendingQuestion, String) -> Unit =
+        { _, answer ->
+            activity.runOnUiThread {
+                addUser("You: $answer")
+                onPersistConversation()
+            }
+        }
+
     init {
         ClarificationManager.addListener(clarificationListener)
+        ClarificationManager.addAnsweredListener(clarificationAnsweredListener)
         // Observe pending queue flow and sync to the MutableState for UI.
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main.immediate + pendingFlowJob).launch {
             appViewModel.taskSessionStore.pendingFlow.collect { pending ->
@@ -143,6 +155,7 @@ class TaskFlowController(
     /** Unregister UI listeners. Call from Activity.onDestroy. */
     fun release() {
         ClarificationManager.removeListener(clarificationListener)
+        ClarificationManager.removeAnsweredListener(clarificationAnsweredListener)
         pendingFlowJob.cancel()
     }
 
@@ -150,10 +163,8 @@ class TaskFlowController(
     fun submitClarificationAnswer(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
-        if (ClarificationManager.answer(trimmed)) {
-            addUser(trimmed)
-            onPersistConversation()
-        }
+        // The answered listener writes the "You: …" line for every answer path.
+        ClarificationManager.answer(trimmed)
     }
 
     /** Plan card "Execute now": disable preview and re-dispatch the original task. */

@@ -364,6 +364,9 @@ class TaskOrchestrator(
 
         ForegroundService.updateTaskStatus(appContext, "Preparing task...")
         armTaskDeadline(messageID)
+        // Remember what is running: a question answered after the process was killed can
+        // then restart this task instead of losing it.
+        com.returngift.agent.agent.clarify.ClarificationManager.noteCurrentTask(task)
 
         // Tier 1: Deterministic routing (skip on escalation/fallback)
         val route = pipelineRouter.route(task, isEscalation = isFallback)

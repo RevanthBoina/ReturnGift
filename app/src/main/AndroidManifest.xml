@@ -60,18 +60,10 @@
             android:screenOrientation="portrait" />
         <activity
             android:name=".ui.chat.ComposeChatActivity"
-            android:exported="true"
-            android:label="Ask ReturnGift"
+            android:exported="false"
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density"
-            android:windowSoftInputMode="adjustResize">
-            <!-- Share sheet: "Send to ReturnGift" starts a task with the shared text. -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-        </activity>
+            android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".ui.settings.ThemeActivity"
             android:exported="false"
@@ -95,6 +87,13 @@
             android:name=".ui.settings.AppAllowListActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+        <!-- The door behind a "tap to fix" notification: no UI, straight to the settings page. -->
+        <activity
+            android:name=".service.CapabilityFixActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Transparent" />
         <activity
             android:name=".ui.settings.UsageActivity"
             android:exported="false"
@@ -152,6 +151,21 @@
         <receiver
             android:name=".service.ClarificationAnswerReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".service.CommandReplyReceiver"
+            android:exported="false" />
+
+        <!-- Share sheet: "Send to ReturnGift" starts a task without opening the app. -->
+        <receiver
+            android:name=".service.ShareTaskReceiver"
+            android:exported="true"
+            android:label="Send to ReturnGift">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".service.PermissionAnswerReceiver"

@@ -199,6 +199,13 @@ object AppCapabilityCoordinator {
      * the user always sees WHO is asking and WHY before leaving the app.
      */
     fun requestCapability(context: Context, requirement: AppRequirement) {
+        // Android grants these itself, so no notification button can answer them: the
+        // notification is a door to the right settings page, shown once per window.
+        val prompter = com.returngift.agent.service.NotificationPrompter
+        if (prompter.notificationsAvailable(context)) {
+            prompter.capabilityNeeded(context, requirement, capabilityReason(requirement))
+            return
+        }
         val request = com.returngift.agent.agent.permission.PermissionRequest.forCapability(
             capabilityId = requirement.name,
             label = capabilityLabel(requirement),

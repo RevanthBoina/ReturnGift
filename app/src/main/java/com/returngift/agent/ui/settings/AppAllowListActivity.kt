@@ -223,8 +223,8 @@ fun AppAllowListScreen(onBack: () -> Unit) {
                             },
                         )
                         ToggleRow(
-                            title = "Open the permission card in front",
-                            subtitle = "Brings the ReturnGift permission card to the foreground when the agent needs it.",
+                            title = "Also open the permission card in front",
+                            subtitle = "Questions are answered in the notification. Turn this on to also bring the card forward.",
                             checked = snapshot.openPermissionCard,
                             onCheckedChange = {
                                 AgentPreferences.openPermissionCard = it
