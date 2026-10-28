@@ -95,6 +95,10 @@ class ForegroundService : Service() {
                     .setContentIntent(pendingIntent)
                     .setAutoCancel(true)
                     .setOnlyAlertOnce(true)
+                    // A result often names people or money: generic on the lock screen,
+                    // full text once the phone is unlocked.
+                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                    .setPublicVersion(resultPublicVersion(context, success))
                     // The next task is typed into the same notification: the session
                     // continues without opening the app.
                     .addAction(replyAction(context))
@@ -293,6 +297,22 @@ class ForegroundService : Service() {
                 context, code, intent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
+        }
+
+        /** What the lock screen shows for a finished task: the outcome, nothing it said. */
+        private fun resultPublicVersion(context: Context, success: Boolean): Notification {
+            return NotificationCompat.Builder(context, RESULT_CHANNEL_ID)
+                .setContentTitle(if (success) "\u2713 A task finished" else "\u2717 A task failed")
+                .setContentText("Unlock to read it")
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentIntent(
+                    PendingIntent.getActivity(
+                        context, 1, Intent(context, com.returngift.agent.ui.chat.ComposeChatActivity::class.java),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                )
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .build()
         }
 
         /** Drop the result card once its Undo has been used. */
