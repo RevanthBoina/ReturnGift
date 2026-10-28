@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import com.returngift.agent.AppCapabilityCoordinator
 import com.returngift.agent.R
@@ -27,10 +28,10 @@ class ForegroundService : Service() {
     companion object {
         private const val TAG = "ForegroundService"
         private const val MONITOR_HEALTH_POLL_MS = 5_000L
-        const val CHANNEL_ID = "ReturnGift_foreground_channel"
+        const val CHANNEL_ID = NotificationPrompter.CHANNEL_STATUS
         const val NOTIFICATION_ID = 1001
         /** Completion/alerts channel (IMPORTANCE_DEFAULT so a finished task actually alerts). */
-        const val RESULT_CHANNEL_ID = "ReturnGift_results_channel"
+        const val RESULT_CHANNEL_ID = NotificationPrompter.CHANNEL_STATUS
         const val NOTIFICATION_DONE_ID = 1002
         /** Notification action: stop the currently running agent task. */
         const val ACTION_STOP_TASK = "com.returngift.agent.action.STOP_TASK"
@@ -42,15 +43,8 @@ class ForegroundService : Service() {
         private const val DEGRADED_MONITOR_TITLE = "ReturnGift · Monitoring paused"
 
         private fun createResultChannel(context: Context) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    RESULT_CHANNEL_ID,
-                    "Task results",
-                    NotificationManager.IMPORTANCE_DEFAULT
-                )
-                val nm = context.getSystemService(NotificationManager::class.java)
-                nm.createNotificationChannel(channel)
-            }
+            // Two channels only, both owned by NotificationPrompter.
+            NotificationPrompter.ensureChannels(context)
         }
 
         private enum class ForegroundMode {
@@ -93,14 +87,24 @@ class ForegroundService : Service() {
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
                 val excerpt = body.trim().replace('\n', ' ').let { if (it.length > 160) it.take(157) + "…" else it }
-                val notification = NotificationCompat.Builder(context, RESULT_CHANNEL_ID)
+                val builder = NotificationCompat.Builder(context, RESULT_CHANNEL_ID)
                     .setContentTitle(if (success) "✓ $taskTitle" else "✗ $taskTitle")
                     .setContentText(excerpt.ifEmpty { if (success) "Task finished" else "Task failed" })
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(body.trim().take(500)))
                     .setSmallIcon(R.drawable.ic_launcher)
                     .setContentIntent(pendingIntent)
                     .setAutoCancel(true)
                     .setOnlyAlertOnce(true)
-                    .build()
+                    // The next task is typed into the same notification: the session
+                    // continues without opening the app.
+                    .addAction(replyAction(context))
+                if (success && runCatching { com.returngift.agent.agent.UndoManager.hasPending() }.getOrDefault(false)) {
+                    builder.addAction(
+                        NotificationCompat.Action.Builder(0, "Undo", broadcast(context, CommandReplyReceiver.ACTION_UNDO, 23))
+                            .build(),
+                    )
+                }
+                val notification = builder.build()
                 val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 manager.notify(NOTIFICATION_DONE_ID, notification)
             } catch (e: Exception) {
@@ -251,15 +255,52 @@ class ForegroundService : Service() {
                 .setOnlyAlertOnce(true)
                 .setAutoCancel(false)
 
+            // Type the next task straight into the shade.
+            builder.addAction(replyAction(context))
             if (showStopAction) {
-                val stopIntent = Intent(context, ForegroundService::class.java).setAction(ACTION_STOP_TASK)
-                val stopPending = PendingIntent.getService(
-                    context, 2, stopIntent,
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                builder.addAction(
+                    NotificationCompat.Action.Builder(
+                        0,
+                        "Stop",
+                        broadcast(context, CommandReplyReceiver.ACTION_STOP, 22),
+                    ).build(),
                 )
-                builder.addAction(0, "Stop", stopPending)
             }
             return builder.build()
+        }
+
+        /** Inline "type a task" box; the reply PendingIntent must be mutable for RemoteInput. */
+        private fun replyAction(context: Context): NotificationCompat.Action {
+            val intent = Intent(context, CommandReplyReceiver::class.java)
+                .setAction(CommandReplyReceiver.ACTION_TASK)
+            val pending = PendingIntent.getBroadcast(
+                context, 21, intent,
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            return NotificationCompat.Action.Builder(0, "Type a task…", pending)
+                .addRemoteInput(
+                    RemoteInput.Builder(CommandReplyReceiver.KEY_TEXT_REPLY)
+                        .setLabel("Type a task…")
+                        .build(),
+                )
+                .build()
+        }
+
+        /** Action buttons never start an activity; they finish in the receiver. */
+        private fun broadcast(context: Context, action: String, code: Int): PendingIntent {
+            val intent = Intent(context, CommandReplyReceiver::class.java).setAction(action)
+            return PendingIntent.getBroadcast(
+                context, code, intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
+
+        /** Drop the result card once its Undo has been used. */
+        fun cancelResult(context: Context) {
+            runCatching {
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                manager.cancel(NOTIFICATION_DONE_ID)
+            }
         }
     }
 

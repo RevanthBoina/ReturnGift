@@ -2168,6 +2168,11 @@ private fun ClarificationCard(
     onStop: () -> Unit,
     colors: ReturnGiftColors,
 ) {
+    // The owner answers in the notification, not here. This is a transcript line that
+    // happens to keep a fallback: when Android refuses to post notifications, the only
+    // way to answer is in the app, so the choices appear here and nowhere else.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val canNotify = com.returngift.agent.service.NotificationPrompter.notificationsAvailable(context)
     Surface(
         color = colors.surface,
         shape = RoundedCornerShape(14.dp),
@@ -2178,12 +2183,20 @@ private fun ClarificationCard(
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(
-                text = "❓ " + question.question,
+                text = "Asked: " + question.question,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = colors.textPrimary,
             )
-            if (question.choices.isNotEmpty()) {
+            if (canNotify) {
+                Text(
+                    text = "Answer from the notification — the task continues there.",
+                    fontSize = 11.sp,
+                    color = colors.textTertiary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            if (!canNotify && question.choices.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 question.choices.forEach { choice ->
                     Surface(
@@ -2210,8 +2223,11 @@ private fun ClarificationCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (question.allowFreeText) "Tap a choice or type your answer below"
-                           else "Tap a choice to answer",
+                    text = if (!canNotify) {
+                        "Notifications are off — answer here, or turn them on to answer from the shade"
+                    } else {
+                        "Waiting for your answer"
+                    },
                     fontSize = 11.sp,
                     color = colors.textTertiary,
                     modifier = Modifier.weight(1f),

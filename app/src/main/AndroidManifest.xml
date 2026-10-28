@@ -161,6 +161,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".service.CommandReplyReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".service.PermissionAnswerReceiver"
             android:exported="false" />
 
