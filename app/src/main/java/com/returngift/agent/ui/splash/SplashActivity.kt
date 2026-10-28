@@ -60,6 +60,14 @@ class SplashActivity : BaseActivity() {
             }
         }
 
+        // First run: one screen where everything is granted at once. It is never
+        // shown again, and no later task asks for any of it individually.
+        if (!KVUtils.isGuideShown()) {
+            startActivity(Intent(this, com.returngift.agent.ui.guide.GuideActivity::class.java))
+            finish()
+            return
+        }
+
         val intent = Intent(this, ComposeChatActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         // Forward debug task extra

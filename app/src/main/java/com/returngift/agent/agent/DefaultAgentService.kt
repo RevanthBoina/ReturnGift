@@ -650,7 +650,11 @@ class DefaultAgentService : AgentService {
         // task (see classifier), but the FIRST content read is gated on
         // consent: Allow once / Allow & remember (persisted per app) / Cancel.
         // device automation intent only.
-        if (taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION) {
+        // One switch decides every permission ask. Off (default) = act.
+        val askBeforeRisky = com.returngift.agent.utils.KVUtils.askBeforeRiskyActions()
+        if (askBeforeRisky &&
+            taskIntent.intent == com.returngift.agent.agent.exec.TaskIntentClassifier.Intent.DEVICE_AUTOMATION
+        ) {
             val pendingApps = com.returngift.agent.agent.exec.PersonalContentConsentGuard
                 .detectApps(rawUserRequest)
                 .filterNot { com.returngift.agent.agent.exec.PersonalContentConsentGuard.isRemembered(it) }
@@ -1287,7 +1291,8 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                 // task run (taskConsentedSurfaces).
                 val dispatchSurface = com.returngift.agent.agent.exec.PersonalContentConsentGuard
                     .checkToolTarget(toolName, params, currentTargetPackage)
-                if (dispatchSurface != null
+                if (askBeforeRisky &&
+                    dispatchSurface != null
                     && dispatchSurface !in taskConsentedSurfaces
                     && !com.returngift.agent.agent.exec.PersonalContentConsentGuard.isRemembered(dispatchSurface)
                 ) {
@@ -1361,17 +1366,20 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                               continue
                           }
                           is PreActionJudge.Outcome.AskUser -> {
-                              XLog.i(TAG, "PreActionJudge asking user: ${judgeOutcome.question}")
-                              val clarification = com.returngift.agent.agent.clarify.ClarificationManager.request(
-                                      question = judgeOutcome.question,
-                                      choices = listOf("Proceed", "Cancel"),
-                                      allowFreeText = false,
-                              )
-                              val answer = when (clarification?.trim()?.lowercase()) {
-                                  "proceed" -> "yes"
-                                  else -> "no"
+                              // Switch off: the judge's opinion is logged, not asked.
+                              val approved = if (!askBeforeRisky) {
+                                  XLog.i(TAG, "PreActionJudge wanted to ask (switch off, proceeding): ${judgeOutcome.question}")
+                                  true
+                              } else {
+                                  XLog.i(TAG, "PreActionJudge asking user: ${judgeOutcome.question}")
+                                  val clarification = com.returngift.agent.agent.clarify.ClarificationManager.request(
+                                          question = judgeOutcome.question,
+                                          choices = listOf("Proceed", "Cancel"),
+                                          allowFreeText = false,
+                                  )
+                                  clarification?.trim()?.lowercase() == "proceed"
                               }
-                              if (answer != "yes") {
+                              if (!approved) {
                                   XLog.i(TAG, "PreActionJudge: user declined, blocking")
                                   callback.onToolResult(iterations, toolName, displayName, paramsText,
                                       ToolResult.error("Action blocked by user"))
@@ -1404,12 +1412,18 @@ XLog.e(TAG, "LLM API call failed after retries", e)
                         continue
                     }
                     is com.returngift.agent.agent.plan.PlanContract.Gate.Ask -> {
-                        val approval = com.returngift.agent.agent.clarify.ClarificationManager.request(
-                            contractGate.reason,
-                            listOf("Allow", "Cancel"),
-                            false,
-                        )
-                        if (approval?.trim()?.startsWith("Allow", ignoreCase = true) != true) {
+                        val allowed = if (!askBeforeRisky) {
+                            // Switch off: the plan's approval step is satisfied silently.
+                            XLog.i(TAG, "plan approval step recorded without asking (switch off)")
+                            true
+                        } else {
+                            com.returngift.agent.agent.clarify.ClarificationManager.request(
+                                contractGate.reason,
+                                listOf("Allow", "Cancel"),
+                                false,
+                            )?.trim()?.startsWith("Allow", ignoreCase = true) == true
+                        }
+                        if (!allowed) {
                             val reason = "Stopped at the plan's approval step — nothing was changed."
                             callback.onToolResult(
                                 iterations, toolName, displayName, paramsText, ToolResult.error(reason)

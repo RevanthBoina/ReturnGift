@@ -72,7 +72,9 @@ object AppAccessGate {
         val pre = AppAccessPolicy.preCheck(
             mode = mode,
             grantedOnce = packageName in onceGrants,
-            askBeforeNewApp = AgentPreferences.askBeforeNewApp,
+            // The single consent switch has the last word: off means no cards.
+            askBeforeNewApp = AgentPreferences.askBeforeNewApp &&
+                com.returngift.agent.utils.KVUtils.askBeforeRiskyActions(),
         )
 
         when (pre.step) {

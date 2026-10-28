@@ -166,6 +166,11 @@ class GuideActivity : BaseActivity() {
 
     private fun finishGuide() {
         KVUtils.setGuideShown(true)
+        // Straight into the app: this screen is the only place permissions are granted,
+        // so leaving the user here with nothing behind it wastes the one visit.
+        val intent = android.content.Intent(this, com.returngift.agent.ui.chat.ComposeChatActivity::class.java)
+        intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
         finish()
     }
 }

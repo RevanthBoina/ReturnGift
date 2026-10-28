@@ -184,6 +184,19 @@ fun AppAllowListScreen(onBack: () -> Unit) {
                             modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                         )
                         ToggleRow(
+                            title = "Ask before risky actions",
+                            subtitle = if (com.returngift.agent.utils.KVUtils.askBeforeRiskyActions()) {
+                                "On — every permission and approval card is asked again."
+                            } else {
+                                "Off — the agent acts. Undo and the action log still record everything."
+                            },
+                            checked = com.returngift.agent.utils.KVUtils.askBeforeRiskyActions(),
+                            onCheckedChange = {
+                                com.returngift.agent.utils.KVUtils.setAskBeforeRiskyActions(it)
+                                prefsVersion++
+                            },
+                        )
+                        ToggleRow(
                             title = "Ask before a new app",
                             subtitle = if (snapshot.askBeforeNewApp) {
                                 "The permission card opens the first time the agent touches an app."

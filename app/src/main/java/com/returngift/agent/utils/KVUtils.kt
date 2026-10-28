@@ -142,6 +142,19 @@ object KVUtils {
 
     // ==================== Onboarding ====================
     private const val KEY_GUIDE_SHOWN = "KEY_GUIDE_SHOWN"
+    private const val KEY_ASK_BEFORE_RISKY_ACTIONS = "ask_before_risky_actions"
+
+    /**
+     * The one consent switch.
+     *
+     * Off (the default) means the app acts: no permission prompts, no approval cards,
+     * no "allow this call?" questions. On means every existing confirmation point
+     * behaves exactly as it did before this switch existed. There is deliberately no
+     * second switch — a setting per guard is how a personal tool becomes a quiz.
+     */
+    fun askBeforeRiskyActions(): Boolean = getBoolean(KEY_ASK_BEFORE_RISKY_ACTIONS, false)
+
+    fun setAskBeforeRiskyActions(value: Boolean) = putBoolean(KEY_ASK_BEFORE_RISKY_ACTIONS, value)
 
     fun isGuideShown(): Boolean = getBoolean(KEY_GUIDE_SHOWN, false)
 
