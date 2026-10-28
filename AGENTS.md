@@ -1,4 +1,29 @@
-# AGENTS.md — ReturnGift repository memory
+## Owner intent
+
+Read this before the older rules below. Where they disagree, this section wins.
+
+1. **One owner, one phone.** This is a personal tool installed on the owner's own
+   device. There is no store listing, no audience, no multi-user mode, no OEM matrix
+   — anything written for strangers is dead weight.
+2. **The owner's word beats any older rule in this file.** When a new instruction
+   conflicts with a rule below, change the rule in the same commit and say which
+   one. Rules belong to the owner, not to the file.
+3. **Act, don't ask.** One switch, `Ask before risky actions`, and it is off by
+   default. Safety comes from things that never prompt: undo, the action log, the
+   owner-only channel check, and a notification when something really breaks.
+   A prompt is a failure of design, not a feature.
+4. **The smallest change that works.** No new `.md` files, no new test files, no
+   audit tables. The proof is that the app builds and does the task.
+5. **Install once, ask once.** Every permission is granted in the first-run setup
+   and never asked for again. A later task that needs something switches it on.
+6. **A known routine runs to the end.** Plan-first, approval and the plan contract
+   exist for what the model drives; a matched routine skips all three.
+7. **Failing is a message, not a retry loop.** When a capability is gone, say it
+   once, offer the one tap that fixes it, and stop spending the task on it.
+8. **This phone answers its owner.** Chat channels and external automation act only
+   for the owner; anyone else gets a sentence back.
+9. **Credentials stay usable without being readable.** New keys are sealed with the
+   platform Keystore and old ones migrate silently on first launch.
 
 ## ⛔ Hard rules (read before writing any code)
 
@@ -25,13 +50,16 @@
 
 2. **No numeric token ceiling.** Token state is cosmetic; `TaskBudget` is the only cost stop.
 3. **No silent failures.** Every blocking condition must reach the user with a message
-   (`SessionBlocker` is the pattern: detect → decide → tell).
+   (`SessionBlocker` is the pattern: detect → decide → tell). Silent means "never a
+   prompt" — an undo entry, a log line, a chat line or a notification all count.
 4. **Verify before claiming.** Android/Compose changes cannot be compiled in every
    sandbox; say so instead of implying a green build.
-5. **Plan before acting, ask before guessing.** A multi-step request must produce a
-   readable plan (`agent/plan`, `PlanFirst`) and any missing detail must become a
-   question, not an assumption. Plans are deterministic (no model call) and are
-   derived from `PlanContext` — never from a hard-coded app name.
+5. **Plan the work the model drives; run the work that is already known.** A request
+   that reaches the agent loop produces a readable plan (`agent/plan`, `PlanFirst`); a
+   matched structured routine or YAML skill runs straight through without one. Only a
+   *missing fact* becomes a question — which app, which contact, what text — never
+   permission. Plans are deterministic (no model call) and come from `PlanContext`,
+   never from a hard-coded app name.
 6. **Remote tools fail open.** MCP servers, connectors and model providers are
    enhancements: a dead one is logged and skipped, never allowed to block a task.
    `agent/mcp/McpRuntime` and `agent/routing/ProviderRouter` are the two patterns.
@@ -150,7 +178,7 @@ Acting on the review of the AK2 pack. These are rules now, not suggestions.
   `SocialPostRoutineTest` (9), `AppFlowRecoveryTest` (rewritten, 15).
 
 ## Repo hygiene audit + local streaming (HY pack, 2026-08-22)
-- **Audit rule that held up**: never trust a grep-only "unused" verdict — the four-signal gate (literal `git grep` across kt/java/xml/kts + manifest view + doc-pointer rule + fixture disambiguation) invalidated most "zero references" candidates. **LIVE (do not delete)**: `core/` 15/16 files (all wired: `ScreenTreeTokenOptimizer`/`SemanticNodeFlattener`/`OcclusionDetector`/`ModalInterceptor`/`FuzzyNodeMatcher` in `ReturnGiftAccessibilityService.getScreenTree`, `TouchInputLayer`/`DynamicIMEInjector`/`DirectActionDispatcher` in input tools, `AdaptiveSettleController` in tap/scroll tools, `AppLifecycleManager` in OpenAppTool, `VisualGroundingFallbackEngine` in getScreenTree, `RealtimeGameController` in the service); `server/` all 4 (`ConfigServerManager`+`CloudDeepAgentManager` auto-start from `ReturnGiftApplication`; `ConfigServer`/`CloudDeepAgentService` are their impl classes); root `fixtures/` (referenced by `playbooks/ask-external-ai.yaml` + `skill_definitions_v2.yaml` SHA-256 hash workflow); `golden_transcripts/` (referenced by `assets/skills/handle-interrupt.md`); `docs/` website (published Pages site: sitemap/robots/og-image; `demo.html` iframed by `index.html`); `prototype/` (design history); `demo/` (now embedded in README).
+- **Audit rule that held up**: never trust a grep-only "unused" verdict — the four-signal gate (literal `git grep` across kt/java/xml/kts + manifest view + doc-pointer rule + fixture disambiguation) invalidated most "zero references" candidates. **LIVE (do not delete)**: `core/` 15/16 files (all wired: `ScreenTreeTokenOptimizer`/`SemanticNodeFlattener`/`OcclusionDetector`/`ModalInterceptor`/`FuzzyNodeMatcher` in `ReturnGiftAccessibilityService.getScreenTree`, `TouchInputLayer`/`DynamicIMEInjector`/`DirectActionDispatcher` in input tools, `AdaptiveSettleController` in tap/scroll tools, `AppLifecycleManager` in OpenAppTool, `VisualGroundingFallbackEngine` in getScreenTree, `RealtimeGameController` in the service); `server/` all 4 (`ConfigServerManager`+`CloudDeepAgentManager` auto-start from `ReturnGiftApplication`; `ConfigServer`/`CloudDeepAgentService` are their impl classes); root `fixtures/` (referenced by `skill_definitions_v2.yaml` SHA-256 hash workflow); `golden_transcripts/` (referenced by `assets/playbooks/handle-interrupt.md`); `docs/` website (published Pages site: sitemap/robots/og-image; `demo.html` iframed by `index.html`); `prototype/` (design history); `demo/` (now embedded in README).
 - **Removed**: `core/telemetry/DirectTelemetryTools.kt` (zero refs, redundant with `GetDeviceInfoTool`/`GetForegroundAppTool`), root `lint-baseline.xml` (diverged duplicate — Gradle reads ONLY `app/lint-baseline.xml` per `app/build.gradle.kts`), empty `source_repo/` gitlink, stale `Expert_tasks.md` → pointer stub to `EXPERT_REVIEW_TASKS.md` (contains ReturnGift attribution, keep it).
 - **Doc fix**: CLAUDE.md's project-files table pointed at nonexistent `docs/AI_INDEX.md` — corrected to root `AI_INDEX.md` (the real canonical repo map).
 - **Local streaming is REAL now**: `LocalLlmClient.chatStreaming` uses LiteRT-LM `sendMessageAsync(text, MessageCallback)` — caller thread blocks on a `CountDownLatch`, partials are DELTAS forwarded to `StreamingListener.onPartialText`; `sendAndRecover`/`recoverRawOutput` dedupe the SDK "Failed to parse tool calls" recovery. Only the LAST new message streams; replay messages use blocking send. GPU failure → `fallbackToCpu()` + one retry, same as `chat()`. `ChatSessionController.sendChat` local branch streams into the typing bubble with the same 60 ms throttle as cloud.
@@ -268,7 +296,7 @@ Acting on the review of the AK2 pack. These are rules now, not suggestions.
 ## On-device resources audit
 - Local inference: Google **LiteRT-LM** SDK (`com.google.ai.edge.litertlm`, version 0.16.0 in `app/build.gradle.kts`). Runtime in `agent/llm/LocalModelRuntime` + `EngineHolder`; client `LocalLlmClient`. Default models are Gemma-4 (`gemma-4-E2B-it.litertlm`, `gemma-4-E4B-it.litertlm`) downloaded from HuggingFace on demand (`LocalModelManager`).
 - **No LoRA** code in the app. The README/CLAUDE.md mentions "LoRA-based Action Skills" as architecture direction, but the actual implementation has NO LoRA adapter loading. "Action Skills" = YAML skill definitions + markdown playbooks, not LoRA weights.
-- **SkillOpt**: there is no runtime component literally named "SkillOpt" in the Kotlin app. The skill system is: YAML skills (`skill_library/skills/*.yaml` + `app/src/main/assets/skills/`) loaded by `SkillRegistry`/`YamlSkillLoader`, semantic retrieval via `SkillEmbeddingIndex`, and **playbooks** (`app/src/main/assets/playbooks/*.md`) managed by `PlaybookManager` (markdown step sequences injected into the local LLM system prompt). The Python `skill_library/optimizer/SkillOptimizer` is an offline lifecycle tool, not shipped in the APK.
+- **SkillOpt**: there is no runtime component literally named "SkillOpt" in the Kotlin app. The skill system is: YAML skills (`skill_library/skills/*.yaml`) loaded by `SkillRegistry`/`YamlSkillLoader`, semantic retrieval via `SkillEmbeddingIndex`, and **playbooks** (`app/src/main/assets/playbooks/*.md`) managed by `PlaybookManager` (markdown step sequences injected into the local LLM system prompt). The Python `skill_library/optimizer/SkillOptimizer` is an offline lifecycle tool, not shipped in the APK.
 - So: the APK depends on the on-device **foundation model (Gemma-4 via LiteRT-LM)** as the "brain"; skills/playbooks are generic tool-sequence docs that guide that brain — they are NOT a separate model. Cloud LLMs (OmniRoute/OpenAI/Anthropic) are optional alternatives, not a fallback mode.
 
 ## Image inventory in the APK (57 image resource files total)
@@ -411,6 +439,11 @@ semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnit
 `lintDebug`), fronted by `scripts/ci-preflight.sh`.
 
 ## Consent/clarification hardening (2026-08-23, TL.10–TL.15)
+- **Every gate below is now behind one switch.** `KVUtils.askBeforeRiskyActions()` is
+  off by default: the pre-loop consent gate, the dispatch-site gate, `PreActionJudge`,
+  the plan contract's approval step, the new-app ask and remote-tool approvals all
+  proceed silently when it is off, and behave exactly as described when it is on.
+  Clarifications for missing facts are unaffected — they are not permission.
 - **Dispatch-site consent**: `PersonalContentConsentGuard.checkToolTarget(toolName, params, currentTargetPackage)` gates `open_app`/`switch_app` by package (`PACKAGE_TO_LABEL`) and content-reading tools (`get_screen_info`/`take_screenshot`/`find_and_tap`/`tap_node`/`input_text`/`long_press`) by the tracked target package. Wired in `runAgentLoop` BEFORE `executeTool`, after the allow-list gate. Per-task `taskConsentedSurfaces` set = Allow-once covers the whole task for that surface (NOT per-call). Pre-loop text gate is unchanged (additive). Seeding order: the set is declared right after `TaskIntentClassifier.classify`, before the pre-loop gate.
 - **TTL + revocation**: `remember()` stores `personal_consent_<label>_ts`; `isRemembered` is TTL-aware (`REMEMBER_TTL_MS` = 60d) and drops expired keys on read; legacy grants without a timestamp are still honored. Settings → Privacy (`R.id.privacyGroup`, added to `activity_settings.xml` + `applyThemeToGroups` list) lists `rememberedApps()` with per-app revoke. Persistence + clock injectable (`persistenceGetLong`/`persistencePutLong`/`nowMs`) for JVM tests.
 - **Stale-answer ack**: `ClarificationManager.finishRequest` stamps `lastResolvedAtMs`; `resolvedRecently(30s)` is the funnel signal — both `sendTask` and `sendChat` post an ℹ️ system line instead of silently routing a late answer as a new task/chat.
