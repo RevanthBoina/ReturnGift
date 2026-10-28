@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -99,9 +98,12 @@ private fun BackupScreen() {
             onClick = { picker.launch(arrayOf("application/json")) },
         ) { Text("Restore from a file") }
 
-        Text(status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 16.dp))
+        Text(
+            text = if (busy) "Working…" else status,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 16.dp),
+        )
     }
-    if (busy) Toast.makeText(context, "Working…", Toast.LENGTH_SHORT).show()
 }
 
 object Backup {
