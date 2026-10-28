@@ -53,7 +53,7 @@ object KVUtils {
      * was never opened — JVM unit tests have no MMKV at all — so reads return their
      * default and writes report failure instead of throwing.
      */
-    private inline fun <T> store(fallback: T, block: (MMKV) -> T): T =
+    private fun <T> store(fallback: T, block: (MMKV) -> T): T =
         if (::mmkv.isInitialized) block(mmkv) else fallback
 
     // ==================== String ====================
