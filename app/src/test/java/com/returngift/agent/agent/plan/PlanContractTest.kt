@@ -13,7 +13,7 @@ import org.junit.Test
  * Covered here: step advancement, evidence requirements, refusal to finish on a
  * promise that was never kept, fail-closed gating, and resumability.
  */
-object PlanContractTest {
+class PlanContractTest {
 
     private fun ctx() = PlanContext(
         apps = listOf(

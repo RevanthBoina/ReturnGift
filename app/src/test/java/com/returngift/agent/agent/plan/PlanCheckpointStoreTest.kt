@@ -16,7 +16,7 @@ import org.junit.Test
  * (c) parseable against the plan the app rebuilt. Everything else must fall back to a
  * fresh plan instead of half-restoring a state nobody can reason about.
  */
-object PlanCheckpointStoreTest {
+class PlanCheckpointStoreTest {
 
     private class FakeStorage : AppGuideStore.Storage {
         val map = mutableMapOf<String, String>()

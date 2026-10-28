@@ -67,15 +67,22 @@ execution:
         - { id: book, op: tap, target: { by: content_desc, matches: "(?i)confirm|book ride" } }
 
 recovery:
-  - on: location_disabled
-    do: [abort, notify_user("Please enable location services to book a ride.")]
-  - on: fare_exceeds_max
-    do: [abort, notify_user("Fare ₹{fare} exceeds ₹{max_fare} limit. Ride not booked.")]
-  - on: no_drivers
-    do: [notify_user("No drivers available right now. Try again later.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 6]
-  terminal_message: "I couldn't book the ride."
+  - "on": location_disabled
+    do:
+      - abort
+      - 'notify_user("Please enable location services to book a ride.")'
+  - "on": fare_exceeds_max
+    do:
+      - abort
+      - 'notify_user("Fare ₹{fare} exceeds ₹{max_fare} limit. Ride not booked.")'
+  - "on": no_drivers
+    do:
+      - 'notify_user("No drivers available right now. Try again later.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 6'
+terminal_message: "I couldn't book the ride."
 
 routing:
   priority: 90
@@ -87,8 +94,8 @@ routing:
     - "book an auto to {destination}"
     - "order a rapido to {destination}"
   anti_triggers:
-    - "navigate to {destination}" -> search_place
-    - "open rapido" -> open_app
+    - "navigate to {destination} -> search_place"
+    - "open rapido -> open_app"
   required_entities: [destination]
   disambiguate_against: [search_place, open_app]
 

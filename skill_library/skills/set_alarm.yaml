@@ -73,11 +73,14 @@ execution:
         - { id: save, op: tap, target: { by: content_desc, matches: "(?i)save|confirm|ok" } }
 
 recovery:
-  - on: time_parse_failed
-    do: [prompt_user("What time? Say something like '7:30 AM' or 'in 30 minutes'.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't set the alarm."
+  - "on": time_parse_failed
+    do:
+      - 'prompt_user("What time? Say something like ''7:30 AM'' or ''in 30 minutes''.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't set the alarm."
 
 routing:
   priority: 75
@@ -88,8 +91,8 @@ routing:
     - "create an alarm for {time}"
     - "alarm for {time} every {days}"
   anti_triggers:
-    - "set a timer for {duration}" -> set_timer
-    - "open clock app" -> open_app
+    - "set a timer for {duration} -> set_timer"
+    - "open clock app -> open_app"
   required_entities: [time]
   disambiguate_against: [set_timer, open_app]
 

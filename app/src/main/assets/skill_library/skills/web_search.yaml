@@ -64,11 +64,15 @@ execution:
         - { id: submit, op: press, key: KEYCODE_ENTER }
 
 recovery:
-  - on: browser_not_installed
-    do: [switch_browser, fallback_to_web_intent]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't search the web."
+  - "on": browser_not_installed
+    do:
+      - switch_browser
+      - fallback_to_web_intent
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't search the web."
 
 routing:
   priority: 30
@@ -79,11 +83,11 @@ routing:
     - "find information about {query}"
     - "browse {url}"
   anti_triggers:
-    - "search youtube for {query}" -> search_video
-    - "find {place} on maps" -> search_place
-    - "search github for {query}" -> search_repository
-    - "ask chatgpt about {query}" -> ask_external_ai
-    - "search the play store for {app}" -> search_install_app
+    - "search youtube for {query} -> search_video"
+    - "find {place} on maps -> search_place"
+    - "search github for {query} -> search_repository"
+    - "ask chatgpt about {query} -> ask_external_ai"
+    - "search the play store for {app} -> search_install_app"
   required_entities: [query]
   disambiguate_against: [search_video, search_place, search_repository, ask_external_ai]
 

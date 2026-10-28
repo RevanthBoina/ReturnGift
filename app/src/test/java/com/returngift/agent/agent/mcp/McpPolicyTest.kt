@@ -17,7 +17,7 @@ import org.junit.Test
  * fine for reads", "never run `delete_*`". If they reset on restart, the safety
  * prompt becomes noise the user learns to tap through.
  */
-object McpPolicyTest {
+class McpPolicyTest {
 
     private class FakeStorage : AppGuideStore.Storage {
         val map = mutableMapOf<String, String>()

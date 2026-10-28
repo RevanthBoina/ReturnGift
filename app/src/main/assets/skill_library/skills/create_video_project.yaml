@@ -45,11 +45,15 @@ execution:
         - { id: wait_editor, op: wait, for: screen_settled, timeout_ms: 5000 }
 
 recovery:
-  - on: project_interrupted
-    do: [checkpoint_save, notify_user("Video project saved. Resume from InShot.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 8]
-  terminal_message: "I couldn't start the video project."
+  - "on": project_interrupted
+    do:
+      - checkpoint_save
+      - 'notify_user("Video project saved. Resume from InShot.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 8'
+terminal_message: "I couldn't start the video project."
 
 routing:
   priority: 45
@@ -61,7 +65,7 @@ routing:
     - "create a video for instagram"
     - "open inshot video editor"
   anti_triggers:
-    - "open inshot" -> open_app
+    - "open inshot -> open_app"
   required_entities: []
   disambiguate_against: [open_app]
 

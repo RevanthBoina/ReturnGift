@@ -70,13 +70,18 @@ execution:
         - { id: submit, op: press, key: KEYCODE_ENTER }
 
 recovery:
-  - on: location_disabled
-    do: [prompt_user("Enable location for better results?"), continue_without]
-  - on: no_results
-    do: [notify_user("No places found for \"{place}\".")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't find \"{place}\" on Maps."
+  - "on": location_disabled
+    do:
+      - 'prompt_user("Enable location for better results?")'
+      - continue_without
+  - "on": no_results
+    do:
+      - 'notify_user("No places found for \"{place}\".")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't find \"{place}\" on Maps."
 
 routing:
   priority: 65
@@ -90,8 +95,8 @@ routing:
     - "take me to {place}"
     - "where is {place}"
   anti_triggers:
-    - "book a ride to {place}" -> book_ride
-    - "open maps" -> open_app
+    - "book a ride to {place} -> book_ride"
+    - "open maps -> open_app"
   required_entities: [place]
   disambiguate_against: [book_ride, open_app]
 

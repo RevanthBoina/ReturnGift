@@ -15,7 +15,7 @@ import org.junit.Test
  * credential storage, sanitised tool names sent back to the server, unbounded
  * responses, and remote tools running without a user decision.
  */
-object McpSecurityTest {
+class McpSecurityTest {
 
     private class FakeStorage : AppGuideStore.Storage {
         val map = mutableMapOf<String, String>()

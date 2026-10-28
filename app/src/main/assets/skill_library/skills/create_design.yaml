@@ -48,11 +48,15 @@ execution:
         - { id: select_template, op: tap, target: { by: text, matches: "(?i){template_type}" }, when: "slots.template_type != 'blank'" }
 
 recovery:
-  - on: webview_not_accessible
-    do: [abort, notify_user("Canva's editor uses a web view that I can't interact with. Please create the design manually.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 6]
-  terminal_message: "I couldn't create the design in Canva."
+  - "on": webview_not_accessible
+    do:
+      - abort
+      - 'notify_user("Canva''s editor uses a web view that I can''t interact with. Please create the design manually.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 6'
+terminal_message: "I couldn't create the design in Canva."
 
 routing:
   priority: 45
@@ -64,7 +68,7 @@ routing:
     - "make a social media post on canva"
     - "create a presentation in canva"
   anti_triggers:
-    - "open canva" -> open_app
+    - "open canva -> open_app"
   required_entities: []
   disambiguate_against: [open_app]
 

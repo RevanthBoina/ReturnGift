@@ -20,7 +20,7 @@ import org.junit.Test
  * assertions run against renamed apps in [plans are data driven], which is what
  * proves the planner has no built-in knowledge of any single app.
  */
-object PlanFirstTest {
+class PlanFirstTest {
 
     private fun ctx(
         social: String = "LinkedIn",

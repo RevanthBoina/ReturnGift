@@ -72,11 +72,14 @@ execution:
         - { id: tap_result, op: tap, target: { by: text, matches: "(?i){setting_section}", clickable: true } }
 
 recovery:
-  - on: setting_not_found
-    do: [notify_user("I couldn't find the \"{setting_section}\" setting.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't open that settings section."
+  - "on": setting_not_found
+    do:
+      - 'notify_user("I couldn''t find the \"{setting_section}\" setting.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't open that settings section."
 
 routing:
   priority: 50
@@ -89,8 +92,8 @@ routing:
     - "go to battery settings"
     - "open about phone"
   anti_triggers:
-    - "turn on wifi" -> toggle_setting
-    - "turn off bluetooth" -> toggle_setting
+    - "turn on wifi -> toggle_setting"
+    - "turn off bluetooth -> toggle_setting"
   required_entities: []
   disambiguate_against: [toggle_setting, open_app]
 

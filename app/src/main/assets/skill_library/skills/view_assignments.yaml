@@ -64,13 +64,18 @@ execution:
         - { id: extract, op: extract, from: sel.assignment_rows, fields: { title: { by: resource_id, value: "…:id/assignment_title" }, due: { by: resource_id, value: "…:id/due_date" }, course: { by: resource_id, value: "…:id/course_name" } }, limit: 10, emit_as: assignments }
 
 recovery:
-  - on: auth_wall
-    do: [abort, notify_user("Sign in to Classroom first.")]
-  - on: app_not_installed
-    do: [delegate: search_install_app(query="Google Classroom")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 6]
-  terminal_message: "I couldn't open your Classroom assignments."
+  - "on": auth_wall
+    do:
+      - abort
+      - 'notify_user("Sign in to Classroom first.")'
+  - "on": app_not_installed
+    do:
+      - 'delegate: search_install_app(query="Google Classroom")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 6'
+terminal_message: "I couldn't open your Classroom assignments."
 
 routing:
   priority: 60
@@ -84,8 +89,8 @@ routing:
     - "open classroom assignments"
     - "kya assignment due hai"
   anti_triggers:
-    - "open classroom" -> open_app
-    - "open {filename} in drive" -> open_file_in_drive
+    - "open classroom -> open_app"
+    - "open {filename} in drive -> open_file_in_drive"
   required_entities: []
   disambiguate_against: [open_app, open_file_in_drive]
 

@@ -45,11 +45,15 @@ execution:
         - { id: launch, op: launch_app, package: com.linkedin.android }
 
 recovery:
-  - on: not_signed_in
-    do: [abort, notify_user("Please sign in to LinkedIn first.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 2]
-  terminal_message: "I couldn't open LinkedIn."
+  - "on": not_signed_in
+    do:
+      - abort
+      - 'notify_user("Please sign in to LinkedIn first.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 2'
+terminal_message: "I couldn't open LinkedIn."
 
 routing:
   priority: 40
@@ -61,8 +65,8 @@ routing:
     - "open my linkedin activity"
     - "check linkedin updates"
   anti_triggers:
-    - "open linkedin" -> open_app
-    - "show system notifications" -> read_system_notifications
+    - "open linkedin -> open_app"
+    - "show system notifications -> read_system_notifications"
   required_entities: []
   disambiguate_against: [open_app, read_system_notifications]
 

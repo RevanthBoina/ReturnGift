@@ -62,13 +62,18 @@ execution:
         - { id: tap_record, op: tap, target: { by: content_desc, matches: "(?i)record|start recording" } }
 
 recovery:
-  - on: permission_denied
-    do: [request_permission(RECORD_AUDIO), retry_once]
-  - on: ad_overlay
-    do: [handle_via_global_interrupt(full_screen_ad)]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't start recording."
+  - "on": permission_denied
+    do:
+      - 'request_permission(RECORD_AUDIO)'
+      - retry_once
+  - "on": ad_overlay
+    do:
+      - 'handle_via_global_interrupt(full_screen_ad)'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't start recording."
 
 routing:
   priority: 60
@@ -81,8 +86,8 @@ routing:
     - "start a new audio recording"
     - "record a memo"
   anti_triggers:
-    - "open recorder" -> open_app
-    - "play the recording" -> play_audio
+    - "open recorder -> open_app"
+    - "play the recording -> play_audio"
   required_entities: []
   disambiguate_against: [open_app, play_audio]
 

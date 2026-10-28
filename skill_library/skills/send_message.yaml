@@ -109,15 +109,23 @@ execution:
         - { id: send, op: tap, target: "sel.{app}_send_button" }
 
 recovery:
-  - on: selector_not_found
-    do: [rescan_after(600ms), scroll_and_retry(2), next_route]
-  - on: auth_wall
-    do: [abort, notify_user("Please sign in to {app} first.")]
-  - on: app_not_installed
-    do: [delegate: search_install_app(query="{app}")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 6]
-  terminal_message: "I couldn't send the message."
+  - "on": selector_not_found
+    do:
+      - 'rescan_after(600ms)'
+      - 'scroll_and_retry(2)'
+      - next_route
+  - "on": auth_wall
+    do:
+      - abort
+      - 'notify_user("Please sign in to {app} first.")'
+  - "on": app_not_installed
+    do:
+      - 'delegate: search_install_app(query="{app}")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 6'
+terminal_message: "I couldn't send the message."
 
 routing:
   priority: 80
@@ -131,8 +139,8 @@ routing:
     - "tell {contact} {message}"
     - "snap {contact} a message"
   anti_triggers:
-    - "open {contact}'s chat" -> open_conversation
-    - "call {contact}" -> make_phone_call
+    - "open {contact}'s chat -> open_conversation"
+    - "call {contact} -> make_phone_call"
   required_entities: [recipient]
   disambiguate_against: [open_conversation, make_phone_call]
 

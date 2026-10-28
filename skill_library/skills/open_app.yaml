@@ -50,13 +50,18 @@ execution:
         - { assert: foreground_package, equals: "{app_name|to_package}" }
 
 recovery:
-  - on: app_not_installed
-    do: [delegate: search_install_app(query="{app_name}")]
-  - on: app_crash
-    do: [retry_once, notify_user("{app_name} crashed.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 2]
-  terminal_message: "I couldn't open {app_name}."
+  - "on": app_not_installed
+    do:
+      - 'delegate: search_install_app(query="{app_name}")'
+  - "on": app_crash
+    do:
+      - retry_once
+      - 'notify_user("{app_name} crashed.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 2'
+terminal_message: "I couldn't open {app_name}."
 
 routing:
   priority: 10
@@ -69,12 +74,12 @@ routing:
     - "switch to {app_name}"
     - "run {app_name}"
   anti_triggers:
-    - "open my chat with {contact}" -> open_conversation
-    - "search youtube for {query}" -> search_video
-    - "set an alarm for {time}" -> set_alarm
-    - "navigate to {place}" -> search_place
-    - "send {message} to {contact}" -> send_message
-    - "ask chatgpt about {query}" -> ask_external_ai
+    - "open my chat with {contact} -> open_conversation"
+    - "search youtube for {query} -> search_video"
+    - "set an alarm for {time} -> set_alarm"
+    - "navigate to {place} -> search_place"
+    - "send {message} to {contact} -> send_message"
+    - "ask chatgpt about {query} -> ask_external_ai"
   required_entities: [app_name]
   disambiguate_against: [ALL_DOMAIN_SKILLS]
 

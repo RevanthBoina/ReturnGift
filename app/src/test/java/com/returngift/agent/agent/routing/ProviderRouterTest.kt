@@ -12,7 +12,7 @@ import org.junit.Test
  * over cleanly. All deterministic — no network, no sleeping (the ledger takes a
  * clock).
  */
-object ProviderRouterTest {
+class ProviderRouterTest {
 
     private const val T0 = 1_000_000L
     private var now = T0

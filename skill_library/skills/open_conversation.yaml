@@ -69,11 +69,15 @@ execution:
         - { id: find_contact, op: scroll_find_tap, list: sel.wa_chat_list, match: { target: sel.wa_contact_name, text_similarity_to: "{contact.display_name}", min: 0.75 }, max_swipes: 5 }
 
 recovery:
-  - on: contact_not_found_in_list
-    do: [scroll_and_retry(3), tap_search_and_type(contact.display_name)]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't find that conversation."
+  - "on": contact_not_found_in_list
+    do:
+      - 'scroll_and_retry(3)'
+      - 'tap_search_and_type(contact.display_name)'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't find that conversation."
 
 routing:
   priority: 75
@@ -84,8 +88,8 @@ routing:
     - "open unread messages"
     - "navigate to {contact}'s chat"
   anti_triggers:
-    - "send {message} to {contact}" -> send_message
-    - "call {contact}" -> make_phone_call
+    - "send {message} to {contact} -> send_message"
+    - "call {contact} -> make_phone_call"
   required_entities: [contact]
   disambiguate_against: [send_message, make_phone_call]
 
