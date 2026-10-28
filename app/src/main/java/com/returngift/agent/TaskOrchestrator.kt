@@ -338,6 +338,8 @@ class TaskOrchestrator(
             is PipelineRouter.Route.Chat -> "tier2" to "chat"
         }
         com.returngift.agent.agent.tracker.ExecutionTracker.recordTier(messageID, tier, routeInfo)
+        // Temporary routing trace: task id + engine, removed once routing is settled.
+        XLog.i(TAG, "ROUTE task=$messageID engine=$tier/$routeInfo")
 
         when (route) {
             is PipelineRouter.Route.DirectIntent -> {

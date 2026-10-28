@@ -1,10 +1,12 @@
-# Skill: handle_interrupt
-version: 1.0
+---
 id: handle_interrupt
-category: DISMISS
-tools: get_screen_info, system_key, find_and_tap
-user_facing: false
-estimated_steps_saved: 3
+name: Handle Interrupts
+triggers:
+  - "interrupt"
+  - "popup"
+  - "screen changed unexpectedly"
+  - "task paused"
+---
 
 ## Purpose
 
