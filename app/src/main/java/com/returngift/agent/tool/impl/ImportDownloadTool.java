@@ -14,7 +14,7 @@ import android.provider.MediaStore;
 
 import androidx.core.content.ContextCompat;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.agent.knowledge.KBManager;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
@@ -144,7 +144,7 @@ public class ImportDownloadTool extends BaseTool {
 
     /** MediaStore.Downloads is readable without storage permission (API 29+). */
     private List<DownloadCandidate> queryMediaStoreDownloads(String hintLower) {
-        ContentResolver resolver = ClawApplication.Companion.getInstance().getContentResolver();
+        ContentResolver resolver = ReturnGiftApplication.Companion.getInstance().getContentResolver();
         Uri collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL);
         String[] projection = {
                 MediaStore.Downloads.DISPLAY_NAME,
@@ -176,7 +176,7 @@ public class ImportDownloadTool extends BaseTool {
     private List<DownloadCandidate> scanLegacyDownloadsDir(String hintLower) {
         List<DownloadCandidate> out = new ArrayList<>();
         if (ContextCompat.checkSelfPermission(
-                        ClawApplication.Companion.getInstance(),
+                        ReturnGiftApplication.Companion.getInstance(),
                         Manifest.permission.READ_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
             XLog.w(TAG, "READ_EXTERNAL_STORAGE not granted — cannot scan legacy Downloads");
@@ -195,7 +195,7 @@ public class ImportDownloadTool extends BaseTool {
     }
 
     private byte[] readAll(DownloadCandidate candidate) {
-        ClawApplication app = ClawApplication.Companion.getInstance();
+        ReturnGiftApplication app = ReturnGiftApplication.Companion.getInstance();
         try (InputStream in = candidate.uri != null
                 ? app.getContentResolver().openInputStream(candidate.uri)
                 : new FileInputStream(candidate.file)) {

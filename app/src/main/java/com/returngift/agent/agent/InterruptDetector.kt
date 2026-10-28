@@ -3,7 +3,7 @@
 
 package com.returngift.agent.agent
 
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.AppLogStore
 import com.returngift.agent.utils.XLog
 import java.text.SimpleDateFormat
@@ -60,10 +60,10 @@ object InterruptDetector {
     /**
      * Inspect the current accessibility window stack for interrupt signatures.
      *
-     * @param service  live ClawAccessibilityService instance
+     * @param service  live ReturnGiftAccessibilityService instance
      * @return         classification result
      */
-    fun inspect(service: ClawAccessibilityService): InterruptResult {
+    fun inspect(service: ReturnGiftAccessibilityService): InterruptResult {
         // ── 1. Check accessibility windows ──────────────────────────────────
         val windows = try {
             service.windows ?: emptyList()

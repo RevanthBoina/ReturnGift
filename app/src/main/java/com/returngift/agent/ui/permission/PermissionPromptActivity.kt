@@ -269,7 +269,7 @@ private fun PermissionPromptScreen(
 private fun loadAppIcon(packageName: String): Bitmap? {
     if (packageName.isBlank()) return null
     return try {
-        val app = com.returngift.agent.ClawApplication.instance
+        val app = com.returngift.agent.ReturnGiftApplication.instance
         val drawable: Drawable = app.packageManager.getApplicationIcon(packageName)
         when (drawable) {
             is BitmapDrawable -> drawable.bitmap

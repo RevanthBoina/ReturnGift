@@ -21,7 +21,7 @@ import androidx.cardview.widget.CardView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.R
 import com.returngift.agent.agent.CloudModel
 import com.returngift.agent.agent.CloudProvider
@@ -246,8 +246,8 @@ class LlmConfigActivity : BaseActivity() {
                                     // Only switch active provider if currently on local tab
                                     val shouldActivateLocal = ModelConfigRepository.isLocalActive() || !KVUtils.hasDefaultCloudModel()
                                     ModelConfigRepository.saveLocalDefault(path, model.id, shouldActivateLocal)
-                                    ClawApplication.appViewModelInstance.updateAgentConfig()
-                                    ClawApplication.appViewModelInstance.initAgent()
+                                    ReturnGiftApplication.appViewModelInstance.updateAgentConfig()
+                                    ReturnGiftApplication.appViewModelInstance.initAgent()
                                     Toast.makeText(this@LlmConfigActivity, "Set default local: ${model.displayName}", Toast.LENGTH_SHORT).show()
                                     recreate()
                                 } else {
@@ -783,9 +783,9 @@ class LlmConfigActivity : BaseActivity() {
                 apiKey = apiKey,
                 activateNow = !ModelConfigRepository.isLocalActive()
             )
-            ClawApplication.appViewModelInstance.updateAgentConfig()
-            ClawApplication.appViewModelInstance.initAgent()
-            ClawApplication.appViewModelInstance.afterInit()
+            ReturnGiftApplication.appViewModelInstance.updateAgentConfig()
+            ReturnGiftApplication.appViewModelInstance.initAgent()
+            ReturnGiftApplication.appViewModelInstance.afterInit()
             Toast.makeText(this, "Saved cloud default: $modelId", Toast.LENGTH_SHORT).show()
             finish()
         }

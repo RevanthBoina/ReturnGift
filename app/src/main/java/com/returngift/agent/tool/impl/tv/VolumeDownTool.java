@@ -5,7 +5,7 @@ package com.returngift.agent.tool.impl.tv;
 
 import android.view.KeyEvent;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.tool.ToolResult;
 import com.returngift.agent.R;
 
@@ -18,7 +18,7 @@ public class VolumeDownTool extends BaseKeyTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_volume_down);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_volume_down);
     }
 
     @Override
@@ -34,7 +34,7 @@ public class VolumeDownTool extends BaseKeyTool {
     @Override
     public ToolResult execute(java.util.Map<String, Object> params) {
         try {
-            android.media.AudioManager audio = (android.media.AudioManager) ClawApplication.Companion.getInstance()
+            android.media.AudioManager audio = (android.media.AudioManager) ReturnGiftApplication.Companion.getInstance()
                     .getSystemService(android.content.Context.AUDIO_SERVICE);
             if (audio != null) {
                 audio.adjustVolume(android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI);

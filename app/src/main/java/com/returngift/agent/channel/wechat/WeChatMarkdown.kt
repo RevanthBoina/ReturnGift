@@ -5,7 +5,7 @@ package com.returngift.agent.channel.wechat
 
 /**
  * Markdown to plain text conversion.
- * Strictly mirrors the official @tencent-weixin/openclaw-weixin@1.0.2 src/messaging/send.ts markdownToPlainText()
+ * Strictly mirrors the official @tencent-weixin/returngift-weixin@1.0.2 src/messaging/send.ts markdownToPlainText()
  */
 object WeChatMarkdown {
 

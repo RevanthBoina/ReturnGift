@@ -5,16 +5,27 @@ package com.returngift.agent.ui.splash
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.returngift.agent.AppCapabilityCoordinator
+import com.returngift.agent.AppRequirement
 import com.returngift.agent.R
 import com.returngift.agent.base.BaseActivity
+import com.returngift.agent.service.ReturnGiftAccessibilityService
+import com.returngift.agent.service.ReturnGiftNotificationListener
 import com.returngift.agent.ui.chat.ComposeChatActivity
+import com.returngift.agent.utils.KVUtils
 
 /**
  * Splash screen - always navigates to the home screen; LLM does not need to be configured first, it can be set up in Settings
  */
 class SplashActivity : BaseActivity() {
+
+    companion object {
+        /** Runs once per install: the services may have been switched off by the update. */
+        private const val KEY_SERVICES_RECONCILED = "services_reconciled_v1"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,6 +35,30 @@ class SplashActivity : BaseActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { /* Back press disabled on splash screen */ }
         })
+
+        // Accessibility and notification access are granted to an Android *component*,
+        // so a build that renames those components lands with both switched off. Check
+        // once after such an update: one line, then the settings page that fixes it.
+        if (!KVUtils.getBoolean(KEY_SERVICES_RECONCILED, false)) {
+            KVUtils.putBoolean(KEY_SERVICES_RECONCILED, true)
+            val needsAccessibility = !ReturnGiftAccessibilityService.isEnabledInSettings(this)
+            val needsNotifications = !ReturnGiftNotificationListener.isEnabledInSettings(this)
+            if (needsAccessibility || needsNotifications) {
+                val message = when {
+                    needsAccessibility && needsNotifications -> R.string.services_off_both
+                    needsAccessibility -> R.string.services_off_accessibility
+                    else -> R.string.services_off_notifications
+                }
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                AppCapabilityCoordinator.openSystemSettings(
+                    this,
+                    if (needsAccessibility) AppRequirement.ACCESSIBILITY
+                    else AppRequirement.NOTIFICATION_ACCESS,
+                )
+                finish()
+                return
+            }
+        }
 
         val intent = Intent(this, ComposeChatActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

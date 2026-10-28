@@ -322,8 +322,8 @@ class DiscordGatewayClient private constructor() {
                 )
                 add("properties", JsonObject().apply {
                     addProperty("os", "android")
-                    addProperty("browser", "claw")
-                    addProperty("device", "claw")
+                    addProperty("browser", "ReturnGift")
+                    addProperty("device", "ReturnGift")
                 })
             })
         }

@@ -4,11 +4,11 @@
 package com.returngift.agent.channel
 
 import com.returngift.agent.AppCapabilityCoordinator
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.R
 import com.returngift.agent.ServiceBindingState
 import com.returngift.agent.TaskOrchestrator
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.KVUtils
 
 /**
@@ -28,7 +28,7 @@ class ChannelSetup(
         )
         ChannelManager.setOnMessageReceivedListener(object : ChannelManager.OnMessageReceivedListener {
             override fun onMessageReceived(channel: Channel, message: String, messageID: String) {
-                val app = ClawApplication.instance
+                val app = ReturnGiftApplication.instance
                 val capabilityState = AppCapabilityCoordinator.accessibilityState(app)
                 if (capabilityState == ServiceBindingState.DISABLED) {
                     ChannelManager.sendMessage(channel, "Accessibility service is not enabled. Please enable ReturnGift in Settings > Accessibility.", messageID)
@@ -36,7 +36,7 @@ class ChannelSetup(
                     return
                 }
                 val waitMs = if (capabilityState == ServiceBindingState.CONNECTING) 20_000L else 5_000L
-                if (!ClawAccessibilityService.awaitRunning(waitMs)) {
+                if (!ReturnGiftAccessibilityService.awaitRunning(waitMs)) {
                     val error = when (AppCapabilityCoordinator.accessibilityState(app)) {
                         ServiceBindingState.DISABLED ->
                             "Accessibility service is not enabled. Please enable ReturnGift in Settings > Accessibility."

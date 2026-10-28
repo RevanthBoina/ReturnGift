@@ -57,7 +57,7 @@ adb shell input keyevent 82 2>/dev/null || true
 
 # Correct component is com.returngift.agent/.ui.splash.SplashActivity
 # (the .ui.splash. path is the actual class location; earlier rev had a stale
-# com.apk.claw.android.ui.splash.SplashActivity name from a pre-rename build).
+# com.returngift.agent.ui.splash.SplashActivity name from a pre-rename build).
 adb shell am start -W -n com.returngift.agent/.ui.splash.SplashActivity \
   || adb shell monkey -p com.returngift.agent -c android.intent.category.LAUNCHER 1
 echo "::endgroup::"

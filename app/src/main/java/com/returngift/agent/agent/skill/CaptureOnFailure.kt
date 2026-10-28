@@ -6,7 +6,7 @@ package com.returngift.agent.agent.skill
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Base64
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.service.ScreenCaptureManager
 import com.returngift.agent.utils.XLog
 import java.io.ByteArrayOutputStream
@@ -59,7 +59,7 @@ object CaptureOnFailure {
         val baseName = "${skillId}_step${stepNumber}_${timestamp}"
         
         // Capture accessibility tree XML
-        val service = ClawAccessibilityService.getInstance()
+        val service = ReturnGiftAccessibilityService.getInstance()
         if (service != null) {
             val root = service.rootInActiveWindow
             if (root != null) {
@@ -140,7 +140,7 @@ object CaptureOnFailure {
     
     private fun captureRedactedScreenshot(
         context: Context,
-        service: ClawAccessibilityService?,
+        service: ReturnGiftAccessibilityService?,
         captureDir: File,
         baseName: String
     ) {
@@ -180,7 +180,7 @@ object CaptureOnFailure {
     
     private fun getContext(): Context? {
         return try {
-            com.returngift.agent.ClawApplication.instance
+            com.returngift.agent.ReturnGiftApplication.instance
         } catch (e: Exception) {
             null
         }

@@ -4,7 +4,7 @@
 package com.returngift.agent.tool
 
 import com.blankj.utilcode.util.ScreenUtils
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 
 abstract class BaseTool {
 
@@ -136,8 +136,8 @@ abstract class BaseTool {
      * Tools should tolerate that short gap instead of failing immediately.
      */
     @JvmOverloads
-    protected fun requireAccessibilityService(timeoutMs: Long = 20_000L): ClawAccessibilityService? {
-        return ClawAccessibilityService.getConnectedInstance(timeoutMs)
+    protected fun requireAccessibilityService(timeoutMs: Long = 20_000L): ReturnGiftAccessibilityService? {
+        return ReturnGiftAccessibilityService.getConnectedInstance(timeoutMs)
     }
 
     // === Screen bounds helpers ===

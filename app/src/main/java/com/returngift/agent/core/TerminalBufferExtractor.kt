@@ -4,7 +4,7 @@
 package com.returngift.agent.core
 
 import android.view.accessibility.AccessibilityNodeInfo
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -53,7 +53,7 @@ object TerminalBufferExtractor {
      * Reconstructs terminal screen buffer from active accessibility root.
      */
     @JvmStatic
-    fun extractTerminalBuffer(service: ClawAccessibilityService): TerminalState {
+    fun extractTerminalBuffer(service: ReturnGiftAccessibilityService): TerminalState {
         val root = service.rootInActiveWindow
         val pkg = root?.packageName?.toString() ?: ""
         val isTerminal = TERMINAL_PACKAGES.contains(pkg)

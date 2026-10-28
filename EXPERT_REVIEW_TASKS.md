@@ -9,7 +9,7 @@ Last verified: 2026-08-01 against `main` branch.
 ## Finding 1 — Source code not in version control [COMPLETE]
 
 **Verified 2026-08-01:** 191 Kotlin/Java source files are committed under `app/src/`.
-Full Android source is present: accessibility service (`ClawAccessibilityService.java`),
+Full Android source is present: accessibility service (`ReturnGiftAccessibilityService.java`),
 tool layer (`tool/impl/`), task loop (`TaskOrchestrator.kt`), skill layer
 (`BuiltInSkills.kt`, `SkillRegistry.kt`, `SkillExecutor.kt`), LLM clients, UI, channels.
 CI is present at `.github/workflows/build.yml`.
@@ -23,13 +23,13 @@ CI is present at `.github/workflows/build.yml`.
 
 ## Finding 2 — LICENSE compliance [COMPLETE]
 
-**Verified 2026-08-01:** `LICENSE` is Apache-2.0. `NOTICE` credits PokeClaw. No MIT
+**Verified 2026-08-01:** `LICENSE` is Apache-2.0. `NOTICE` credits ReturnGift. No MIT
 license present anywhere in the repository.
 
 **Done:**
 - [x] `source_repo/LICENSE` is Apache-2.0
-- [x] `source_repo/NOTICE` credits PokeClaw / agents.io / Nicole with Apache-2.0 attribution
-- [x] `source_repo/README.md` attribution section correctly credits PokeClaw
+- [x] `source_repo/NOTICE` credits ReturnGift / agents.io / Nicole with Apache-2.0 attribution
+- [x] `source_repo/README.md` attribution section correctly credits ReturnGift
 
 ---
 

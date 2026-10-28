@@ -43,7 +43,7 @@ d(description='Send').click()
 `BuildConfig.DEBUG=false` on signed release. Specifically:
 
 - `adb shell run-as com.returngift.agent ...` returns `package not debuggable`. **MMKV file inspection only works on debug builds.** For signed release, use force-stop + relaunch + Settings UI to verify persistence.
-- `XLog.i` and `XLog.d` are suppressed from `adb logcat` because `ClawApplication.kt` calls `XLog.setDEBUG(BuildConfig.DEBUG)`. But `AppLogStore.log()` still captures `XLog.i` to the in-app log files — so the data lives in `debug-report.zip` even when not in logcat.
+- `XLog.i` and `XLog.d` are suppressed from `adb logcat` because `ReturnGiftApplication.kt` calls `XLog.setDEBUG(BuildConfig.DEBUG)`. But `AppLogStore.log()` still captures `XLog.i` to the in-app log files — so the data lives in `debug-report.zip` even when not in logcat.
 - `DebugTaskReceiver` at `com.returngift.agent.debug.DebugTaskReceiver:39` has `if (!BuildConfig.DEBUG) return` as the FIRST line of `onReceive`. **Every debug broadcast is silently dropped on release.** This means: `am broadcast --es task config:` for cloud LLM config, `--es support_action build_debug_report` for debug report generation, all NOT available on signed release. You must use the actual UI flow.
 
 ### 3. Send FAB in Cloud+Send mode opens Settings — this is BY DESIGN, not a bug
@@ -100,17 +100,17 @@ ReturnGift is already configured correctly; other side-projects may not be. See 
 
 `.github/workflows/emulator-matrix.yml` for Android emulator smoke tests:
 
-- **Component name**: launch via `com.returngift.agent/.ui.splash.SplashActivity` (not `com.apk.claw.android...` which is a pre-rename stale name).
+- **Component name**: launch via `com.returngift.agent/.ui.splash.SplashActivity` (not `com.returngift.agent...` which is a pre-rename stale name).
 - **APK artifact path**: `actions/upload-artifact@v4` with a path-glob preserves directory structure. The `.apk` may be at `apk/app/build/outputs/apk/debug/ReturnGift_*.apk` not `apk/*.apk`. Always use `find apk -type f -name '*.apk'` not assume a flat layout.
 
 ### 9. Component names changed during repo rename
 
-The project was renamed from a `com.apk.claw.android.*` namespace to `com.returngift.agent.*`. Old references may still appear in:
+The project was renamed from a `com.returngift.agent.*` namespace to `com.returngift.agent.*`. Old references may still appear in:
 - Stale doc snippets / older session notes
 - Earlier workflow files
 - Some hardcoded strings
 
-When in doubt, grep the source — `grep -rn "com.apk.claw"` should return zero hits in active code. If it returns hits, those are stale and likely broken.
+When in doubt, grep the source — every import should start with the app's own package (`com.returngift.agent`). Anything else is stale and likely broken.
 
 ### 9.5. Grant all 6 system permissions via ADB (no manual phone taps needed)
 
@@ -132,11 +132,11 @@ adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow
 adb shell dumpsys deviceidle whitelist +$PKG
 
 # 5. Notification Access row (NotificationListenerService)
-adb shell cmd notification allow_listener $PKG/com.returngift.agent.service.ClawNotificationListener
+adb shell cmd notification allow_listener $PKG/com.returngift.agent.service.ReturnGiftNotificationListener
 
 # 6. Accessibility Service — REQUIRES the appop bypass FIRST
 adb shell appops set $PKG ACCESS_RESTRICTED_SETTINGS allow
-adb shell settings put secure enabled_accessibility_services $PKG/com.returngift.agent.service.ClawAccessibilityService
+adb shell settings put secure enabled_accessibility_services $PKG/com.returngift.agent.service.ReturnGiftAccessibilityService
 adb shell settings put secure accessibility_enabled 1
 
 # Verify

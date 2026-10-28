@@ -4,7 +4,7 @@
 package com.returngift.agent.agent.loop
 
 import com.returngift.agent.agent.StuckDetector
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -166,7 +166,7 @@ class InteractionWatchdog(
      * loop can attach to the tool result / model context. Workflow context (the task and the
      * target app) is preserved across recovery.
      */
-    fun executeRecovery(strategy: RecoveryStrategy, service: ClawAccessibilityService, targetPackage: String?): String {
+    fun executeRecovery(strategy: RecoveryStrategy, service: ReturnGiftAccessibilityService, targetPackage: String?): String {
         return try {
             when (strategy) {
                 RecoveryStrategy.NONE -> ""

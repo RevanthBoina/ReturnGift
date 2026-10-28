@@ -12,7 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityNodeInfo
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -69,7 +69,7 @@ object DynamicIMEInjector {
     @JvmStatic
     @JvmOverloads
     fun injectText(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         text: String,
         targetNode: AccessibilityNodeInfo?,
         clearFirst: Boolean = true
@@ -205,7 +205,7 @@ object DynamicIMEInjector {
         node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, clearArgs)
     }
 
-    private fun findFocusedOrFirstEditable(service: ClawAccessibilityService): AccessibilityNodeInfo? {
+    private fun findFocusedOrFirstEditable(service: ReturnGiftAccessibilityService): AccessibilityNodeInfo? {
         val root = service.rootInActiveWindow ?: return null
         val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
         if (focused != null && isGenuineEditable(focused)) {

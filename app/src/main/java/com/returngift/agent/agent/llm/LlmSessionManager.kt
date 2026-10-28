@@ -162,7 +162,7 @@ object LlmSessionManager {
             val modelPath = ModelConfigRepository.snapshot().local.modelPath
             if (modelPath.isNullOrEmpty()) return null
 
-            val context = com.returngift.agent.ClawApplication.instance
+            val context = com.returngift.agent.ReturnGiftApplication.instance
             LocalModelRuntime.runSingleShot(
                 context = context,
                 modelPath = modelPath,

@@ -16,7 +16,7 @@ import com.returngift.agent.agent.skill.SkillRegistry
 import com.returngift.agent.channel.Channel
 import com.returngift.agent.channel.ChannelManager
 import com.returngift.agent.floating.FloatingCircleManager
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.service.ForegroundService
 import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.utils.KVUtils
@@ -53,11 +53,11 @@ class TaskOrchestrator(
     )
 
     internal var appContext: android.content.Context
-        get() = injectedAppContext ?: ClawApplication.instance
+        get() = injectedAppContext ?: ReturnGiftApplication.instance
         set(value) { injectedAppContext = value }
     private var injectedAppContext: android.content.Context? = null
 
-    // Router / skill executor are created lazily from ClawApplication so tests can inject
+    // Router / skill executor are created lazily from ReturnGiftApplication so tests can inject
     // their own fakes via the internal *_ForTesting fields (Robolectric tests must not depend
     // on the Android singletons, and the FIX 7/8 DirectIntent/DirectTool terminal paths need
     // controllable fake returns).
@@ -816,7 +816,7 @@ class TaskOrchestrator(
                     blockedMessageId
                 )
                 try {
-                    val service = ClawAccessibilityService.getInstance()
+                    val service = ReturnGiftAccessibilityService.getInstance()
                     val bitmap = service?.takeScreenshot(5000)
                     if (bitmap != null) {
                         val stream = java.io.ByteArrayOutputStream()

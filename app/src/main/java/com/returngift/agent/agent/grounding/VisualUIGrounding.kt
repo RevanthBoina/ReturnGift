@@ -8,7 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
 import com.returngift.agent.agent.planner.GraphState
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.ConcurrentHashMap
 
@@ -143,7 +143,7 @@ class VisualUIGrounding(private val context: Context) {
     private fun getAccessibilityHierarchy(): List<AccessibilityElement> {
         val elements = mutableListOf<AccessibilityElement>()
         try {
-            val service = ClawAccessibilityService.getInstance()
+            val service = ReturnGiftAccessibilityService.getInstance()
             val rootNode = service?.rootInActiveWindow
             if (rootNode != null) {
                 extractRecursive(rootNode, elements, 0)
@@ -196,7 +196,7 @@ class VisualUIGrounding(private val context: Context) {
     
     private fun captureScreenshot(): Bitmap? {
         return try {
-            ClawAccessibilityService.getInstance()?.takeScreenshot(2000)
+            ReturnGiftAccessibilityService.getInstance()?.takeScreenshot(2000)
         } catch (e: Exception) {
             null
         }

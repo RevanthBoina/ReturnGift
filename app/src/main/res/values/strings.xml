@@ -25,6 +25,9 @@
     <string name="guide_start">Get Started</string>
     <string name="guide_title_restricted">Allow Restricted Settings (Android 13+)</string>
     <string name="guide_desc_restricted">One-time step for apps installed outside a store: open App Info, tap the ⋮ menu (top right), choose "Allow restricted settings", then come back. Tap here to open App Info.</string>
+    <string name="services_off_both">Update switched off Accessibility and Notification access — turn both back on</string>
+    <string name="services_off_accessibility">Update switched off Accessibility — turn ReturnGift back on</string>
+    <string name="services_off_notifications">Update switched off Notification access — turn ReturnGift back on</string>
     <string name="guide_title_accessibility">Accessibility Service</string>
     <string name="guide_desc_accessibility">Lets ReturnGift read the screen and tap buttons for you. Tap to enable.</string>
     <string name="guide_title_notification">Task Notifications</string>

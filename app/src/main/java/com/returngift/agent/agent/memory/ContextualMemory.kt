@@ -273,7 +273,7 @@ object ContextualMemory {
     
     fun save() {
         try {
-            val file = File(com.returngift.agent.ClawApplication.instance.filesDir, MEMORY_FILE)
+            val file = File(com.returngift.agent.ReturnGiftApplication.instance.filesDir, MEMORY_FILE)
             
             val json = JSONObject()
             val factsArray = JSONArray()
@@ -312,7 +312,7 @@ object ContextualMemory {
     
     fun load() {
         try {
-            val file = File(com.returngift.agent.ClawApplication.instance.filesDir, MEMORY_FILE)
+            val file = File(com.returngift.agent.ReturnGiftApplication.instance.filesDir, MEMORY_FILE)
             if (!file.exists()) return
             
             val json = JSONObject(file.readText())

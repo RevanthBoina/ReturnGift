@@ -6,7 +6,7 @@ package com.returngift.agent.agent.grounding
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
 import com.returngift.agent.agent.session.AppSessionManager
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -14,7 +14,7 @@ import com.returngift.agent.utils.XLog
  * accessibility node by re-querying the current hierarchy on every call.
  *
  * This eliminates the stale-node-ID bottleneck: identifiers like "n2"/"n24" are positional
- * and only valid within a single [ClawAccessibilityService.getScreenTree] snapshot, so the
+ * and only valid within a single [ReturnGiftAccessibilityService.getScreenTree] snapshot, so the
  * agent could not act across UI transitions. Instead, callers describe what they want to
  * interact with (by text, content-description, resource-id, view class, or bounding box)
  * and this resolver re-grounds it against the current screen each time.
@@ -93,7 +93,7 @@ object SemanticTargetResolver {
      * @return a [ResolvedTarget], or null if no matching node exists on the current screen.
      */
     fun resolve(target: TargetDescription): ResolvedTarget? {
-        val service = ClawAccessibilityService.getInstance() ?: run {
+        val service = ReturnGiftAccessibilityService.getInstance() ?: run {
             XLog.w(TAG, "resolve: accessibility service not running")
             return null
         }
@@ -173,7 +173,7 @@ object SemanticTargetResolver {
      * persistent reference. Prefer [resolve] with a [TargetDescription].
      */
     fun resolveByLegacyNodeId(nodeId: String): ResolvedTarget? {
-        val service = ClawAccessibilityService.getInstance() ?: return null
+        val service = ReturnGiftAccessibilityService.getInstance() ?: return null
         val coords = service.getNodeCoordinates(nodeId.replace("[", "").replace("]", "").trim())
             ?: return null
         // Re-query the hierarchy to find what is actually at those coordinates now.

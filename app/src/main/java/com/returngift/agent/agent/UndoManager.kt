@@ -4,7 +4,7 @@
 package com.returngift.agent.agent
 
 import com.returngift.agent.core.accessibility.ScreenTreeTokenOptimizer
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.tool.ToolRegistry
 import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.utils.XLog
@@ -115,7 +115,7 @@ object UndoManager {
         val provider = screenHashProvider
         if (provider != null) return provider()
         return try {
-            val root = ClawAccessibilityService.getInstance()?.rootInActiveWindow
+            val root = ReturnGiftAccessibilityService.getInstance()?.rootInActiveWindow
             if (root == null) null else ScreenTreeTokenOptimizer.computeHierarchyHash(root)
         } catch (e: Exception) {
             XLog.w(TAG, "screen hash unavailable, staleness check skipped", e)

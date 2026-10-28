@@ -245,7 +245,7 @@ User Task → Tier 1 Deterministic Parser → Direct Intent/Tool
 
 ### v1.1.0
 - **Background task execution**: device-automation tasks now minimize ReturnGift on start so the agent observes the target app's screen (not its own chat UI) via the Accessibility active window
-- **Homepage title**: replaced the leftover "PokeClaw" toolbar title with "ReturnGift"
+- **Homepage title**: replaced the leftover "ReturnGift" toolbar title with "ReturnGift"
 - **In-app Update fixed**: corrected the GitHub releases API endpoint (was pointing at the wrong repo) and added the required `User-Agent` header so the "Update Available" dialog now actually appears; tapping Download opens the APK directly with the package installer
 - **Release versioning**: the release workflow now derives `versionName`/`versionCode` from the git tag, so each published APK reports its real version and can update over a previous install
 - Auto-return to the chatroom on task completion (existing) now pairs with the new minimize-on-start behavior
@@ -742,7 +742,7 @@ flowchart LR
 
 ### v1.1.0
 - **Background task execution**: device-automation tasks now minimize ReturnGift on start so the agent observes the target app's screen (not its own chat UI) via the Accessibility active window
-- **Homepage title**: replaced the leftover "PokeClaw" toolbar title with "ReturnGift"
+- **Homepage title**: replaced the leftover "ReturnGift" toolbar title with "ReturnGift"
 - **In-app Update fixed**: corrected the GitHub releases API endpoint (was pointing at the wrong repo) and added the required `User-Agent` header so the "Update Available" dialog now actually appears; tapping Download opens the APK directly with the package installer
 - **Release versioning**: the release workflow now derives `versionName`/`versionCode` from the git tag, so each published APK reports its real version and can update over a previous install
 - Auto-return to the chatroom on task completion (existing) now pairs with the new minimize-on-start behavior
@@ -779,8 +779,8 @@ ReturnGift/
 │       │   │   ├── embedding/        # TF-IDF embedding service
 │       │   │   └── pipeline/          # Integrated execution pipelines
 │       │   ├── service/              # Android services
-│       │   │   ├── ClawAccessibilityService.java
-│       │   │   ├── ClawNotificationListener.java
+│       │   │   ├── ReturnGiftAccessibilityService.java
+│       │   │   ├── ReturnGiftNotificationListener.java
 │       │   │   └── ForegroundService.kt
 │       │   ├── tool/                 # Tool system
 │       │   │   ├── impl/             # Tool implementations

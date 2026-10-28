@@ -226,7 +226,7 @@ object RuntimeLearning {
     
     fun save() {
         try {
-            val baseDir = com.returngift.agent.ClawApplication.instance.filesDir
+            val baseDir = com.returngift.agent.ReturnGiftApplication.instance.filesDir
             val traceDir = File(baseDir, TRACE_DIR)
             val playbookDir = File(baseDir, PLAYBOOK_DIR)
             traceDir.mkdirs()
@@ -250,7 +250,7 @@ object RuntimeLearning {
     
     fun load() {
         try {
-            val baseDir = com.returngift.agent.ClawApplication.instance.filesDir
+            val baseDir = com.returngift.agent.ReturnGiftApplication.instance.filesDir
             val traceDir = File(baseDir, TRACE_DIR)
             val playbookDir = File(baseDir, PLAYBOOK_DIR)
             if (!traceDir.exists() || !playbookDir.exists()) return

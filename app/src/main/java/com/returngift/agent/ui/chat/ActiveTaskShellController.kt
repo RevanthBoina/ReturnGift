@@ -5,7 +5,7 @@ package com.returngift.agent.ui.chat
 
 import android.os.Handler
 import android.os.Looper
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.AppViewModel
 import com.returngift.agent.service.AutoReplyManager
 import com.returngift.agent.service.ForegroundService
@@ -51,7 +51,7 @@ class ActiveTaskShellController(
             autoReplyManager.isEnabled = false
         }
         refreshActiveTasks()
-        ForegroundService.resetToIdle(ClawApplication.instance)
+        ForegroundService.resetToIdle(ReturnGiftApplication.instance)
         return "Stopped monitoring $contact"
     }
 
@@ -69,7 +69,7 @@ class ActiveTaskShellController(
         }
 
         refreshActiveTasks()
-        ForegroundService.resetToIdle(ClawApplication.instance)
+        ForegroundService.resetToIdle(ReturnGiftApplication.instance)
         return when {
             requestedTaskStop -> "Stopping current task..."
             stoppedMonitoring -> "All tasks stopped"

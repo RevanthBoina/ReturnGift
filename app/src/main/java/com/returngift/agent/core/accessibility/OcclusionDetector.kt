@@ -5,7 +5,7 @@ package com.returngift.agent.core.accessibility
 
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityWindowInfo
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 
 /**
  * OcclusionDetector detects when UI elements are obscured by soft keyboards,
@@ -28,7 +28,7 @@ object OcclusionDetector {
     @JvmStatic
     fun filterOccludedNodes(
         nodes: List<SemanticNodeFlattener.SemanticNode>,
-        service: ClawAccessibilityService?
+        service: ReturnGiftAccessibilityService?
     ): List<SemanticNodeFlattener.SemanticNode> {
         if (service == null) return nodes
         val overlayBoundsList = getOverlayBounds(service)
@@ -66,7 +66,7 @@ object OcclusionDetector {
         return OcclusionResult(isOccluded = false)
     }
 
-    private fun getOverlayBounds(service: ClawAccessibilityService): List<Rect> {
+    private fun getOverlayBounds(service: ReturnGiftAccessibilityService): List<Rect> {
         val overlays = mutableListOf<Rect>()
         try {
             val windows = service.windows

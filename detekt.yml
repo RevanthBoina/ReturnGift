@@ -334,7 +334,7 @@ potential-bugs:
     active: true
   LateinitUsage:
     active: true
-    excludeAnnotatedProperties: ['com.returngift.agent.ClawApplication']
+    excludeAnnotatedProperties: ['com.returngift.agent.ReturnGiftApplication']
   LiftReturnOrAssignment:
     active: false
   MissingPackageDeclaration:

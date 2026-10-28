@@ -4,7 +4,7 @@
 package com.returngift.agent.agent.skill
 
 import android.view.accessibility.AccessibilityNodeInfo
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -23,7 +23,7 @@ object SelectorResolver {
 
     /** Returns the first matching node or null. */
     fun resolve(selector: Any?, appPackage: String = ""): AccessibilityNodeInfo? {
-        val service = ClawAccessibilityService.getInstance() ?: return null
+        val service = ReturnGiftAccessibilityService.getInstance() ?: return null
         val root = service.rootInActiveWindow ?: return null
         return try {
             when (selector) {

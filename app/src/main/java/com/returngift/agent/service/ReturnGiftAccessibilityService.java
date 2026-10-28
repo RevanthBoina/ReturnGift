@@ -15,7 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.utils.XLog;
 import com.returngift.agent.utils.KVUtils;
 import android.view.Display;
@@ -38,17 +38,17 @@ import com.returngift.agent.utils.UiTextMatchUtils;
  * Core accessibility service that provides all device interaction capabilities.
  * Singleton-pattern: the running instance is accessible via {@link #getInstance()}.
  */
-public class ClawAccessibilityService extends AccessibilityService {
+public class ReturnGiftAccessibilityService extends AccessibilityService {
 
-    private static final String TAG = "ClawA11yService";
-    private static volatile ClawAccessibilityService instance;
+    private static final String TAG = "ReturnGiftA11yService";
+    private static volatile ReturnGiftAccessibilityService instance;
 
     private volatile boolean isTaskActive = false;
 
     public void setTaskActive(boolean active) { this.isTaskActive = active; }
     public boolean isTaskActive() { return isTaskActive; }
 
-    public static ClawAccessibilityService getInstance() {
+    public static ReturnGiftAccessibilityService getInstance() {
         return instance;
     }
 
@@ -76,7 +76,7 @@ public class ClawAccessibilityService extends AccessibilityService {
                     Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
             if (enabledServices == null || enabledServices.isEmpty()) return false;
             String myService = context.getPackageName() + "/"
-                    + ClawAccessibilityService.class.getName();
+                    + ReturnGiftAccessibilityService.class.getName();
             return enabledServices.contains(myService);
         } catch (Exception e) {
             XLog.e(TAG, "Failed to check accessibility settings", e);
@@ -109,11 +109,11 @@ public class ClawAccessibilityService extends AccessibilityService {
      * Return the connected service immediately when possible. If Android has the service enabled
      * but it is momentarily rebinding, wait briefly instead of treating it as a hard failure.
      */
-    public static ClawAccessibilityService getConnectedInstance(long timeoutMs) {
-        ClawAccessibilityService service = instance;
+    public static ReturnGiftAccessibilityService getConnectedInstance(long timeoutMs) {
+        ReturnGiftAccessibilityService service = instance;
         if (service != null) return service;
 
-        Context app = ClawApplication.Companion.getInstance();
+        Context app = ReturnGiftApplication.Companion.getInstance();
         if (app == null || !isEnabledInSettings(app)) {
             return null;
         }

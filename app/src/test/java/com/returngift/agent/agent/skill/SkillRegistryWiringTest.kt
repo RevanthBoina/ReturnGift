@@ -90,11 +90,11 @@ class SkillRegistryWiringTest {
 
     /**
      * Test: Full startup sequence can be invoked (built-in + YAML).
-     * This is the pattern used in ClawApplication.onCreate().
+     * This is the pattern used in ReturnGiftApplication.onCreate().
      */
     @Test
     fun `full startup sequence registers both built-in and YAML skills`() {
-        // Simulate ClawApplication.onCreate() pattern
+        // Simulate ReturnGiftApplication.onCreate() pattern
         SkillRegistry.loadBuiltInSkills()
 
         val builtInCount = SkillRegistry.getAll().size

@@ -7,7 +7,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.agent.knowledge.AppCatalog;
 import com.returngift.agent.tool.BaseTool;
@@ -32,7 +32,7 @@ public class GetInstalledAppsTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_get_installed_apps);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_get_installed_apps);
     }
 
     @Override
@@ -59,7 +59,7 @@ public class GetInstalledAppsTool extends BaseTool {
 
         try {
             // W8: Use AppCatalog for instant results
-            AppCatalog catalog = AppCatalog.getInstance(ClawApplication.Companion.getInstance());
+            AppCatalog catalog = AppCatalog.getInstance(ReturnGiftApplication.Companion.getInstance());
             List<AppCatalog.AppEntry> entries = catalog.getAllEntries();
 
             List<String> appList = new ArrayList<>();

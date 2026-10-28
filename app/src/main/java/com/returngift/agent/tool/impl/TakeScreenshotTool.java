@@ -9,10 +9,10 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.agent.knowledge.KBManager;
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -34,7 +34,7 @@ public class TakeScreenshotTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_screenshot);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_screenshot);
     }
 
     @Override
@@ -62,7 +62,7 @@ public class TakeScreenshotTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
@@ -79,7 +79,7 @@ public class TakeScreenshotTool extends BaseTool {
                 bitmap = softBitmap;
             }
 
-            File dir = new File(ClawApplication.Companion.getInstance().getCacheDir(), "screenshots");
+            File dir = new File(ReturnGiftApplication.Companion.getInstance().getCacheDir(), "screenshots");
             if (!dir.exists()) dir.mkdirs();
 
             String filename = System.currentTimeMillis() + ".png";
@@ -128,12 +128,12 @@ public class TakeScreenshotTool extends BaseTool {
             values.put(MediaStore.Images.Media.DISPLAY_NAME, filename);
             values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
             values.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ReturnGift");
-            Uri uri = ClawApplication.Companion.getInstance().getContentResolver()
+            Uri uri = ReturnGiftApplication.Companion.getInstance().getContentResolver()
                     .insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
             if (uri == null) {
                 return "Gallery insert failed (no content URI)";
             }
-            try (OutputStream out = ClawApplication.Companion.getInstance().getContentResolver().openOutputStream(uri)) {
+            try (OutputStream out = ReturnGiftApplication.Companion.getInstance().getContentResolver().openOutputStream(uri)) {
                 if (out == null) {
                     return "Gallery insert failed (no output stream)";
                 }

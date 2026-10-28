@@ -35,7 +35,7 @@ class FlashlightTool : BaseTool() {
     )
 
     override fun execute(params: @JvmSuppressWildcards Map<String, Any>): ToolResult {
-        val context = com.returngift.agent.ClawApplication.instance as? Context
+        val context = com.returngift.agent.ReturnGiftApplication.instance as? Context
         if (context == null) return ToolResult.error("App context not available")
         val on = params["on"]?.let { it.toString().toBooleanStrictOrNull() } ?: !torchEnabled
         return try {

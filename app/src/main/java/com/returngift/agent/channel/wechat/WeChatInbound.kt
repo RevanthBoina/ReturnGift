@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Inbound message parsing + contextToken management.
- * Corresponds to the official @tencent-weixin/openclaw-weixin src/messaging/inbound.ts
+ * Corresponds to the official @tencent-weixin/returngift-weixin src/messaging/inbound.ts
  * 1.0.2: contextToken in-memory cache only
  * 2.0.1: added contextToken persistence (memory + disk), survives process restart
  */

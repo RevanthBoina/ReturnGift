@@ -9,7 +9,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.PowerManager
 import android.view.accessibility.AccessibilityWindowInfo
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -38,7 +38,7 @@ object DirectTelemetryTools {
     }
 
     @JvmStatic
-    fun getSnapshot(service: ClawAccessibilityService): DeviceTelemetrySnapshot {
+    fun getSnapshot(service: ReturnGiftAccessibilityService): DeviceTelemetrySnapshot {
         var batteryLevel = -1
         var isCharging = false
         var isInteractive = true

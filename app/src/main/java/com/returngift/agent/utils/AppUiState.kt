@@ -7,7 +7,7 @@ import android.app.Activity
 import android.app.Application
 
 /**
- * Minimal "is our UI visible" tracker. Registered in ClawApplication; consulted
+ * Minimal "is our UI visible" tracker. Registered in ReturnGiftApplication; consulted
  * by heads-up notification logic (clarification questions get WhatsApp-style
  * notifications only when the app is not in front).
  */

@@ -58,12 +58,12 @@ object PermissionPromptBroker {
      * Production implementations resolve the app context themselves.
      */
     internal var openUiHook: (PermissionRequest) -> Unit = { request ->
-        PermissionPromptLauncher.open(com.returngift.agent.ClawApplication.instance, request)
+        PermissionPromptLauncher.open(com.returngift.agent.ReturnGiftApplication.instance, request)
     }
 
     internal var notifyHook: (PermissionRequest) -> Unit = { request ->
         com.returngift.agent.service.PermissionPromptNotifier.show(
-            com.returngift.agent.ClawApplication.instance, request
+            com.returngift.agent.ReturnGiftApplication.instance, request
         )
     }
 
@@ -71,7 +71,7 @@ object PermissionPromptBroker {
     internal var dismissHook: () -> Unit = {
         try {
             com.returngift.agent.service.PermissionPromptNotifier.dismiss(
-                com.returngift.agent.ClawApplication.instance
+                com.returngift.agent.ReturnGiftApplication.instance
             )
         } catch (e: Throwable) {
             XLog.w(TAG, "notification dismiss failed", e)

@@ -14,8 +14,8 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import com.returngift.agent.service.ClawAccessibilityService
-import com.returngift.agent.service.ClawNotificationListener
+import com.returngift.agent.service.ReturnGiftAccessibilityService
+import com.returngift.agent.service.ReturnGiftNotificationListener
 import com.returngift.agent.service.ForegroundService
 import com.returngift.agent.utils.KVUtils
 
@@ -98,8 +98,8 @@ object AppCapabilityCoordinator {
 
     fun accessibilityState(context: Context): ServiceBindingState {
         return bindingState(
-            enabled = ClawAccessibilityService.isEnabledInSettings(context),
-            running = ClawAccessibilityService.isRunning(),
+            enabled = ReturnGiftAccessibilityService.isEnabledInSettings(context),
+            running = ReturnGiftAccessibilityService.isRunning(),
             pendingRepair = KVUtils.hasPendingAccessibilityReturn(),
             lastConnectedAt = KVUtils.getAccessibilityLastConnectedAt(),
             lastHeartbeatAt = KVUtils.getAccessibilityLastHeartbeatAt(),
@@ -110,8 +110,8 @@ object AppCapabilityCoordinator {
 
     fun notificationAccessState(context: Context): ServiceBindingState {
         return bindingState(
-            enabled = ClawNotificationListener.isEnabledInSettings(context),
-            running = ClawNotificationListener.isConnected(),
+            enabled = ReturnGiftNotificationListener.isEnabledInSettings(context),
+            running = ReturnGiftNotificationListener.isConnected(),
             pendingRepair = KVUtils.hasPendingNotificationAccessReturn(),
             lastConnectedAt = KVUtils.getNotificationListenerLastConnectedAt(),
             lastDisconnectedAt = KVUtils.getNotificationListenerLastDisconnectedAt(),

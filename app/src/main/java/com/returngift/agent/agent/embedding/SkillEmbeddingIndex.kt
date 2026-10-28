@@ -3,7 +3,7 @@
 
 package com.returngift.agent.agent.embedding
 
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.agent.skill.Skill
 import com.returngift.agent.agent.skill.SkillRegistry
 import com.returngift.agent.agent.skill.YamlSkill
@@ -36,7 +36,7 @@ class SkillEmbeddingIndex {
     private var lastIndexUpdate = 0L
     
     private val indexFile: File
-        get() = File(ClawApplication.instance.getExternalFilesDir(null), INDEX_FILE)
+        get() = File(ReturnGiftApplication.instance.getExternalFilesDir(null), INDEX_FILE)
     
     companion object {
         private const val TAG = "SkillEmbeddingIndex"

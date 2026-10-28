@@ -10,7 +10,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.provider.ContactsContract;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -58,7 +58,7 @@ public class MakeCallTool extends BaseTool {
     @Override
     public ToolResult execute(Map<String, Object> params) {
         String contact = requireString(params, "contact").trim();
-        Context ctx = ClawApplication.Companion.getInstance();
+        Context ctx = ReturnGiftApplication.Companion.getInstance();
 
         XLog.i(TAG, "Making call to: " + contact);
 

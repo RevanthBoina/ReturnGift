@@ -5,11 +5,11 @@ package com.returngift.agent.tool.impl;
 
 import android.view.accessibility.AccessibilityNodeInfo;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.agent.knowledge.AppCatalog;
 import com.returngift.agent.core.telemetry.AdaptiveSettleController;
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -51,7 +51,7 @@ public class OpenAppTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_open_app);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_open_app);
     }
 
     @Override
@@ -81,7 +81,7 @@ public class OpenAppTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
@@ -92,7 +92,7 @@ public class OpenAppTool extends BaseTool {
         // If LLM sends app name instead of package name, resolve it
         if (!packageName.contains(".")) {
             // W8: Try AppCatalog first for instant resolution
-            String resolved = AppCatalog.getInstance(ClawApplication.Companion.getInstance()).resolve(packageName);
+            String resolved = AppCatalog.getInstance(ReturnGiftApplication.Companion.getInstance()).resolve(packageName);
             if (resolved == null) {
                 // Fallback to legacy fuzzy search
                 resolved = resolveAppName(packageName);
@@ -174,12 +174,12 @@ public class OpenAppTool extends BaseTool {
             // declare one (some builds handle their own scheme without a package filter).
             intent.setPackage(packageName);
             try {
-                ClawApplication.Companion.getInstance().startActivity(intent);
+                ReturnGiftApplication.Companion.getInstance().startActivity(intent);
                 XLog.i(TAG, "deep link dispatched: " + uri);
                 return true;
             } catch (android.content.ActivityNotFoundException notFound) {
                 intent.setPackage(null);
-                ClawApplication.Companion.getInstance().startActivity(intent);
+                ReturnGiftApplication.Companion.getInstance().startActivity(intent);
                 XLog.i(TAG, "deep link dispatched without an explicit package: " + uri);
                 return true;
             }
@@ -195,7 +195,7 @@ public class OpenAppTool extends BaseTool {
      * This method waits for the dialog and auto-clicks the "Allow" button.
      * Checks up to 3 times, 500ms apart; silently returns if no dialog appears.
      */
-    private void dismissChainLaunchDialog(ClawAccessibilityService service) {
+    private void dismissChainLaunchDialog(ReturnGiftAccessibilityService service) {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
                 Thread.sleep(500);
@@ -217,19 +217,19 @@ public class OpenAppTool extends BaseTool {
                             boolean clicked = service.clickNode(node);
                             XLog.i(TAG, "Chain launch dialog: tapped \"" + text + "\" " + (clicked ? "success" : "failed"));
                             if (clicked) {
-                                ClawAccessibilityService.recycleNodes(nodes);
+                                ReturnGiftAccessibilityService.recycleNodes(nodes);
                                 return;
                             }
                         }
                     }
                 } finally {
-                    ClawAccessibilityService.recycleNodes(nodes);
+                    ReturnGiftAccessibilityService.recycleNodes(nodes);
                 }
             }
         }
     }
 
-    private boolean tapPositiveDialogButton(ClawAccessibilityService service) {
+    private boolean tapPositiveDialogButton(ReturnGiftAccessibilityService service) {
         for (String viewId : POSITIVE_BUTTON_IDS) {
             List<AccessibilityNodeInfo> nodes = service.findNodesById(viewId);
             try {
@@ -244,7 +244,7 @@ public class OpenAppTool extends BaseTool {
                     }
                 }
             } finally {
-                ClawAccessibilityService.recycleNodes(nodes);
+                ReturnGiftAccessibilityService.recycleNodes(nodes);
             }
         }
         return false;
@@ -294,7 +294,7 @@ public class OpenAppTool extends BaseTool {
         }
         // Try to find by searching installed app labels AND package names
         try {
-            android.content.pm.PackageManager pm = ClawApplication.Companion.getInstance().getPackageManager();
+            android.content.pm.PackageManager pm = ReturnGiftApplication.Companion.getInstance().getPackageManager();
             String bestMatch = null;
             int bestScore = 0;
 

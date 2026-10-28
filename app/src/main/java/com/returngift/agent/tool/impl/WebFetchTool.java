@@ -3,7 +3,7 @@
 
 package com.returngift.agent.tool.impl;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.agent.provenance.ProvenanceHelper;
 import com.returngift.agent.agent.provenance.ProvenanceTag;
@@ -57,7 +57,7 @@ public class WebFetchTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_web_fetch);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_web_fetch);
     }
 
     @Override

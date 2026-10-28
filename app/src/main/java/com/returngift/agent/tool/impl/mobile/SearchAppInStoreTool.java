@@ -8,9 +8,9 @@ import android.content.Intent;
 import android.os.Build;
 import com.returngift.agent.utils.XLog;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -58,7 +58,7 @@ public class SearchAppInStoreTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_search_app);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_search_app);
     }
 
     @Override
@@ -89,13 +89,13 @@ public class SearchAppInStoreTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
 
         String keyword = requireString(params, "keyword");
-        Context context = ClawApplication.Companion.getInstance();
+        Context context = ReturnGiftApplication.Companion.getInstance();
 
         String brand = Build.MANUFACTURER.toLowerCase().trim();
         XLog.i(TAG, "Device brand: " + brand);

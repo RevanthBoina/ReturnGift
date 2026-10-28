@@ -11,7 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -119,7 +119,7 @@ object AppUpdateManager {
 
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val context = ClawApplication.instance
+                    val context = ReturnGiftApplication.instance
                     val currentVersion = try {
                         val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
                         pInfo.versionName ?: "1.0.0"
@@ -306,7 +306,7 @@ object AppUpdateManager {
 
             val downloadResult = withContext(Dispatchers.IO) {
                 try {
-                    val context = ClawApplication.instance
+                    val context = ReturnGiftApplication.instance
                     val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
                     val targetApk = File(updatesDir, "ReturnGift-v${resolved.versionName}.apk")
 

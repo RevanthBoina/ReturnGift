@@ -10,7 +10,7 @@ import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
@@ -31,7 +31,7 @@ public class ClipboardTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_clipboard);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_clipboard);
     }
 
     @Override
@@ -68,7 +68,7 @@ public class ClipboardTool extends BaseTool {
 
     private ToolResult executeGet() {
         try {
-            Context context = ClawApplication.Companion.getInstance();
+            Context context = ReturnGiftApplication.Companion.getInstance();
 
             ClipboardReaderActivity.prepare();
             Intent intent = new Intent(context, ClipboardReaderActivity.class);
@@ -98,7 +98,7 @@ public class ClipboardTool extends BaseTool {
 
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                Context context = ClawApplication.Companion.getInstance();
+                Context context = ReturnGiftApplication.Companion.getInstance();
                 ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
                 if (clipboard != null) {
                     clipboard.setPrimaryClip(ClipData.newPlainText("clipboard_tool", text));

@@ -56,7 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.agent.AppAllowListStore
 import com.returngift.agent.agent.knowledge.AppUsageGuide
 import com.returngift.agent.agent.knowledge.InstalledApps
@@ -458,7 +458,7 @@ private fun ModeChip(text: String, selected: Boolean, onClick: () -> Unit) {
 
 /** Union of installed apps, apps the agent already met, and guided apps. */
 private fun buildRows(store: AppAllowListStore): List<AppRow> {
-    val context = ClawApplication.instance
+    val context = ReturnGiftApplication.instance
     val stored = runCatching { store.getAllEntries() }.getOrDefault(emptyList())
     val storedByPackage = stored.associateBy { it.packageName }
     val installed = runCatching { InstalledApps.launchable(context, forceRefresh = true) }
@@ -523,7 +523,7 @@ private fun buildRows(store: AppAllowListStore): List<AppRow> {
 }
 
 private fun loadIcon(packageName: String): Bitmap? = try {
-    val drawable: Drawable = ClawApplication.instance.packageManager.getApplicationIcon(packageName)
+    val drawable: Drawable = ReturnGiftApplication.instance.packageManager.getApplicationIcon(packageName)
     when (drawable) {
         is BitmapDrawable -> drawable.bitmap
         else -> drawable.toBitmap(width = 96, height = 96)

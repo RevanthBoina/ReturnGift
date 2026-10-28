@@ -7,7 +7,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Build
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
@@ -36,7 +36,7 @@ object TouchInputLayer {
      * Presses and holds a touch at (x, y) for a specified duration in milliseconds.
      */
     @JvmStatic
-    fun holdTouch(service: ClawAccessibilityService, x: Int, y: Int, durationMs: Long): Boolean {
+    fun holdTouch(service: ReturnGiftAccessibilityService, x: Int, y: Int, durationMs: Long): Boolean {
         if (durationMs <= 0) return false
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
@@ -48,7 +48,7 @@ object TouchInputLayer {
      * Starts a continuous touch down at (x, y) with a given pointer ID.
      */
     @JvmStatic
-    fun touchDown(service: ClawAccessibilityService, pointerId: Int, x: Int, y: Int): Boolean {
+    fun touchDown(service: ReturnGiftAccessibilityService, pointerId: Int, x: Int, y: Int): Boolean {
         activePointers[pointerId] = ActivePointer(
             pointerId = pointerId,
             x = x,
@@ -71,7 +71,7 @@ object TouchInputLayer {
      * Releases a previously pressed touch pointer.
      */
     @JvmStatic
-    fun touchUp(service: ClawAccessibilityService, pointerId: Int): Boolean {
+    fun touchUp(service: ReturnGiftAccessibilityService, pointerId: Int): Boolean {
         val pointer = activePointers.remove(pointerId) ?: return false
         pointer.isDown = false
         // Quick release tap / end stroke
@@ -86,7 +86,7 @@ object TouchInputLayer {
      */
     @JvmStatic
     fun dispatchMultiPointer(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         touches: List<Triple<Int, Int, Long>> // x, y, durationMs
     ): Boolean {
         if (touches.isEmpty()) return false
@@ -108,13 +108,13 @@ object TouchInputLayer {
      * Emergency cleanup: releases all active pointers and resets touch state.
      */
     @JvmStatic
-    fun releaseAllPointers(service: ClawAccessibilityService?) {
+    fun releaseAllPointers(service: ReturnGiftAccessibilityService?) {
         if (activePointers.isEmpty()) return
         XLog.i(TAG, "Emergency release of ${activePointers.size} pointers")
         activePointers.clear()
     }
 
-    private fun dispatchSync(service: ClawAccessibilityService, gesture: GestureDescription, timeoutMs: Long): Boolean {
+    private fun dispatchSync(service: ReturnGiftAccessibilityService, gesture: GestureDescription, timeoutMs: Long): Boolean {
         val latch = CountDownLatch(1)
         val result = AtomicBoolean(false)
 
@@ -140,7 +140,7 @@ object TouchInputLayer {
         return result.get()
     }
 
-    private fun dispatchAsync(service: ClawAccessibilityService, gesture: GestureDescription): Boolean {
+    private fun dispatchAsync(service: ReturnGiftAccessibilityService, gesture: GestureDescription): Boolean {
         return service.dispatchGesture(gesture, null, null)
     }
 }

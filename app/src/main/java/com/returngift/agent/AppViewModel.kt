@@ -5,7 +5,7 @@ package com.returngift.agent
 
 import android.os.PowerManager
 import androidx.lifecycle.ViewModel
-import com.returngift.agent.ClawApplication.Companion.appViewModelInstance
+import com.returngift.agent.ReturnGiftApplication.Companion.appViewModelInstance
 import com.returngift.agent.TaskEvent
 import com.returngift.agent.agent.AgentConfig
 import com.returngift.agent.agent.llm.ModelConfigRepository
@@ -129,7 +129,7 @@ class AppViewModel : ViewModel() {
             try {
                 com.returngift.agent.agent.learning.WorkflowHistoryRetention
                     .retainNewestOnDevice(
-                        context = ClawApplication.instance,
+                        context = ReturnGiftApplication.instance,
                         runningWorkflowId = runningWorkflowId
                     )
             } catch (e: Exception) {
@@ -158,9 +158,9 @@ class AppViewModel : ViewModel() {
 
     fun afterInit() {
         acquireScreenWakeLock()
-        KeepAliveJobService.cancel(ClawApplication.instance)
-        ForegroundService.syncToBackgroundState(ClawApplication.instance)
-        ConfigServerManager.autoStartIfNeeded(ClawApplication.instance)
+        KeepAliveJobService.cancel(ReturnGiftApplication.instance)
+        ForegroundService.syncToBackgroundState(ReturnGiftApplication.instance)
+        ConfigServerManager.autoStartIfNeeded(ReturnGiftApplication.instance)
         channelSetup.setup()
     }
 
@@ -170,7 +170,7 @@ class AppViewModel : ViewModel() {
      */
     private fun acquireScreenWakeLock() {
         if (wakeLock?.isHeld == true) return
-        val pm = ClawApplication.instance.getSystemService(android.content.Context.POWER_SERVICE) as? PowerManager
+        val pm = ReturnGiftApplication.instance.getSystemService(android.content.Context.POWER_SERVICE) as? PowerManager
             ?: return
         wakeLock = pm.newWakeLock(
             PowerManager.SCREEN_DIM_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
@@ -199,7 +199,7 @@ class AppViewModel : ViewModel() {
      */
     fun showFloatingCircle() {
         try {
-            FloatingCircleManager.show(ClawApplication.instance)
+            FloatingCircleManager.show(ReturnGiftApplication.instance)
             FloatingCircleManager.onFloatClick = {
                 XLog.d(TAG, "Floating circle clicked")
                 bringAppToForeground()
@@ -218,7 +218,7 @@ class AppViewModel : ViewModel() {
      * Bring the app to the foreground
      */
     private fun bringAppToForeground() {
-        val context = ClawApplication.instance
+        val context = ReturnGiftApplication.instance
         val intent = android.content.Intent(context, com.returngift.agent.ui.chat.ComposeChatActivity::class.java).apply {
             flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
                     android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
