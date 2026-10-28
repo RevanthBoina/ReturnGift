@@ -231,6 +231,8 @@ jobs:
 
       # Log archives are not always reachable from tooling, so publish the Gradle
       # output through check annotations (the only failure channel we can read).
+      # Unit-test failures are annotated first: when they fail the build step never
+      # runs, and the test log is the only place the error exists.
       - name: Annotate build failure
         if: failure()
         run: |
@@ -238,19 +240,24 @@ jobs:
           import urllib.parse
           from pathlib import Path
 
-          log = Path("assemble-release.log")
+          log = Path("unit-tests.log")
+          title = "unitTests"
+          if not log.exists() or "BUILD SUCCESSFUL" in log.read_text(errors="replace"):
+              log = Path("assemble-release.log")
+              title = "assembleRelease"
           if not log.exists():
-              print("::error title=assembleRelease::no Gradle log was produced")
+              print("::error title=release::neither unit-tests.log nor assemble-release.log was produced")
               raise SystemExit(0)
           text = log.read_text(errors="replace")
           # Keep the useful part: everything from the first failure marker onward.
-          markers = ["What went wrong", "FAILURE: Build failed", "e: file", "error:"]
+          markers = ["What went wrong", "FAILURE: Build failed", "e: file", "error:",
+                     "FAILED", "Compilation error"]
           start = min([text.find(m) for m in markers if text.find(m) >= 0] or [0])
           body = text[start:] if len(text) - start > 4000 else text
           size = 6000
           chunks = [body[i:i + size] for i in range(0, len(body), size)][:9] or [""]
           for idx, chunk in enumerate(chunks, start=1):
-              print(f"::error title=assembleRelease log {idx}/{len(chunks)}::" +
+              print(f"::error title={title} log {idx}/{len(chunks)}::" +
                     urllib.parse.quote(chunk, safe=""))
           PYEOF
 
