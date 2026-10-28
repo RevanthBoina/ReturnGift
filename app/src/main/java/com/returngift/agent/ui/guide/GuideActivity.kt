@@ -122,14 +122,14 @@ class GuideActivity : BaseActivity() {
     private fun updatePermissionIndicators() {
         val snapshot = AppCapabilityCoordinator.snapshot(this)
         val accessibilityReady = snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY
-        findViewById<TextView>(R.id.guideRestricted)?.let { tv ->
+        findViewById<View>(R.id.guideRestricted)?.let { tv ->
             val visibility = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !accessibilityReady) View.VISIBLE else View.GONE
             tv.visibility = visibility
             if (accessibilityReady) {
                 tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_restricted) + " (Done ✓)"
             }
         }
-        findViewById<TextView>(R.id.guideAccessibility)?.let { tv ->
+        findViewById<View>(R.id.guideAccessibility)?.let { tv ->
             val status = if (snapshot.accessibilityState == com.returngift.agent.ServiceBindingState.READY) " (Enabled ✓)" else ""
             tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_accessibility) + status
             
@@ -139,19 +139,19 @@ class GuideActivity : BaseActivity() {
                 com.returngift.agent.agent.knowledge.AppCatalog.getInstance(this).maybeBuildOnFirstConnect(this)
             }
         }
-        findViewById<TextView>(R.id.guideNotification)?.let { tv ->
+        findViewById<View>(R.id.guideNotification)?.let { tv ->
             val status = if (snapshot.notificationPermissionGranted) " (Enabled ✓)" else ""
             tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_notification) + status
         }
-        findViewById<TextView>(R.id.guideOverlay)?.let { tv ->
+        findViewById<View>(R.id.guideOverlay)?.let { tv ->
             val status = if (snapshot.overlayGranted) " (Enabled ✓)" else ""
             tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_overlay) + status
         }
-        findViewById<TextView>(R.id.guideBattery)?.let { tv ->
+        findViewById<View>(R.id.guideBattery)?.let { tv ->
             val status = if (snapshot.batteryOptimizationIgnored) " (Allowed ✓)" else ""
             tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_battery) + status
         }
-        findViewById<TextView>(R.id.guideStorage)?.let { tv ->
+        findViewById<View>(R.id.guideStorage)?.let { tv ->
             val status = if (snapshot.storageAccessGranted) " (Granted ✓)" else ""
             tv.findViewById<TextView>(R.id.tvTitle)?.text = getString(R.string.guide_title_storage) + status
         }

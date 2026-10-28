@@ -220,6 +220,13 @@ run_check "no-istaskmode-assignment" \
   "isTaskMode is now a read-only parameter in ChatScreen — use onTaskModeChange(...) instead of assignment." \
   "--include=*.kt"
 
+# GuideActivity section cast guard: included section layouts (R.id.guide*) are
+# LinearLayouts, never TextViews. Casting them to TextView crashes with ClassCastException.
+run_check "no-invalid-guide-section-cast" \
+  'findViewById<TextView>\(R\.id\.guide(Restricted|Accessibility|Notification|Overlay|Battery|Storage)\)' \
+  "Guide sections (R.id.guide*) are included LinearLayouts, not TextViews — use findViewById<View>." \
+  "--include=GuideActivity.kt"
+
 # Repo rule: no code or test file may be dedicated to a single app. App behaviour is
 # data (agent/knowledge registries, playbooks, skills) or arrives through a connector.
 # A per-app class/file rots with the app's UI and makes the next app a code change.
