@@ -259,6 +259,33 @@ jobs:
           for idx, chunk in enumerate(chunks, start=1):
               print(f"::error title={title} log {idx}/{len(chunks)}::" +
                     urllib.parse.quote(chunk, safe=""))
+
+          # Gradle prints "Test > case FAILED" without the assertion text; the JUnit XML
+          # holds it, and annotations are the only failure channel we can read back.
+          import glob, xml.etree.ElementTree as ET
+          reports = sorted(glob.glob("app/build/test-results/testDebugUnitTest/*.xml"))
+          shown = 0
+          for path in reports:
+              try:
+                  root = ET.parse(path).getroot()
+              except Exception:
+                  continue
+              for case in root.iter("testcase"):
+                  for tag in ("failure", "error"):
+                      node = case.find(tag)
+                      if node is None:
+                          continue
+                      shown += 1
+                      if shown > 25:
+                          break
+                      detail = (node.get("message") or "") + "\n" + (node.text or "")
+                      detail = "\n".join(detail.splitlines()[:12])[:1500]
+                      name = f"{case.get('classname','?').split('.')[-1]} > {case.get('name','?')}"
+                      print(f"::error title=test {shown} {name}::" + urllib.parse.quote(detail, safe=""))
+                  if shown > 25:
+                      break
+              if shown > 25:
+                  break
           PYEOF
 
       - name: Generate release checksums and rename APK

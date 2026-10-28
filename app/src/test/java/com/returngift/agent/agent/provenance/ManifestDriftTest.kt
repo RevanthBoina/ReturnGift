@@ -49,7 +49,9 @@ class ManifestDriftTest {
             return emptySet()
         }
         val text = manifest.readText()
-        val regex = Regex("""<uses-permission\s+android:name="([^"]+)"\s*/>""")
+        // Attributes can wrap across lines (MANAGE_EXTERNAL_STORAGE carries
+        // maxSdkVersion), so match the element, then read android:name out of it.
+        val regex = Regex("""<uses-permission\b[^>]*?android:name="([^"]+)"[^>]*>""")
         return regex.findAll(text).map { it.groupValues[1] }.toSet()
     }
 
@@ -61,7 +63,9 @@ class ManifestDriftTest {
         val docsFile = docsFile("permissions-justification.md")
         if (!docsFile.exists()) return emptySet()
 
-        val text = docsFile.readText()
+        // A row that says REMOVED documents a permission the app no longer declares;
+        // counting it would demand the manifest keep what the doc retired.
+        val text = docsFile.readLines().filterNot { it.contains("REMOVED") }.joinToString("\n")
         // Match rows: | `android.permission.X` | ... |
         // Also handle bare names (e.g. `INTERNET` -> "android.permission.INTERNET")
         val backtickRegex = Regex("""\|\s*`?([A-Z_]+)`?\s*\|""")

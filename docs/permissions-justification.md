@@ -27,7 +27,6 @@ and the code path that legitimately requires it. It is the source of truth for t
 | `RECEIVE_BOOT_COMPLETED` | Auto-start after reboot | `service/BootReceiver.kt` |
 | `SCHEDULE_EXACT_ALARM` | Schedule alarms/timers | `tool/impl/ScheduleAlarmTool.java` |
 | `USE_EXACT_ALARM` | Same as above | `tool/impl/ScheduleAlarmTool.java` |
-| `BLUETOOTH` | Legacy Bluetooth adapter state reporting only — **no Bluetooth API calls**; `get_device_info(category=bluetooth)` reports a static string | `agent/guard/DirectDeviceDataGuard.kt:105` |
 | `BLUETOOTH_CONNECT` | **REMOVED** — was unused | — |
 | `BLUETOOTH_SCAN` | **REMOVED** — was unused | — |
 
@@ -47,5 +46,7 @@ manifest permission, the check fails.
 ## Removals
 
 - `BLUETOOTH_CONNECT` — was never used (no `BluetoothManager` calls in the codebase).
-- `BLUETOOTH_SCAN` — was never used. Only `BLUETOOTH` remains, and it is now
-  reported as a static string (not an actual Bluetooth API call).
+- `BLUETOOTH_SCAN` — was never used.
+- `BLUETOOTH` — never used either: `get_device_info(category=bluetooth)` reports a
+  static string, so the permission was dropped from the manifest along with the rest
+  of the Bluetooth surface.
