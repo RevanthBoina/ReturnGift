@@ -565,7 +565,7 @@ class DefaultAgentService : AgentService {
         // tokens, identical on the local-model path. Answers are folded back into the
         // sentence and the plan is rebuilt, so "follow youtube" + "LinkedIn" plans
         // the LinkedIn flow rather than the old guess.
-        val planContext = com.returngift.agent.agent.plan.PlanContextFactory.build(ReturnGiftApplication.instance)
+        val planContext = com.returngift.agent.agent.plan.PlanContextFactory.buildOrEmpty()
         var presentation = com.returngift.agent.agent.plan.PlanFirst.plan(rawUserRequest, planContext)
         if (presentation.showPlan && presentation.markdown.isNotBlank()) {
             callback.onContent(0, presentation.markdown)
