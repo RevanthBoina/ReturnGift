@@ -32,10 +32,10 @@ import java.util.HashSet;
  *
  * Requires: Settings → Notification Access → ReturnGift enabled.
  */
-public class ClawNotificationListener extends NotificationListenerService {
+public class ReturnGiftNotificationListener extends NotificationListenerService {
 
-    private static final String TAG = "ClawNotifListener";
-    private static ClawNotificationListener instance;
+    private static final String TAG = "ReturnGiftNotifListener";
+    private static ReturnGiftNotificationListener instance;
 
     private static final Set<String> MESSAGING_APPS = new HashSet<>();
     static {
@@ -91,7 +91,7 @@ public class ClawNotificationListener extends NotificationListenerService {
      * Called after replying so the next message triggers a fresh notification.
      */
     public static void dismissNotifications(String packageName) {
-        ClawNotificationListener listener = instance;
+        ReturnGiftNotificationListener listener = instance;
         if (listener == null) {
             XLog.w(TAG, "Cannot dismiss notifications — listener not connected");
             return;
@@ -122,7 +122,7 @@ public class ClawNotificationListener extends NotificationListenerService {
                     context.getContentResolver(),
                     "enabled_notification_listeners");
             if (enabledListeners == null || enabledListeners.isEmpty()) return false;
-            String myListener = new ComponentName(context, ClawNotificationListener.class).flattenToString();
+            String myListener = new ComponentName(context, ReturnGiftNotificationListener.class).flattenToString();
             return enabledListeners.contains(myListener);
         } catch (Exception e) {
             XLog.e(TAG, "Failed to check notification listener settings", e);
@@ -150,7 +150,7 @@ public class ClawNotificationListener extends NotificationListenerService {
      * Returns null if listener is not connected.
      */
     public static StatusBarNotification[] getActiveNotificationList() {
-        ClawNotificationListener listener = instance;
+        ReturnGiftNotificationListener listener = instance;
         if (listener == null) return null;
         try {
             return listener.getActiveNotifications();

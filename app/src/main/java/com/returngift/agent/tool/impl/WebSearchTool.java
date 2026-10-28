@@ -3,7 +3,7 @@
 
 package com.returngift.agent.tool.impl;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.agent.retrieve.WebFetcher;
 import com.returngift.agent.tool.BaseTool;
@@ -47,7 +47,7 @@ public class WebSearchTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_web_search);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_web_search);
     }
 
     @Override

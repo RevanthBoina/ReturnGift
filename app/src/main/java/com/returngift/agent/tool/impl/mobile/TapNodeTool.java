@@ -6,7 +6,7 @@ package com.returngift.agent.tool.impl.mobile;
 import android.graphics.Rect;
 
 import com.returngift.agent.agent.grounding.SemanticTargetResolver;
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -72,7 +72,7 @@ public class TapNodeTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }

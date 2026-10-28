@@ -173,13 +173,13 @@ grep -rn "catch.*InterruptedException" --include="*.kt" app/src/main/java/ && \
 
 The `v3.2.0` tag (run #34104968181) failed at `:app:compileReleaseKotlin` with SEVERAL independent errors surfacing together. Fix ALL of them before tagging again. They fall into five clusters:
 
-**(a) Kotlin callers cannot use `ClawApplication.Companion.getInstance()`**
-`ClawApplication` exposes a Kotlin `companion object` with `lateinit var instance`. In Kotlin, reference it as `ClawApplication.instance` — the `Companion.getInstance()` form is only valid from Java. Files hit: `DefaultAgentService.kt`, `TargetSpecGate.kt`.
+**(a) Kotlin callers cannot use `ReturnGiftApplication.Companion.getInstance()`**
+`ReturnGiftApplication` exposes a Kotlin `companion object` with `lateinit var instance`. In Kotlin, reference it as `ReturnGiftApplication.instance` — the `Companion.getInstance()` form is only valid from Java. Files hit: `DefaultAgentService.kt`, `TargetSpecGate.kt`.
 ```kotlin
 // Kotlin:
-ClawApplication.instance
+ReturnGiftApplication.instance
 // Java:
-ClawApplication.Companion.getInstance()
+ReturnGiftApplication.Companion.getInstance()
 ```
 
 **(b) `compareByDescending` receiver/lambda mismatch**

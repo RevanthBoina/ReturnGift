@@ -5,7 +5,7 @@ package com.returngift.agent.tool.impl.tv;
 
 import android.view.KeyEvent;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 
 public class PressMenuTool extends BaseKeyTool {
@@ -17,7 +17,7 @@ public class PressMenuTool extends BaseKeyTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_press_menu);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_press_menu);
     }
 
     @Override

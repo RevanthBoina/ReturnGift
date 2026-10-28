@@ -6,7 +6,7 @@ package com.returngift.agent.agent.clarify
 import android.os.Handler
 import android.os.Looper
 import com.google.gson.Gson
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.utils.AppUiState
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
@@ -129,7 +129,7 @@ data class PendingQuestion(
      */
     internal var headsUpHook: (PendingQuestion) -> Unit = { q ->
         try {
-            val ctx = ClawApplication.instance
+            val ctx = ReturnGiftApplication.instance
             if (!AppUiState.isForeground) {
                 com.returngift.agent.service.ClarificationNotifier.show(ctx, q)
             }
@@ -140,7 +140,7 @@ data class PendingQuestion(
 
     internal var headsUpDismissHook: () -> Unit = {
         try {
-            com.returngift.agent.service.ClarificationNotifier.dismiss(ClawApplication.instance)
+            com.returngift.agent.service.ClarificationNotifier.dismiss(ReturnGiftApplication.instance)
         } catch (e: Exception) {
             XLog.w(TAG, "heads-up dismiss failed", e)
         }

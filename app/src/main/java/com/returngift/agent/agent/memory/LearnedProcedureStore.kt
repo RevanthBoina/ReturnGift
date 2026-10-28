@@ -7,7 +7,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.agent.embedding.EmbeddingService
 import com.returngift.agent.agent.tracker.ExecutionTracker
 import com.returngift.agent.utils.XLog
@@ -81,7 +81,7 @@ object LearnedProcedureStore {
         if (dbHelper == null) {
             synchronized(this) {
                 if (dbHelper == null) {
-                    dbHelper = DbHelper(ClawApplication.instance)
+                    dbHelper = DbHelper(ReturnGiftApplication.instance)
                 }
             }
         }

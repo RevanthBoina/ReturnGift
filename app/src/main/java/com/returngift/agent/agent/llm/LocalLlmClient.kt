@@ -4,7 +4,7 @@
 package com.returngift.agent.agent.llm
 
 import android.content.Context
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.agent.AgentConfig
 import com.returngift.agent.utils.XLog
 import com.google.ai.edge.litertlm.Contents
@@ -52,7 +52,7 @@ import java.util.concurrent.atomic.AtomicReference
 
     private fun ensureEngine() {
         val modelPath = config.baseUrl
-        val context = ClawApplication.instance
+        val context = ReturnGiftApplication.instance
         try {
             val shared = LocalModelRuntime.acquireSharedEngine(
                 context = context,
@@ -90,7 +90,7 @@ import java.util.concurrent.atomic.AtomicReference
         conversation = null
         processedMessageCount = 0
         sendCount = 0
-        engine = LocalModelRuntime.forceCpuEngine(ClawApplication.instance, config.baseUrl).engine
+        engine = LocalModelRuntime.forceCpuEngine(ReturnGiftApplication.instance, config.baseUrl).engine
     }
 
     /**
@@ -134,7 +134,7 @@ import java.util.concurrent.atomic.AtomicReference
         )
 
         val lease = LocalModelRuntime.openConversation(
-            context = ClawApplication.instance,
+            context = ReturnGiftApplication.instance,
             modelPath = config.baseUrl,
             conversationConfig = convConfig,
             preferCpu = gpuFailed,
@@ -147,6 +147,7 @@ import java.util.concurrent.atomic.AtomicReference
     private var sendCount = 0
 
     override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean): LlmResponse {
+        com.returngift.agent.agent.tracker.UsageCounters.bump("llm", "local")
         return try {
             if (fast) chatFastInternal(messages, toolSpecs) else chatInternal(messages, toolSpecs)
         } catch (e: Exception) {
@@ -221,7 +222,7 @@ processedMessageCount = messages.size
      ): LlmResponse {
          // Acquire fast engine - if not available, fall back to main
          val modelPath = config.baseUrl
-         val context = ClawApplication.instance
+         val context = ReturnGiftApplication.instance
          val fastEngineLease = EngineHolder.acquireFast(modelPath)
          val fastEngine = fastEngineLease?.engine
          val isFastAvailable = fastEngine != null
@@ -373,7 +374,7 @@ processedMessageCount = messages.size
              automaticToolCalling = false  // We handle execution in DefaultAgentService
          )
 
-         val context = ClawApplication.instance
+         val context = ReturnGiftApplication.instance
          val modelPath = config.baseUrl
          val lease = LocalModelRuntime.openConversation(
              context = context,

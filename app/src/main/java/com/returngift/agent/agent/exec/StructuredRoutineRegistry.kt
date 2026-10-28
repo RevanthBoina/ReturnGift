@@ -26,6 +26,12 @@ object StructuredRoutineRegistry {
 
     /** @return the routine to run for [task], or null → normal agent loop. */
     fun match(task: String): Match? {
+        val matched = matchOrNull(task)
+        if (matched != null) com.returngift.agent.agent.tracker.UsageCounters.bump("routine", matched.routineId)
+        return matched
+    }
+
+    private fun matchOrNull(task: String): Match? {
         val profile = SocialPostRoutine.matchProfile(task) ?: return null
         val routineId = profile.routineId
         val ask = "What should the ${profile.label} post say?"

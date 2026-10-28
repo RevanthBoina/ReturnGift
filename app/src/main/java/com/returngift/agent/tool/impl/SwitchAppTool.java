@@ -3,7 +3,7 @@
 
 package com.returngift.agent.tool.impl;
 
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -67,7 +67,7 @@ public class SwitchAppTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
@@ -83,7 +83,7 @@ public class SwitchAppTool extends BaseTool {
         }
 
         // 2. Verified foreground launch (resumes the existing task).
-        ClawAccessibilityService.LaunchResult launch = service.openAppForeground(packageName, 8000L);
+        ReturnGiftAccessibilityService.LaunchResult launch = service.openAppForeground(packageName, 8000L);
         if (launch.success) {
             return ToolResult.success("Switched to and verified foreground: " + packageName
                     + " (foreground=" + launch.foregroundPackage + ")");
@@ -96,7 +96,7 @@ public class SwitchAppTool extends BaseTool {
             try { Thread.sleep(500); } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            ClawAccessibilityService.LaunchResult retry = service.openAppForeground(packageName, 6000L);
+            ReturnGiftAccessibilityService.LaunchResult retry = service.openAppForeground(packageName, 6000L);
             if (retry.success) {
                 return ToolResult.success("Switched to " + packageName
                         + " after dismissing overlay (foreground=" + retry.foregroundPackage + ")");

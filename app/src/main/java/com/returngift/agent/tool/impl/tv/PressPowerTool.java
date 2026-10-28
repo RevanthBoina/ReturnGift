@@ -5,7 +5,7 @@ package com.returngift.agent.tool.impl.tv;
 
 import android.view.KeyEvent;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 
 public class PressPowerTool extends BaseKeyTool {
@@ -17,7 +17,7 @@ public class PressPowerTool extends BaseKeyTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_press_power);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_press_power);
     }
 
     @Override

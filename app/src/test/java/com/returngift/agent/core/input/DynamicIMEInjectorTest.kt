@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.ClipboardManager
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -55,8 +55,8 @@ class DynamicIMEInjectorTest {
             .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
     /** Mock service wired to the REAL shadow ClipboardManager. */
-    private fun serviceWithClipboard(): ClawAccessibilityService {
-        val service = mock(ClawAccessibilityService::class.java)
+    private fun serviceWithClipboard(): ReturnGiftAccessibilityService {
+        val service = mock(ReturnGiftAccessibilityService::class.java)
         `when`(service.getSystemService(Context.CLIPBOARD_SERVICE)).thenReturn(
             org.robolectric.RuntimeEnvironment.getApplication()
                 .getSystemService(Context.CLIPBOARD_SERVICE)

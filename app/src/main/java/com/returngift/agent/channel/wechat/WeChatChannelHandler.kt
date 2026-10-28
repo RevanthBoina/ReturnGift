@@ -14,7 +14,7 @@ import java.io.File
 
 /**
  * WeChat channel handler.
- * Strictly mirrors the official @tencent-weixin/openclaw-weixin@1.0.2:
+ * Strictly mirrors the official @tencent-weixin/returngift-weixin@1.0.2:
  * - src/monitor/monitor.ts (monitorWeixinProvider long-polling main loop)
  * - src/channel.ts (outbound sendText/sendMedia)
  * - src/messaging/send-media.ts (MIME routing)
@@ -212,7 +212,7 @@ class WeChatChannelHandler(
         val body = WeChatInbound.bodyFromItemList(msg.itemList)
         if (body.isEmpty()) {
             // Pure media message (image/video/file with no accompanying text), reply with prompt
-            val app = com.returngift.agent.ClawApplication.instance
+            val app = com.returngift.agent.ReturnGiftApplication.instance
             val mediaTypes = msg.itemList?.filter { WeChatInbound.isMediaItem(it) }?.map {
                 when (it.type) {
                     MessageItemType.IMAGE -> app.getString(com.returngift.agent.R.string.wechat_media_image)
@@ -237,7 +237,7 @@ class WeChatChannelHandler(
 
         XLog.i(TAG, "[${channel.displayName}] Message received: ${body.take(80)}, from=${fromUserId.takeLast(16)}")
         lastFromUserId = fromUserId
-        ChannelManager.dispatchMessage(channel, body, msg.contextToken ?: "")
+        ChannelManager.dispatchMessage(channel, body, msg.contextToken ?: "", fromUserId)
     }
 
     // ==================== ChannelHandler Interface Implementation ====================

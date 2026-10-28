@@ -78,7 +78,7 @@ This is an intentional design deferral, not an architectural gap.
   `open-and-search.md`, `open-and-navigate.md`, and 15 others.
 - `BuiltInSkills.kt`, `SkillRegistry.kt`, `SkillExecutor.kt`, `Skill.kt` — all present.
 - Full tool layer (`app/src/main/java/com/returngift/agent/tool/`), task loop
-  (`TaskOrchestrator.kt`), and accessibility service (`ClawAccessibilityService.java`) — all present.
+  (`TaskOrchestrator.kt`), and accessibility service (`ReturnGiftAccessibilityService.java`) — all present.
 - `skill_definitions_v2.yaml` — 19 skills, all `status: draft`, all 22 fixture entries
   explicitly set to `tree_hash: null  # TODO: generate from real fixture file`.
 

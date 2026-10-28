@@ -1,4 +1,29 @@
-# AGENTS.md — ReturnGift repository memory
+## Owner intent
+
+Read this before the older rules below. Where they disagree, this section wins.
+
+1. **One owner, one phone.** This is a personal tool installed on the owner's own
+   device. There is no store listing, no audience, no multi-user mode, no OEM matrix
+   — anything written for strangers is dead weight.
+2. **The owner's word beats any older rule in this file.** When a new instruction
+   conflicts with a rule below, change the rule in the same commit and say which
+   one. Rules belong to the owner, not to the file.
+3. **Act, don't ask.** One switch, `Ask before risky actions`, and it is off by
+   default. Safety comes from things that never prompt: undo, the action log, the
+   owner-only channel check, and a notification when something really breaks.
+   A prompt is a failure of design, not a feature.
+4. **The smallest change that works.** No new `.md` files, no new test files, no
+   audit tables. The proof is that the app builds and does the task.
+5. **Install once, ask once.** Every permission is granted in the first-run setup
+   and never asked for again. A later task that needs something switches it on.
+6. **A known routine runs to the end.** Plan-first, approval and the plan contract
+   exist for what the model drives; a matched routine skips all three.
+7. **Failing is a message, not a retry loop.** When a capability is gone, say it
+   once, offer the one tap that fixes it, and stop spending the task on it.
+8. **This phone answers its owner.** Chat channels and external automation act only
+   for the owner; anyone else gets a sentence back.
+9. **Credentials stay usable without being readable.** New keys are sealed with the
+   platform Keystore and old ones migrate silently on first launch.
 
 ## ⛔ Hard rules (read before writing any code)
 
@@ -25,13 +50,16 @@
 
 2. **No numeric token ceiling.** Token state is cosmetic; `TaskBudget` is the only cost stop.
 3. **No silent failures.** Every blocking condition must reach the user with a message
-   (`SessionBlocker` is the pattern: detect → decide → tell).
+   (`SessionBlocker` is the pattern: detect → decide → tell). Silent means "never a
+   prompt" — an undo entry, a log line, a chat line or a notification all count.
 4. **Verify before claiming.** Android/Compose changes cannot be compiled in every
    sandbox; say so instead of implying a green build.
-5. **Plan before acting, ask before guessing.** A multi-step request must produce a
-   readable plan (`agent/plan`, `PlanFirst`) and any missing detail must become a
-   question, not an assumption. Plans are deterministic (no model call) and are
-   derived from `PlanContext` — never from a hard-coded app name.
+5. **Plan the work the model drives; run the work that is already known.** A request
+   that reaches the agent loop produces a readable plan (`agent/plan`, `PlanFirst`); a
+   matched structured routine or YAML skill runs straight through without one. Only a
+   *missing fact* becomes a question — which app, which contact, what text — never
+   permission. Plans are deterministic (no model call) and come from `PlanContext`,
+   never from a hard-coded app name.
 6. **Remote tools fail open.** MCP servers, connectors and model providers are
    enhancements: a dead one is logged and skipped, never allowed to block a task.
    `agent/mcp/McpRuntime` and `agent/routing/ProviderRouter` are the two patterns.
@@ -140,7 +168,7 @@ Acting on the review of the AK2 pack. These are rules now, not suggestions.
   `AppKnowledge.guides(builtins)`, so connectors and learned rows reach the system
   prompt, the permission card and the micro-step planner with no extra wiring. The
   learner is fed from the agent loop (`DefaultAgentService`, success + settled only) and
-  `ClawApplication` injects the label resolver (`InstalledApps`) so the layer stays free
+  `ReturnGiftApplication` injects the label resolver (`InstalledApps`) so the layer stays free
   of Android imports.
 - **Guard**: `scripts/check-app-agnostic.py` (fail-on-violation, verified by creating a
   deliberately per-app test file) runs inside `scripts/ci-preflight.sh`. Preflight also
@@ -150,8 +178,8 @@ Acting on the review of the AK2 pack. These are rules now, not suggestions.
   `SocialPostRoutineTest` (9), `AppFlowRecoveryTest` (rewritten, 15).
 
 ## Repo hygiene audit + local streaming (HY pack, 2026-08-22)
-- **Audit rule that held up**: never trust a grep-only "unused" verdict — the four-signal gate (literal `git grep` across kt/java/xml/kts + manifest view + doc-pointer rule + fixture disambiguation) invalidated most "zero references" candidates. **LIVE (do not delete)**: `core/` 15/16 files (all wired: `ScreenTreeTokenOptimizer`/`SemanticNodeFlattener`/`OcclusionDetector`/`ModalInterceptor`/`FuzzyNodeMatcher` in `ClawAccessibilityService.getScreenTree`, `TouchInputLayer`/`DynamicIMEInjector`/`DirectActionDispatcher` in input tools, `AdaptiveSettleController` in tap/scroll tools, `AppLifecycleManager` in OpenAppTool, `VisualGroundingFallbackEngine` in getScreenTree, `RealtimeGameController` in the service); `server/` all 4 (`ConfigServerManager`+`CloudDeepAgentManager` auto-start from `ClawApplication`; `ConfigServer`/`CloudDeepAgentService` are their impl classes); root `fixtures/` (referenced by `playbooks/ask-external-ai.yaml` + `skill_definitions_v2.yaml` SHA-256 hash workflow); `golden_transcripts/` (referenced by `assets/skills/handle-interrupt.md`); `docs/` website (published Pages site: sitemap/robots/og-image; `demo.html` iframed by `index.html`); `prototype/` (design history); `demo/` (now embedded in README).
-- **Removed**: `core/telemetry/DirectTelemetryTools.kt` (zero refs, redundant with `GetDeviceInfoTool`/`GetForegroundAppTool`), root `lint-baseline.xml` (diverged duplicate — Gradle reads ONLY `app/lint-baseline.xml` per `app/build.gradle.kts`), empty `source_repo/` gitlink, stale `Expert_tasks.md` → pointer stub to `EXPERT_REVIEW_TASKS.md` (contains PokeClaw attribution, keep it).
+- **Audit rule that held up**: never trust a grep-only "unused" verdict — the four-signal gate (literal `git grep` across kt/java/xml/kts + manifest view + doc-pointer rule + fixture disambiguation) invalidated most "zero references" candidates. **LIVE (do not delete)**: `core/` 15/16 files (all wired: `ScreenTreeTokenOptimizer`/`SemanticNodeFlattener`/`OcclusionDetector`/`ModalInterceptor`/`FuzzyNodeMatcher` in `ReturnGiftAccessibilityService.getScreenTree`, `TouchInputLayer`/`DynamicIMEInjector`/`DirectActionDispatcher` in input tools, `AdaptiveSettleController` in tap/scroll tools, `AppLifecycleManager` in OpenAppTool, `VisualGroundingFallbackEngine` in getScreenTree, `RealtimeGameController` in the service); `server/` all 4 (`ConfigServerManager`+`CloudDeepAgentManager` auto-start from `ReturnGiftApplication`; `ConfigServer`/`CloudDeepAgentService` are their impl classes); root `fixtures/` (referenced by `skill_definitions_v2.yaml` SHA-256 hash workflow); `golden_transcripts/` (referenced by `assets/playbooks/handle-interrupt.md`); `docs/` website (published Pages site: sitemap/robots/og-image; `demo.html` iframed by `index.html`); `prototype/` (design history); `demo/` (now embedded in README).
+- **Removed**: `core/telemetry/DirectTelemetryTools.kt` (zero refs, redundant with `GetDeviceInfoTool`/`GetForegroundAppTool`), root `lint-baseline.xml` (diverged duplicate — Gradle reads ONLY `app/lint-baseline.xml` per `app/build.gradle.kts`), empty `source_repo/` gitlink, stale `Expert_tasks.md` → pointer stub to `EXPERT_REVIEW_TASKS.md` (contains ReturnGift attribution, keep it).
 - **Doc fix**: CLAUDE.md's project-files table pointed at nonexistent `docs/AI_INDEX.md` — corrected to root `AI_INDEX.md` (the real canonical repo map).
 - **Local streaming is REAL now**: `LocalLlmClient.chatStreaming` uses LiteRT-LM `sendMessageAsync(text, MessageCallback)` — caller thread blocks on a `CountDownLatch`, partials are DELTAS forwarded to `StreamingListener.onPartialText`; `sendAndRecover`/`recoverRawOutput` dedupe the SDK "Failed to parse tool calls" recovery. Only the LAST new message streams; replay messages use blocking send. GPU failure → `fallbackToCpu()` + one retry, same as `chat()`. `ChatSessionController.sendChat` local branch streams into the typing bubble with the same 60 ms throttle as cloud.
 - **Skill drift guard**: `scripts/ci-preflight.sh` check `skill-assets-in-sync` diffs `skill_library/skills/` vs `app/src/main/assets/skill_library/skills/` (sync tool: `scripts/update-skill-registry.sh`). Verified fail-on-drift + pass-clean.
@@ -204,7 +232,7 @@ Acting on the review of the AK2 pack. These are rules now, not suggestions.
   Orchestrator emits pseudo-actions as `TaskEvent.Progress`, NOT ToolAction.
 - **Background work**: `ForegroundService.notifyTaskFinished` (RESULT_CHANNEL_ID, IMPORTANCE_DEFAULT,
   id 1002) fires only when `TaskFlowController.minimizedForTask` is set (minimize-on-verified path);
-  Stop action = `ForegroundService.ACTION_STOP_TASK` → `ClawApplication.appViewModelInstance.taskOrchestrator.cancelCurrentTask()`.
+  Stop action = `ForegroundService.ACTION_STOP_TASK` → `ReturnGiftApplication.appViewModelInstance.taskOrchestrator.cancelCurrentTask()`.
 - **Resume card**: SYSTEM hint prefix `TaskFlowController.RESUME_HINT_PREFIX` → ResumeTaskCard in
   MessageList (`onResumeCheckpoint = { onSendTask("resume") }`); `TaskCheckpointStore.isResumeKeyword`
   guards stale taps with "No interrupted task to resume."
@@ -244,18 +272,18 @@ Acting on the review of the AK2 pack. These are rules now, not suggestions.
 
 ## Architecture facts (verified 2026-08-16)
 - The app is a Jetpack Compose app. The homepage / chat is `ComposeChatActivity`; its UI is `ChatScreen.kt` (`ChatTopBar` is the toolbar). Package: `com.returngift.agent`.
-- `app_name` in all `strings.xml` locales is already `ReturnGift`. The visible "PokeClaw" title on the homepage was hardcoded in `ChatScreen.kt` `ChatTopBar` (`append("Poke")` + `append("Claw")`) — replaced with "Return"+"Gift".
-- The only remaining "PokeClaw" mentions are in `NOTICE` and `EXPERT_REVIEW_TASKS.md` — these are Apache-2.0 attribution to the upstream PokeClaw project and must NOT be removed.
+- `app_name` in all `strings.xml` locales is already `ReturnGift`. The visible "ReturnGift" title on the homepage was hardcoded in `ChatScreen.kt` `ChatTopBar` as two appended halves — now a single word with the accent on "Gift".
+- The only remaining "ReturnGift" mentions are in `NOTICE` and `EXPERT_REVIEW_TASKS.md` — these are Apache-2.0 attribution to the upstream ReturnGift project and must NOT be removed.
 
 ## Screen observation / background execution
-- The agent observes the screen via `ClawAccessibilityService.getRootInActiveWindow()` → `getScreenTree()`, exposed to the LLM through the `get_screen_info` tool (`GetScreenInfoTool`). It returns the ACTIVE window's accessibility tree.
+- The agent observes the screen via `ReturnGiftAccessibilityService.getRootInActiveWindow()` → `getScreenTree()`, exposed to the LLM through the `get_screen_info` tool (`GetScreenInfoTool`). It returns the ACTIVE window's accessibility tree.
 - `DefaultAgentService.runAgentLoop` auto-attaches a fresh `get_screen_info` result after action tools (incl. `open_app`) with a `SCREEN_SETTLE_MS = 500ms` settle.
 - BUG FIXED (2026-08-16): ReturnGift's chat Activity stayed foreground when a task started, so `getRootInActiveWindow()` returned ReturnGift's own UI after `open_app`. Fix: `TaskFlowController.sendTask` now calls `activity.moveTaskToBack(true)` + shows the floating pill for device-automation tasks (`isDeviceAutomationTask`). Pure chat/device-data queries stay foreground. Auto-return on completion already exists via `autoReturnToChat` (true for `Channel.LOCAL`) in `TaskOrchestrator.onComplete`.
 
 ## Action-verification control loop (added 2026-08-18)
 - The agent loop now follows observe → resolve target → act → verify state change → continue/recover.
-- **Foreground detection**: `ClawAccessibilityService.getForegroundPackage()` uses the active accessibility window root package (fallback: `getWindows()` scan). `isForeground()`, `waitForForeground()` are state-based (not fixed sleeps).
-- **Verified app launch**: `ClawAccessibilityService.openAppForeground(pkg, timeoutMs)` returns a `LaunchResult` — success only after the foreground package is verified; handles cached task state (already foreground → no-op), null intent (not installed), `ActivityNotFoundException`/`SecurityException`, and foreground-verification timeout → verified failure state. The old fragile `openApp()` is `@Deprecated` but preserved for legacy callers (`SendMessageTool`, `ContactListUiUtils`, `AutoReplyManager`) that do their own post-launch verification.
+- **Foreground detection**: `ReturnGiftAccessibilityService.getForegroundPackage()` uses the active accessibility window root package (fallback: `getWindows()` scan). `isForeground()`, `waitForForeground()` are state-based (not fixed sleeps).
+- **Verified app launch**: `ReturnGiftAccessibilityService.openAppForeground(pkg, timeoutMs)` returns a `LaunchResult` — success only after the foreground package is verified; handles cached task state (already foreground → no-op), null intent (not installed), `ActivityNotFoundException`/`SecurityException`, and foreground-verification timeout → verified failure state. The old fragile `openApp()` is `@Deprecated` but preserved for legacy callers (`SendMessageTool`, `ContactListUiUtils`, `AutoReplyManager`) that do their own post-launch verification.
 - **Dynamic UI grounding**: `SemanticTargetResolver` (agent/grounding) resolves a `TargetDescription` (text/contentDesc/resourceId/viewClass/bounds) to a live node by re-querying the hierarchy each call. Volatile node IDs ("n2"/"n24") are NOT treated as persistent references. `tap_node` prefers semantic params; legacy `node_id` is re-grounded via `resolveByLegacyNodeId` (re-resolves coordinates against the current tree).
 - **Keyboard input**: `InputTextTool` verifies editable focus before typing (`waitForEditableFocus`), requests keyboard (`requestKeyboardForFocused`), verifies the entered text (`getFocusedEditableText`), and recovers (re-tap + re-focus) on focus failure.
 - **App switching**: `switch_app` tool (verified, handles Recents overlays via `isSystemOverlayLikely` + Back + re-launch). ReturnGift stays background controller; target stays foreground.
@@ -268,7 +296,7 @@ Acting on the review of the AK2 pack. These are rules now, not suggestions.
 ## On-device resources audit
 - Local inference: Google **LiteRT-LM** SDK (`com.google.ai.edge.litertlm`, version 0.16.0 in `app/build.gradle.kts`). Runtime in `agent/llm/LocalModelRuntime` + `EngineHolder`; client `LocalLlmClient`. Default models are Gemma-4 (`gemma-4-E2B-it.litertlm`, `gemma-4-E4B-it.litertlm`) downloaded from HuggingFace on demand (`LocalModelManager`).
 - **No LoRA** code in the app. The README/CLAUDE.md mentions "LoRA-based Action Skills" as architecture direction, but the actual implementation has NO LoRA adapter loading. "Action Skills" = YAML skill definitions + markdown playbooks, not LoRA weights.
-- **SkillOpt**: there is no runtime component literally named "SkillOpt" in the Kotlin app. The skill system is: YAML skills (`skill_library/skills/*.yaml` + `app/src/main/assets/skills/`) loaded by `SkillRegistry`/`YamlSkillLoader`, semantic retrieval via `SkillEmbeddingIndex`, and **playbooks** (`app/src/main/assets/playbooks/*.md`) managed by `PlaybookManager` (markdown step sequences injected into the local LLM system prompt). The Python `skill_library/optimizer/SkillOptimizer` is an offline lifecycle tool, not shipped in the APK.
+- **SkillOpt**: there is no runtime component literally named "SkillOpt" in the Kotlin app. The skill system is: YAML skills (`skill_library/skills/*.yaml`) loaded by `SkillRegistry`/`YamlSkillLoader`, semantic retrieval via `SkillEmbeddingIndex`, and **playbooks** (`app/src/main/assets/playbooks/*.md`) managed by `PlaybookManager` (markdown step sequences injected into the local LLM system prompt). The Python `skill_library/optimizer/SkillOptimizer` is an offline lifecycle tool, not shipped in the APK.
 - So: the APK depends on the on-device **foundation model (Gemma-4 via LiteRT-LM)** as the "brain"; skills/playbooks are generic tool-sequence docs that guide that brain — they are NOT a separate model. Cloud LLMs (OmniRoute/OpenAI/Anthropic) are optional alternatives, not a fallback mode.
 
 ## Image inventory in the APK (57 image resource files total)
@@ -282,12 +310,12 @@ Acting on the review of the AK2 pack. These are rules now, not suggestions.
 
 ## Action-verification control loop (verified 2026-08-18)
 The 7-point computer-use bottleneck elimination is COMPLETE and wired into `DefaultAgentService.runAgentLoop`. Do NOT reinvent these — extend the existing components:
-- **(1) Reliable app launch**: `OpenAppTool` + `ClawAccessibilityService.openAppForeground` (service `.java`, ~L1143) returns a verified `LaunchResult` (success/failure + detected foreground). Handles cached task state (already-foreground no-op), intent null-check (not installed), `FLAG_ACTIVITY_NEW_TASK|REORDER_TO_FRONT`, `ActivityNotFoundException`/`SecurityException`, state-based `waitForForeground` polling (NOT sleep), chain-launch dialog auto-dismiss + re-verify.
+- **(1) Reliable app launch**: `OpenAppTool` + `ReturnGiftAccessibilityService.openAppForeground` (service `.java`, ~L1143) returns a verified `LaunchResult` (success/failure + detected foreground). Handles cached task state (already-foreground no-op), intent null-check (not installed), `FLAG_ACTIVITY_NEW_TASK|REORDER_TO_FRONT`, `ActivityNotFoundException`/`SecurityException`, state-based `waitForForeground` polling (NOT sleep), chain-launch dialog auto-dismiss + re-verify.
 - **(2) Dynamic grounding**: `agent/grounding/SemanticTargetResolver.kt` re-queries the hierarchy EACH call and resolves by stable props (resource-id → text → content-desc → view class → bounds). Volatile `nN` node IDs are per-`getScreenTree` snapshot only; `resolveByLegacyNodeId` re-grounds them. Do not treat node IDs as persistent.
 - **(3) Keyboard/input**: `InputTextTool` verifies focus via `waitForEditableFocus` (state-based), requests IME via `requestKeyboardForFocused`, uses `ACTION_SET_TEXT` + `verifyEnteredText`, falls back to clipboard paste, recovers (re-tap + re-request) on focus failure.
 - **(4) App switching**: `SwitchAppTool` verifies foreground, detects system overlay (`isSystemOverlayLikely`), presses Back + retries, returns verified failure.
 - **(5) Stall/loop detection**: `agent/loop/InteractionWatchdog.kt` (threshold 3) detects ineffective actions, repeated states, cyclic A→B→A→B, overlays, stalled transitions; EXECUTES recovery (RE_QUERY/PRESS_BACK/GO_HOME/RELAUNCH_TARGET/ASK_MODEL_FOR_PLAN) via `executeRecovery`. `agent/StuckDetector.kt` (5 signals/3 levels) feeds hint injection.
-- **(6) System-state APIs**: `GetInstalledAppsTool` (PackageManager), `GetForegroundAppTool`+`getForegroundPackage` (accessibility tree — a direct read, NOT UI navigation, so it already meets the "deterministic over visual" bar), `ClawNotificationListener`, connectivity in `GetDeviceInfoTool`. NO `UsageStatsManager` — conscious decision: the agent already has accessibility granted; adding `PACKAGE_USAGE_STATS` would be a new permission cost for marginal benefit.
+- **(6) System-state APIs**: `GetInstalledAppsTool` (PackageManager), `GetForegroundAppTool`+`getForegroundPackage` (accessibility tree — a direct read, NOT UI navigation, so it already meets the "deterministic over visual" bar), `ReturnGiftNotificationListener`, connectivity in `GetDeviceInfoTool`. NO `UsageStatsManager` — conscious decision: the agent already has accessibility granted; adding `PACKAGE_USAGE_STATS` would be a new permission cost for marginal benefit.
 - **(7) Unified loop**: `runAgentLoop` does `ActionVerifier.captureBefore` → execute → `verifyAfter` (with expected foreground) → `interactionWatchdog.record` → `executeRecovery` → `ExecutionTracker.recordVerifiedAction` (structured trace: target_resolution, verification_result, recovery_action, latency). `ObservationPolicy` decides when to re-attach screen info.
 - **Acceptance tests**: QA_CHECKLIST.md section "AV" (AV1–AV17) covers app launch failure, semantic tap, stale-node re-grounding, keyboard focus/verify, Recents interference, 3-ineffective recovery, cyclic detection, context-preserving recovery, structured trace, no-blind-continuation, regressions.
 
@@ -378,11 +406,11 @@ GitHub code engine — MUST NOT reintroduce them.
    `WebFetchTool.java` called `new ProvenanceTag(kind, origin)` even though the JVM
    constructor is `(Kind, String, long)`, called `ProvenanceHelper.addToFrontmatter(...)`
    instead of `ProvenanceHelper.INSTANCE.addToFrontmatter(...)`, and referenced
-   `ClawApplication` without importing it; `AskUserTool.java` likewise called the
+   `ReturnGiftApplication` without importing it; `AskUserTool.java` likewise called the
    five-argument `ClarificationManager.request(...)` with four args. Pass every parameter
-   explicitly from Java, use `object.INSTANCE`, and import `ClawApplication` in tool files.
+   explicitly from Java, use `object.INSTANCE`, and import `ReturnGiftApplication` in tool files.
    ENFORCED by preflight `no-static-kotlin-object-call-from-java` +
-   `missing-import-ClawApplication`.
+   `missing-import-ReturnGiftApplication`.
 
 8. **`OptIn` is Kotlin, not Compose.** Release tag `v3.0.10` (2026-09-04)
    failed at `:app:compileReleaseKotlin` because `ComposeChatActivity.kt` imported
@@ -411,6 +439,11 @@ semantics/platform refs). The authoritative gate is CI (`./gradlew testDebugUnit
 `lintDebug`), fronted by `scripts/ci-preflight.sh`.
 
 ## Consent/clarification hardening (2026-08-23, TL.10–TL.15)
+- **Every gate below is now behind one switch.** `KVUtils.askBeforeRiskyActions()` is
+  off by default: the pre-loop consent gate, the dispatch-site gate, `PreActionJudge`,
+  the plan contract's approval step, the new-app ask and remote-tool approvals all
+  proceed silently when it is off, and behave exactly as described when it is on.
+  Clarifications for missing facts are unaffected — they are not permission.
 - **Dispatch-site consent**: `PersonalContentConsentGuard.checkToolTarget(toolName, params, currentTargetPackage)` gates `open_app`/`switch_app` by package (`PACKAGE_TO_LABEL`) and content-reading tools (`get_screen_info`/`take_screenshot`/`find_and_tap`/`tap_node`/`input_text`/`long_press`) by the tracked target package. Wired in `runAgentLoop` BEFORE `executeTool`, after the allow-list gate. Per-task `taskConsentedSurfaces` set = Allow-once covers the whole task for that surface (NOT per-call). Pre-loop text gate is unchanged (additive). Seeding order: the set is declared right after `TaskIntentClassifier.classify`, before the pre-loop gate.
 - **TTL + revocation**: `remember()` stores `personal_consent_<label>_ts`; `isRemembered` is TTL-aware (`REMEMBER_TTL_MS` = 60d) and drops expired keys on read; legacy grants without a timestamp are still honored. Settings → Privacy (`R.id.privacyGroup`, added to `activity_settings.xml` + `applyThemeToGroups` list) lists `rememberedApps()` with per-app revoke. Persistence + clock injectable (`persistenceGetLong`/`persistencePutLong`/`nowMs`) for JVM tests.
 - **Stale-answer ack**: `ClarificationManager.finishRequest` stamps `lastResolvedAtMs`; `resolvedRecently(30s)` is the funnel signal — both `sendTask` and `sendChat` post an ℹ️ system line instead of silently routing a late answer as a new task/chat.
@@ -489,7 +522,7 @@ Emulator Matrix QA, Firebase Test Lab). Two layers of errors, one masking the ot
 
 **W8 — AppCatalog App Address Registry (setup-time build + kb_search)**
 - **Bug**: `kb_search` only searched vault notes (no app awareness); `open_app` used 28-entry hardcoded map + slow PackageManager scan per task.
-- **Fix**: `AppCatalog` singleton (`agent/knowledge/AppCatalog.kt`, patterned after `KBManager`): JSON-backed in app-private storage; builds on first accessibility connect (`ClawAccessibilityService.onServiceConnected`) AND `GuideActivity.updatePermissionIndicators` when accessibility first READY; progress toast "Indexing your apps so tasks can find them — please wait…" with count; package broadcast receiver in `ClawApplication` for PACKAGE_ADDED/REMOVED/REPLACED → `invalidatePackage` + rebuild; 7-day stale rebuild; `OpenAppTool.resolveAppName` → AppCatalog first, fallback fuzzy; `GetInstalledAppsTool` → catalog instant; after each build writes `apps/app-registry.md` to vault (one line per app: `- Label — pkg — component (alias: ...)`); system prompts (`LOCAL_TASK_PROMPT` + `DEFAULT_SYSTEM_PROMPT`) + "App addresses: every installed app's package name is in the app registry (see get_installed_apps). Never guess a package name; resolve via get_installed_apps when unsure."
+- **Fix**: `AppCatalog` singleton (`agent/knowledge/AppCatalog.kt`, patterned after `KBManager`): JSON-backed in app-private storage; builds on first accessibility connect (`ReturnGiftAccessibilityService.onServiceConnected`) AND `GuideActivity.updatePermissionIndicators` when accessibility first READY; progress toast "Indexing your apps so tasks can find them — please wait…" with count; package broadcast receiver in `ReturnGiftApplication` for PACKAGE_ADDED/REMOVED/REPLACED → `invalidatePackage` + rebuild; 7-day stale rebuild; `OpenAppTool.resolveAppName` → AppCatalog first, fallback fuzzy; `GetInstalledAppsTool` → catalog instant; after each build writes `apps/app-registry.md` to vault (one line per app: `- Label — pkg — component (alias: ...)`); system prompts (`LOCAL_TASK_PROMPT` + `DEFAULT_SYSTEM_PROMPT`) + "App addresses: every installed app's package name is in the app registry (see get_installed_apps). Never guess a package name; resolve via get_installed_apps when unsure."
 - **Convention**: Catalog built once at setup with user-visible progress; incremental updates via broadcast; vault markdown for `kb_search` awareness.
 
 **W9 — Preview UX + TargetSpecGate + Clarification for Unnamed Targets**

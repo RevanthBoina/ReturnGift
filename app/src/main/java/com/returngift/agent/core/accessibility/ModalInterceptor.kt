@@ -5,7 +5,7 @@ package com.returngift.agent.core.accessibility
 
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -83,7 +83,7 @@ object ModalInterceptor {
      * Tries to auto-dismiss a benign modal dialog. Returns true if dismissed.
      */
     @JvmStatic
-    fun tryAutoDismiss(service: ClawAccessibilityService): Boolean {
+    fun tryAutoDismiss(service: ReturnGiftAccessibilityService): Boolean {
         val root = service.rootInActiveWindow ?: return false
         val check = checkModal(root)
         if (check.isBenignTransient && check.dismissNode != null) {

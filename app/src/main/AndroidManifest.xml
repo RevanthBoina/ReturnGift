@@ -30,7 +30,7 @@
         android:required="true" />
 
     <application
-        android:name=".ClawApplication"
+        android:name=".ReturnGiftApplication"
         android:allowBackup="false"
         android:networkSecurityConfig="@xml/network_security_config"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -60,10 +60,18 @@
             android:screenOrientation="portrait" />
         <activity
             android:name=".ui.chat.ComposeChatActivity"
-            android:exported="false"
+            android:exported="true"
+            android:label="Ask ReturnGift"
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize">
+            <!-- Share sheet: "Send to ReturnGift" starts a task with the shared text. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".ui.settings.ThemeActivity"
             android:exported="false"
@@ -85,6 +93,18 @@
             android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".ui.settings.AppAllowListActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".ui.settings.UsageActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".ui.settings.BackupActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".ui.settings.HealthCheckActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
         <activity
@@ -147,7 +167,18 @@
         </receiver>
 
         <service
-            android:name=".service.ClawNotificationListener"
+            android:name=".service.QuickLaunchTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Ask ReturnGift"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".service.ReturnGiftNotificationListener"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
@@ -156,7 +187,7 @@
         </service>
 
         <service
-            android:name=".service.ClawAccessibilityService"
+            android:name=".service.ReturnGiftAccessibilityService"
             android:exported="false"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

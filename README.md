@@ -1,38 +1,13 @@
-# ReturnGift — On-Device Android Agent
+# ReturnGift
 
-<div align="center">
-
-**The autonomous Android agent that runs entirely on your device.**
-
-ReturnGift transforms your phone into an intelligent assistant powered by on-device AI. No cloud, no API keys, complete privacy.
-
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Android](https://img.shields.io/badge/Android-9%2B%20(API%2028)-green.svg)](https://developer.android.com/about)
-[![Architecture](https://img.shields.io/badge/Architecture-arm64-blue.svg)](#requirements)
-[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Download APK](https://img.shields.io/badge/Download-APK-success.svg)](https://github.com/RevanthBoina/ReturnGift/releases/latest/download/ReturnGift-release.apk)
-
-[Features](#features) • [Architecture](#architecture) • [Releases](#releases) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Contributing](#contributing)
-
-</div>
-
----
-
-## What is ReturnGift?
-
-ReturnGift is a **production-ready Android autonomous agent** that uses on-device AI to automate phone tasks. It combines:
-
-- **On-device LLM inference** via LiteRT-LM (Gemma or custom models)
-- **3-tier execution pipeline** (deterministic → skill → agent loop)
-- **YAML-defined skills** for extensible task automation
-- **Privacy-first architecture** — all data stays on your device
-
-Unlike cloud-based assistants, ReturnGift:
-
-- Runs **100% on-device** — no network required for task execution
-- Has **full system access** through Android Accessibility Service
-- Uses **generic tools** that work with any app
-- Learns from your behavior over time
+A personal Android agent that lives on my own phone: I say what I want, and it works
+the apps I already have to get it done. It runs a local model on the device for the
+day-to-day work and can call a cloud provider when I ask it to, it reads the screen
+through the accessibility service and taps the real buttons, and it keeps a plan, an
+undo trail and an action log so I can see exactly what it did. Nothing here is built
+for an audience — no store, no accounts, no telemetry — it is one tool for one person,
+tuned to the phone in my pocket, and the permissions it needs are granted once during
+setup and never asked about again.
 
 ```mermaid
 graph LR
@@ -245,7 +220,7 @@ User Task → Tier 1 Deterministic Parser → Direct Intent/Tool
 
 ### v1.1.0
 - **Background task execution**: device-automation tasks now minimize ReturnGift on start so the agent observes the target app's screen (not its own chat UI) via the Accessibility active window
-- **Homepage title**: replaced the leftover "PokeClaw" toolbar title with "ReturnGift"
+- **Homepage title**: replaced the leftover "ReturnGift" toolbar title with "ReturnGift"
 - **In-app Update fixed**: corrected the GitHub releases API endpoint (was pointing at the wrong repo) and added the required `User-Agent` header so the "Update Available" dialog now actually appears; tapping Download opens the APK directly with the package installer
 - **Release versioning**: the release workflow now derives `versionName`/`versionCode` from the git tag, so each published APK reports its real version and can update over a previous install
 - Auto-return to the chatroom on task completion (existing) now pairs with the new minimize-on-start behavior
@@ -742,7 +717,7 @@ flowchart LR
 
 ### v1.1.0
 - **Background task execution**: device-automation tasks now minimize ReturnGift on start so the agent observes the target app's screen (not its own chat UI) via the Accessibility active window
-- **Homepage title**: replaced the leftover "PokeClaw" toolbar title with "ReturnGift"
+- **Homepage title**: replaced the leftover "ReturnGift" toolbar title with "ReturnGift"
 - **In-app Update fixed**: corrected the GitHub releases API endpoint (was pointing at the wrong repo) and added the required `User-Agent` header so the "Update Available" dialog now actually appears; tapping Download opens the APK directly with the package installer
 - **Release versioning**: the release workflow now derives `versionName`/`versionCode` from the git tag, so each published APK reports its real version and can update over a previous install
 - Auto-return to the chatroom on task completion (existing) now pairs with the new minimize-on-start behavior
@@ -779,8 +754,8 @@ ReturnGift/
 │       │   │   ├── embedding/        # TF-IDF embedding service
 │       │   │   └── pipeline/          # Integrated execution pipelines
 │       │   ├── service/              # Android services
-│       │   │   ├── ClawAccessibilityService.java
-│       │   │   ├── ClawNotificationListener.java
+│       │   │   ├── ReturnGiftAccessibilityService.java
+│       │   │   ├── ReturnGiftNotificationListener.java
 │       │   │   └── ForegroundService.kt
 │       │   ├── tool/                 # Tool system
 │       │   │   ├── impl/             # Tool implementations

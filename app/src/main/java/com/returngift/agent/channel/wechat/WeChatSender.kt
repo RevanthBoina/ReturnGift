@@ -9,7 +9,7 @@ import org.json.JSONObject
 
 /**
  * Message sending.
- * Strictly mirrors the official @tencent-weixin/openclaw-weixin@1.0.2:
+ * Strictly mirrors the official @tencent-weixin/returngift-weixin@1.0.2:
  * - src/messaging/send.ts (sendMessageWeixin, sendImageMessageWeixin, sendFileMessageWeixin, sendMediaItems)
  * - src/messaging/send-media.ts (sendWeixinMediaFile - MIME routing)
  */
@@ -45,7 +45,7 @@ object WeChatSender {
         if (contextToken.isNullOrEmpty()) {
             XLog.w(TAG, "sendRawText: contextToken missing for to=$to, sending without context")
         }
-        val clientId = WeChatCdn.generateId("openclaw-weixin")
+        val clientId = WeChatCdn.generateId("returngift-weixin")
         val msg = buildMsgJson(to, clientId, contextToken, JSONArray().put(
             JSONObject().apply {
                 put("type", MessageItemType.TEXT)
@@ -194,7 +194,7 @@ object WeChatSender {
         contextToken: String?,
         item: JSONObject
     ): Boolean {
-        val clientId = WeChatCdn.generateId("openclaw-weixin")
+        val clientId = WeChatCdn.generateId("returngift-weixin")
         val msg = buildMsgJson(to, clientId, contextToken, JSONArray().put(item))
         return apiClient.sendMessage(msg)
     }

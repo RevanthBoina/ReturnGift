@@ -4,7 +4,7 @@
 package com.returngift.agent.agent
 
 import android.content.Context
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -87,7 +87,7 @@ object AllowListToolGate {
         }
         // For all UI-interaction tools resolve from the current foreground window
         return try {
-            ClawAccessibilityService.getInstance()
+            ReturnGiftAccessibilityService.getInstance()
                 ?.windows
                 ?.firstOrNull { it.isFocused }
                 ?.root

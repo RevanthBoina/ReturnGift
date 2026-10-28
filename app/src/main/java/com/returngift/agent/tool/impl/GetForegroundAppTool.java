@@ -3,7 +3,7 @@
 
 package com.returngift.agent.tool.impl;
 
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -18,7 +18,7 @@ import java.util.Map;
  *
  * Replaces the brittle pattern of opening Recents or navigating the launcher to discover
  * what is running. Uses the deterministic accessibility foreground detection centralized
- * in {@link ClawAccessibilityService#getForegroundPackage()}.
+ * in {@link ReturnGiftAccessibilityService#getForegroundPackage()}.
  */
 public class GetForegroundAppTool extends BaseTool {
 
@@ -54,7 +54,7 @@ public class GetForegroundAppTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }

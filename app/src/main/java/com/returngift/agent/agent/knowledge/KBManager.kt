@@ -3,7 +3,7 @@
 
 package com.returngift.agent.agent.knowledge
 
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.agent.provenance.ProvenanceTag
 import com.returngift.agent.utils.XLog
 import java.io.File
@@ -32,7 +32,7 @@ object KBManager {
     // ── Vault root ────────────────────────────────────────────────────────────
 
     private fun vaultDir(): File {
-        val dir = File(ClawApplication.instance.getExternalFilesDir(null), VAULT_SUBDIR)
+        val dir = File(ReturnGiftApplication.instance.getExternalFilesDir(null), VAULT_SUBDIR)
         if (!dir.exists()) dir.mkdirs()
         return dir
     }

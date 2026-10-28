@@ -12,10 +12,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityNodeInfo;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.core.telemetry.AdaptiveSettleController;
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -38,7 +38,7 @@ public class InputTextTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_input_text);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_input_text);
     }
 
     @Override
@@ -68,7 +68,7 @@ public class InputTextTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
@@ -121,7 +121,7 @@ public class InputTextTool extends BaseTool {
      * Verifies the expected text was actually entered into the focused field.
      * State-based: re-queries the live focused node rather than trusting the action return value.
      */
-    private boolean verifyEnteredText(ClawAccessibilityService service, String expected, boolean clearFirst) {
+    private boolean verifyEnteredText(ReturnGiftAccessibilityService service, String expected, boolean clearFirst) {
         // Give the field a brief, bounded moment to commit the text. The settle
         // controller does not declare checked exceptions, so no catch is needed here.
         AdaptiveSettleController.INSTANCE.waitForSettle();
@@ -172,7 +172,7 @@ public class InputTextTool extends BaseTool {
         return false;
     }
 
-    private AccessibilityNodeInfo waitForTargetEditable(ClawAccessibilityService service, int[] targetCoords) {
+    private AccessibilityNodeInfo waitForTargetEditable(ReturnGiftAccessibilityService service, int[] targetCoords) {
         for (int attempt = 0; attempt < 5; attempt++) {
             AccessibilityNodeInfo root = service.getRootInActiveWindow();
             if (root == null) {

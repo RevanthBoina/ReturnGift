@@ -250,7 +250,7 @@ class ConfigServer(
     // ==================== Debug (DEBUG builds only) ====================
     
     private fun handleGetScreenFull(): Response {
-        val service = com.returngift.agent.service.ClawAccessibilityService.getInstance()
+        val service = com.returngift.agent.service.ReturnGiftAccessibilityService.getInstance()
             ?: return newFixedLengthResponse(
                 Response.Status.OK, MIME_JSON,
                 """{"code":-1,"message":"Accessibility service is not running"}"""

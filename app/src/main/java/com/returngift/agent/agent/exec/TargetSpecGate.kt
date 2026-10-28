@@ -4,7 +4,7 @@
 package com.returngift.agent.agent.exec
 
 import com.returngift.agent.agent.knowledge.AppCatalog
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 
 /**
  * Deterministic gate that detects under-specified enumeration tasks
@@ -75,7 +75,7 @@ object TargetSpecGate {
      * Android wrapper that fetches known app aliases from AppCatalog.
      */
     fun missingTargets(task: String): MissingTargets? {
-        val catalog = AppCatalog.getInstance(ClawApplication.instance)
+        val catalog = AppCatalog.getInstance(ReturnGiftApplication.instance)
         val aliases = catalog.getAllEntries().flatMap { it.aliases }.toSet()
         return missingTargets(task, aliases)
     }

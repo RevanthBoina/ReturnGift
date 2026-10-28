@@ -96,6 +96,7 @@ object PlanFirst {
                 blueprint.questions.isNotEmpty()
         }
 
+        if (showPlan) com.returngift.agent.agent.tracker.UsageCounters.bump("engine", "plan")
         return Presentation(
             mode = mode,
             blueprint = blueprint,

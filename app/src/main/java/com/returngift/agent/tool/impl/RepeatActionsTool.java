@@ -3,7 +3,7 @@
 
 package com.returngift.agent.tool.impl;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
@@ -57,7 +57,7 @@ public class RepeatActionsTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_repeat_actions);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_repeat_actions);
     }
 
     @Override

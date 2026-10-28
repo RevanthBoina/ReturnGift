@@ -16,7 +16,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * CDN encrypted upload/download.
- * Strictly mirrors the official @tencent-weixin/openclaw-weixin@1.0.2:
+ * Strictly mirrors the official @tencent-weixin/returngift-weixin@1.0.2:
  * - src/cdn/aes-ecb.ts
  * - src/cdn/cdn-url.ts
  * - src/cdn/cdn-upload.ts

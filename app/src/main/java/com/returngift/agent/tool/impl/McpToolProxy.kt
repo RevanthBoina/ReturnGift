@@ -84,8 +84,10 @@ class McpToolProxy(private val def: McpToolDef) : BaseTool() {
                 return ToolResult.error("Blocked: ${decision.reason}")
 
             is McpToolPolicy.Decision.Ask -> {
-                val question = McpToolPolicy.approvalQuestion(def, preview)
-                if (!confirmer(question)) {
+                // Switch off: the policy's verdict is logged, not asked.
+                if (!com.returngift.agent.utils.KVUtils.askBeforeRiskyActions()) {
+                    XLog.i(TAG, "remote tool '${def.name}' would have asked (switch off, proceeding)")
+                } else if (!confirmer(McpToolPolicy.approvalQuestion(def, preview))) {
                     return ToolResult.error(
                         "Not run: approval for '${def.name}' (${def.serverName}) was declined."
                     )

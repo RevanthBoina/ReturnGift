@@ -304,7 +304,7 @@ class ForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_TASK) {
             XLog.i(TAG, "Stop action tapped — cancelling current task")
-            runCatching { com.returngift.agent.ClawApplication.appViewModelInstance.taskOrchestrator.cancelCurrentTask() }
+            runCatching { com.returngift.agent.ReturnGiftApplication.appViewModelInstance.taskOrchestrator.cancelCurrentTask() }
                 .onFailure { XLog.w(TAG, "Stop action: no running task to cancel", it) }
             return START_NOT_STICKY
         }

@@ -7,7 +7,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.agent.provenance.ProvenanceTag
 import com.returngift.agent.utils.XLog
 import org.json.JSONObject
@@ -143,7 +143,7 @@ object ExecutionTracker {
         if (dbHelper == null) {
             synchronized(this) {
                 if (dbHelper == null) {
-                    dbHelper = DbHelper(ClawApplication.instance)
+                    dbHelper = DbHelper(ReturnGiftApplication.instance)
                 }
             }
         }

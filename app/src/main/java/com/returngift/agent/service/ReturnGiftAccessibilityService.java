@@ -15,7 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.utils.XLog;
 import com.returngift.agent.utils.KVUtils;
 import android.view.Display;
@@ -38,17 +38,17 @@ import com.returngift.agent.utils.UiTextMatchUtils;
  * Core accessibility service that provides all device interaction capabilities.
  * Singleton-pattern: the running instance is accessible via {@link #getInstance()}.
  */
-public class ClawAccessibilityService extends AccessibilityService {
+public class ReturnGiftAccessibilityService extends AccessibilityService {
 
-    private static final String TAG = "ClawA11yService";
-    private static volatile ClawAccessibilityService instance;
+    private static final String TAG = "ReturnGiftA11yService";
+    private static volatile ReturnGiftAccessibilityService instance;
 
     private volatile boolean isTaskActive = false;
 
     public void setTaskActive(boolean active) { this.isTaskActive = active; }
     public boolean isTaskActive() { return isTaskActive; }
 
-    public static ClawAccessibilityService getInstance() {
+    public static ReturnGiftAccessibilityService getInstance() {
         return instance;
     }
 
@@ -76,7 +76,7 @@ public class ClawAccessibilityService extends AccessibilityService {
                     Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
             if (enabledServices == null || enabledServices.isEmpty()) return false;
             String myService = context.getPackageName() + "/"
-                    + ClawAccessibilityService.class.getName();
+                    + ReturnGiftAccessibilityService.class.getName();
             return enabledServices.contains(myService);
         } catch (Exception e) {
             XLog.e(TAG, "Failed to check accessibility settings", e);
@@ -106,26 +106,38 @@ public class ClawAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * Return the connected service immediately when possible. If Android has the service enabled
-     * but it is momentarily rebinding, wait briefly instead of treating it as a hard failure.
+     * Return the connected service, or null without retrying.
+     *
+     * If accessibility is off, or the system killed the service, waiting does not help:
+     * it only leaves the task stalled behind a tool that cannot succeed. One short grace
+     * period covers a genuine rebind, then the breaker takes over — every a11y call site
+     * fails in milliseconds and the owner gets a single notification that opens the
+     * settings page. {@code timeoutMs} is kept for callers but is no longer a stall.
      */
-    public static ClawAccessibilityService getConnectedInstance(long timeoutMs) {
-        ClawAccessibilityService service = instance;
+    public static ReturnGiftAccessibilityService getConnectedInstance(long timeoutMs) {
+        ReturnGiftAccessibilityService service = instance;
         if (service != null) return service;
 
-        Context app = ClawApplication.Companion.getInstance();
-        if (app == null || !isEnabledInSettings(app)) {
-            return null;
-        }
+        Context app = ReturnGiftApplication.Companion.getInstance();
+        if (app == null) return null;
+        if (AccessibilityNotice.INSTANCE.isBackingOff()) return null;
 
-        XLog.w(TAG, "Accessibility service not attached yet, waiting up to " + timeoutMs + "ms for rebind");
-        return awaitRunning(timeoutMs) ? instance : null;
+        if (isEnabledInSettings(app)) {
+            long grace = Math.min(timeoutMs, 1500L);
+            if (awaitRunning(grace) && instance != null) {
+                return instance;
+            }
+        }
+        XLog.w(TAG, "Accessibility unavailable (enabled=" + isEnabledInSettings(app) + "), not retrying");
+        AccessibilityNotice.INSTANCE.markUnavailable(app);
+        return null;
     }
 
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
         instance = this;
+        AccessibilityNotice.INSTANCE.clear(this);
         KVUtils.INSTANCE.noteAccessibilityConnected();
         KVUtils.INSTANCE.noteAccessibilityHeartbeat();
         XLog.i(TAG, "Accessibility service connected");

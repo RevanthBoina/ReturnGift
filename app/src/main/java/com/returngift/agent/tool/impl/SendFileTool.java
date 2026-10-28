@@ -8,8 +8,8 @@ import android.os.Environment;
 
 import androidx.core.content.ContextCompat;
 
-import com.returngift.agent.ClawApplication;
-import com.returngift.agent.ClawApplicationKt;
+import com.returngift.agent.ReturnGiftApplication;
+import com.returngift.agent.ReturnGiftApplicationKt;
 import com.returngift.agent.R;
 import com.returngift.agent.channel.Channel;
 import com.returngift.agent.channel.ChannelManager;
@@ -31,7 +31,7 @@ public class SendFileTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_send_file);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_send_file);
     }
 
     @Override
@@ -53,7 +53,7 @@ public class SendFileTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        android.content.Context ctx = ClawApplication.Companion.getInstance();
+        android.content.Context ctx = ReturnGiftApplication.Companion.getInstance();
         // Check storage permission
         if (!hasStoragePermission()) {
             return ToolResult.error(ctx.getString(R.string.tool_no_storage_permission));
@@ -73,8 +73,8 @@ public class SendFileTool extends BaseTool {
         }
 
         // Get current task channel and message ID
-        Channel channel = ClawApplicationKt.getAppViewModel().getInProgressTaskChannel();
-        String messageId = ClawApplicationKt.getAppViewModel().getInProgressTaskMessageId();
+        Channel channel = ReturnGiftApplicationKt.getAppViewModel().getInProgressTaskChannel();
+        String messageId = ReturnGiftApplicationKt.getAppViewModel().getInProgressTaskMessageId();
 
         if (channel == null || messageId.isEmpty()) {
             return ToolResult.error(ctx.getString(R.string.tool_no_task_channel));
@@ -93,7 +93,7 @@ public class SendFileTool extends BaseTool {
             return Environment.isExternalStorageManager();
         } else {
             return ContextCompat.checkSelfPermission(
-                    ClawApplication.Companion.getInstance(),
+                    ReturnGiftApplication.Companion.getInstance(),
                     android.Manifest.permission.READ_EXTERNAL_STORAGE
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED;
         }

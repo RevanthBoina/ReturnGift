@@ -4,7 +4,7 @@
 package com.returngift.agent.core.input
 
 import android.view.accessibility.AccessibilityNodeInfo
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -27,7 +27,7 @@ object DirectActionDispatcher {
      */
     @JvmStatic
     fun performFastTap(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         nodeId: String?,
         x: Int,
         y: Int

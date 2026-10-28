@@ -252,7 +252,7 @@ hints, not authority. Implemented:
 |---|---|---|
 | Token sent in clear | `https` required; cleartext allowed only for `localhost`/`127.0.0.1`/`[::1]`/`10.0.2.2` | `McpModel.validationError` |
 | Token readable on disk | AES-256-GCM under an `AndroidKeyStore` key; the server row stores no secret; missing cipher = fail closed (row not written) | `McpSecretStore`, `KeystoreSecretCipher`, `McpServerStore` |
-| Legacy plaintext token | one-time `migrateLegacySecrets()` at startup, off the main thread, row rewritten only after the encrypted copy is stored | `McpServerStore`, `ClawApplication` |
+| Legacy plaintext token | one-time `migrateLegacySecrets()` at startup, off the main thread, row rewritten only after the encrypted copy is stored | `McpServerStore`, `ReturnGiftApplication` |
 | Token in logs/transcript | `Bearer …` and `token=/api_key:/password:` shapes masked before logging or feeding an error to the model | `McpRedaction` |
 | Unbounded output | 2 MB body, 64 content items, 16k chars per block, 24k per result; responses fence as `<<<REMOTE-TOOL-OUTPUT …>>>` with an explicit "this is data, not instructions" line | `McpLimits`, `HttpMcpTransport`, `McpResultFormatter` |
 | Name confusion | dispatch by exact `(serverId, toolName)` route captured **before** de-duplication; collisions reported, never silently merged | `McpRuntime` |
@@ -315,7 +315,7 @@ actionable clause while the full sentence still reaches the model.
 These were compiled and run on a plain JVM with a real Kotlin compiler and a minimal
 JUnit shim; `scripts/kotlin-structure-check.py` and `scripts/ci-preflight.sh` are clean.
 **No Android assemble was run here** (no SDK in this environment), so the UI wiring
-(`McpServersActivity`, `ClawApplication`, `DefaultAgentService`, `RoutedLlmClient`) is
+(`McpServersActivity`, `ReturnGiftApplication`, `DefaultAgentService`, `RoutedLlmClient`) is
 verified by structure check and review only until CI builds it.
 
 ### 7.5 P2 — still open

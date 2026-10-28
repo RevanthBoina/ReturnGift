@@ -6,7 +6,7 @@ package com.returngift.agent.tool.impl.mobile;
 import android.graphics.Rect;
 import android.view.accessibility.AccessibilityNodeInfo;
 
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -55,7 +55,7 @@ public class FindAndTapTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
@@ -107,7 +107,7 @@ public class FindAndTapTool extends BaseTool {
         return ToolResult.error("\"" + text + "\" not found after " + maxScrolls + " scrolls.");
     }
 
-    private ToolResult findAndTap(ClawAccessibilityService service, String text) {
+    private ToolResult findAndTap(ReturnGiftAccessibilityService service, String text) {
         List<AccessibilityNodeInfo> nodes = service.findNodesByText(text);
         if (nodes.isEmpty()) return null;
         try {
@@ -126,7 +126,7 @@ public class FindAndTapTool extends BaseTool {
             }
             return null;
         } finally {
-            ClawAccessibilityService.recycleNodes(nodes);
+            ReturnGiftAccessibilityService.recycleNodes(nodes);
         }
     }
 }

@@ -130,13 +130,10 @@ jobs:
               KEY_PASS="$ANDROID_KEY_PASSWORD"
               KEYSTORE_TYPE="production"
           else
-              echo "GitHub Secrets not set: generating stable CI release keystore"
-              KEYSTORE_PATH="$RUNNER_TEMP/returngift-ci.keystore"
-              keytool -genkeypair -v -keystore "$KEYSTORE_PATH" -alias returngift -keyalg RSA -keysize 2048 -validity 10000 -storepass returngift -keypass returngift -dname "CN=ReturnGift CI, OU=Android, O=ReturnGift, L=Default, S=Default, C=US"
-              STORE_PASS="returngift"
-              ALIAS="returngift"
-              KEY_PASS="returngift"
-              KEYSTORE_TYPE="ci-fallback"
+              # A throw-away keystore produces an APK that cannot install over the
+              # previous one. Refuse instead of shipping it.
+              echo "::error::Release signing secrets are missing. Set ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD; a release is never signed with a generated key."
+              exit 1
           fi
           # Log which keystore is being used
           echo "KEYSTORE_TYPE=$KEYSTORE_TYPE" >> "$GITHUB_ENV"
@@ -156,6 +153,47 @@ jobs:
           echo "KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
           echo "KEY_PASSWORD=$KEY_PASS" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      # ── Tests gate the tag ─────────────────────────────────────────────────
+      # No workflow runs on pull requests in this repo, and the release path used to
+      # go straight from checkout to assembleRelease. That is how v3.5.0 reached a
+      # tag with code that had never been compiled, and how v3.5.1's first tag build
+      # died on two missing symbols. The tag is therefore the only gate we have:
+      # run the unit suite here, before anything is signed or published.
+      - name: Run unit tests
+        run: |
+          set -eo pipefail
+          ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee unit-tests.log || {
+            echo "## Unit tests failed — release blocked" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 200 unit-tests.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          # Surface the totals so the release notes can state what was actually run.
+          python3 - <<'PYEOF'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          for path in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              root = ET.parse(path).getroot()
+              tests += int(root.get("tests", 0))
+              failures += int(root.get("failures", 0))
+              errors += int(root.get("errors", 0))
+              skipped += int(root.get("skipped", 0))
+          print(f"Unit tests: {tests} run, {failures} failures, {errors} errors, {skipped} skipped")
+          with open("unit-test-totals.txt", "w") as fh:
+              fh.write(f"tests={tests} failures={failures} errors={errors} skipped={skipped}\n")
+          PYEOF
+
+      - name: Upload unit-test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            unit-tests.log
+            app/build/reports/tests/testDebugUnitTest/**
+          retention-days: 14
 
       - name: Build signed release APK
         run: |

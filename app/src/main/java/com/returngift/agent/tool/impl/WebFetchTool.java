@@ -3,7 +3,7 @@
 
 package com.returngift.agent.tool.impl;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
 import com.returngift.agent.agent.provenance.ProvenanceHelper;
 import com.returngift.agent.agent.provenance.ProvenanceTag;
@@ -57,7 +57,7 @@ public class WebFetchTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_web_fetch);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_web_fetch);
     }
 
     @Override
@@ -140,7 +140,8 @@ public class WebFetchTool extends BaseTool {
             }
             XLog.i(TAG, "Fetched " + url + " -> " + text.length() + " chars in " +
                     (System.currentTimeMillis() - startedAt) + "ms, saved=" + saveToVault);
-            return ToolResult.success(result.toString());
+            return ToolResult.success(
+                    com.returngift.agent.agent.UntrustedContent.INSTANCE.wrap("page", result.toString()));
         } catch (IOException e) {
             XLog.e(TAG, "fetch failed: " + url, e);
             return ToolResult.error("Network error fetching " + url + ": " + e.getMessage());

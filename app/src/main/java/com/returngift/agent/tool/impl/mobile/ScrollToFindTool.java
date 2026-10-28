@@ -8,9 +8,9 @@ import android.util.DisplayMetrics;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityNodeInfo;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.R;
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -32,7 +32,7 @@ public class ScrollToFindTool extends BaseTool {
 
     @Override
     public String getDisplayName() {
-        return ClawApplication.Companion.getInstance().getString(R.string.tool_name_scroll_to_find);
+        return ReturnGiftApplication.Companion.getInstance().getString(R.string.tool_name_scroll_to_find);
     }
 
     @Override
@@ -62,7 +62,7 @@ public class ScrollToFindTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
@@ -130,7 +130,7 @@ public class ScrollToFindTool extends BaseTool {
     /**
      * Search for an element containing the specified text on the current screen. Returns ToolResult if found, null if not found.
      */
-    private ToolResult findElement(ClawAccessibilityService service, String text) {
+    private ToolResult findElement(ReturnGiftAccessibilityService service, String text) {
         List<AccessibilityNodeInfo> nodes = service.findNodesByText(text);
         if (!nodes.isEmpty()) {
             try {
@@ -153,7 +153,7 @@ public class ScrollToFindTool extends BaseTool {
                     }
                 }
             } finally {
-                ClawAccessibilityService.recycleNodes(nodes);
+                ReturnGiftAccessibilityService.recycleNodes(nodes);
             }
         }
 
@@ -185,7 +185,7 @@ public class ScrollToFindTool extends BaseTool {
     /**
      * Get a quick summary of screen content, used to detect whether the page has scrolled to the bottom/top.
      */
-    private String getScreenSnapshot(ClawAccessibilityService service) {
+    private String getScreenSnapshot(ReturnGiftAccessibilityService service) {
         try {
             return service.getScreenTree();
         } catch (Exception e) {

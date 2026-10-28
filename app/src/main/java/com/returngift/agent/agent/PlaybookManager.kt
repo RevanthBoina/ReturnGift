@@ -82,6 +82,7 @@ object PlaybookManager {
 
         if (bestMatch != null) {
             XLog.i(TAG, "Matched playbook: ${bestMatch.id} for task: $task")
+            com.returngift.agent.agent.tracker.UsageCounters.bump("playbook", bestMatch.id)
         }
         return bestMatch
     }

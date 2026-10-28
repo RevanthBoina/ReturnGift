@@ -3,7 +3,7 @@
 
 package com.returngift.agent.agent.loop
 
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -53,7 +53,7 @@ object ActionVerifier {
      * Capture the state snapshot BEFORE an action executes. Pass the returned token to
      * [verifyAfter] along with the action's success flag and any target expectation.
      */
-    fun captureBefore(service: ClawAccessibilityService, toolName: String): BeforeState {
+    fun captureBefore(service: ReturnGiftAccessibilityService, toolName: String): BeforeState {
         val foreground = try { service.getForegroundPackage() } catch (_: Exception) { null }
         val signature = if (toolName in FOREGROUND_SENSITIVE_TOOLS) {
             // For navigation/launch tools, the screen signature is volatile during the
@@ -71,7 +71,7 @@ object ActionVerifier {
      * now be present). Returns a [VerificationResult] the loop uses to continue or recover.
      */
     fun verifyAfter(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         before: BeforeState,
         actionSucceeded: Boolean,
         expectedForeground: String? = null,
@@ -129,11 +129,11 @@ object ActionVerifier {
         )
     }
 
-    private fun textPresentOnScreen(service: ClawAccessibilityService, text: String): Boolean {
+    private fun textPresentOnScreen(service: ReturnGiftAccessibilityService, text: String): Boolean {
         return try {
             val nodes = service.findNodesByText(text)
             val present = nodes.any { it.isVisibleToUser }
-            ClawAccessibilityService.recycleNodes(nodes)
+            ReturnGiftAccessibilityService.recycleNodes(nodes)
             present
         } catch (_: Exception) { false }
     }

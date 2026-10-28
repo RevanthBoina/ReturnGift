@@ -56,7 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.agent.AppAllowListStore
 import com.returngift.agent.agent.knowledge.AppUsageGuide
 import com.returngift.agent.agent.knowledge.InstalledApps
@@ -182,6 +182,19 @@ fun AppAllowListScreen(onBack: () -> Unit) {
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                        )
+                        ToggleRow(
+                            title = "Ask before risky actions",
+                            subtitle = if (com.returngift.agent.utils.KVUtils.askBeforeRiskyActions()) {
+                                "On — every permission and approval card is asked again."
+                            } else {
+                                "Off — the agent acts. Undo and the action log still record everything."
+                            },
+                            checked = com.returngift.agent.utils.KVUtils.askBeforeRiskyActions(),
+                            onCheckedChange = {
+                                com.returngift.agent.utils.KVUtils.setAskBeforeRiskyActions(it)
+                                prefsVersion++
+                            },
                         )
                         ToggleRow(
                             title = "Ask before a new app",
@@ -458,7 +471,7 @@ private fun ModeChip(text: String, selected: Boolean, onClick: () -> Unit) {
 
 /** Union of installed apps, apps the agent already met, and guided apps. */
 private fun buildRows(store: AppAllowListStore): List<AppRow> {
-    val context = ClawApplication.instance
+    val context = ReturnGiftApplication.instance
     val stored = runCatching { store.getAllEntries() }.getOrDefault(emptyList())
     val storedByPackage = stored.associateBy { it.packageName }
     val installed = runCatching { InstalledApps.launchable(context, forceRefresh = true) }
@@ -523,7 +536,7 @@ private fun buildRows(store: AppAllowListStore): List<AppRow> {
 }
 
 private fun loadIcon(packageName: String): Bitmap? = try {
-    val drawable: Drawable = ClawApplication.instance.packageManager.getApplicationIcon(packageName)
+    val drawable: Drawable = ReturnGiftApplication.instance.packageManager.getApplicationIcon(packageName)
     when (drawable) {
         is BitmapDrawable -> drawable.bitmap
         else -> drawable.toBitmap(width = 96, height = 96)

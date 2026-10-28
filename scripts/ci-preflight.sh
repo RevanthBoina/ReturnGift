@@ -100,28 +100,28 @@ audit_missing_import "com.returngift.agent.tool.ToolResult" "ToolResult"
 audit_missing_import "com.returngift.agent.tool.BaseTool" "BaseTool"
 audit_missing_import "com.returngift.agent.tool.ToolParameter" "ToolParameter"
 
-# ClawApplication lives in com.returngift.agent (not com.returngift.agent.tool), so it
+# ReturnGiftApplication lives in com.returngift.agent (not com.returngift.agent.tool), so it
 # needs a dedicated audit rather than audit_missing_import's hardcoded tool package.
-audit_missing_clawapplication_import() {
+audit_missing_returngiftapplication_import() {
   local hits=""
   while IFS= read -r f; do
     if grep -qE '^package com\.returngift\.agent;' "$f"; then
       continue
     fi
-    if grep -q '\bClawApplication\b' "$f" && \
-       ! grep -q 'import com.returngift.agent.ClawApplication;' "$f"; then
-      hits="${hits}    ${f} (uses ClawApplication, no import)\n"
+    if grep -q '\bReturnGiftApplication\b' "$f" && \
+       ! grep -q 'import com.returngift.agent.ReturnGiftApplication;' "$f"; then
+      hits="${hits}    ${f} (uses ReturnGiftApplication, no import)\n"
     fi
-  done < <(grep -rl --include='*.java' '\bClawApplication\b' app/src/main/java 2>/dev/null || true)
+  done < <(grep -rl --include='*.java' '\bReturnGiftApplication\b' app/src/main/java 2>/dev/null || true)
   if [ -n "$hits" ]; then
-    red "PREFLIGHT FAIL [missing-import-ClawApplication]: Java file uses com.returngift.agent.ClawApplication without importing it."
+    red "PREFLIGHT FAIL [missing-import-ReturnGiftApplication]: Java file uses com.returngift.agent.ReturnGiftApplication without importing it."
     printf '%b' "$hits"
     fail=1
   else
-    grn "OK missing-import-ClawApplication"
+    grn "OK missing-import-ReturnGiftApplication"
   fi
 }
-audit_missing_clawapplication_import
+audit_missing_returngiftapplication_import
 
 # Structural guard (lexer-based, NOT grep): unbalanced braces, unterminated strings /
 # nested block comments, and conflicting overloads. Three separate incidents shipped a

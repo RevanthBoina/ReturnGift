@@ -6,7 +6,7 @@ package com.returngift.agent.dev
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.utils.KVUtils
 import com.returngift.agent.utils.XLog
 
@@ -35,7 +35,7 @@ object DevConfig {
 
     private val securePrefs by lazy {
         try {
-            val ctx = ClawApplication.instance
+            val ctx = ReturnGiftApplication.instance
             val masterKey = MasterKey.Builder(ctx)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()

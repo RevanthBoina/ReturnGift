@@ -18,7 +18,7 @@ import android.os.Environment;
 import android.os.StatFs;
 import android.provider.Settings;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -67,7 +67,7 @@ public class GetDeviceInfoTool extends BaseTool {
     @Override
     public ToolResult execute(Map<String, Object> params) {
         String category = requireString(params, "category").toLowerCase().trim();
-        Context ctx = ClawApplication.Companion.getInstance();
+        Context ctx = ReturnGiftApplication.Companion.getInstance();
 
         try {
             switch (category) {

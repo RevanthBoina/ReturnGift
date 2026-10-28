@@ -126,7 +126,7 @@ object ToolRegistry {
         // fall back to the Application context otherwise (SafetyInterceptor already
         // fails closed — denies — if no dialog can be shown).
         val dialogContext = com.blankj.utilcode.util.ActivityUtils.getTopActivity()
-            ?: com.returngift.agent.ClawApplication.instance
+            ?: com.returngift.agent.ReturnGiftApplication.instance
         val blockReason = com.returngift.agent.agent.SafetyInterceptor.check(name, params, dialogContext)
         if (blockReason != null) {
             com.returngift.agent.utils.XLog.w("ToolRegistry", "Blocked '$name': $blockReason")
@@ -178,7 +178,7 @@ object ToolRegistry {
 
         // Safety check runs on the phone (brain) before dispatch
         val dialogContext = com.blankj.utilcode.util.ActivityUtils.getTopActivity()
-            ?: com.returngift.agent.ClawApplication.instance
+            ?: com.returngift.agent.ReturnGiftApplication.instance
         val blockReason = com.returngift.agent.agent.SafetyInterceptor.check(toolName, params, dialogContext)
         if (blockReason != null) {
             com.returngift.agent.utils.XLog.w("ToolRegistry", "Companion dispatch blocked '$toolName': $blockReason")

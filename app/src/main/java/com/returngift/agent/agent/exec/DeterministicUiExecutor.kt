@@ -7,7 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.returngift.agent.agent.grounding.SemanticTargetResolver
 import com.returngift.agent.core.telemetry.AdaptiveSettleController
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -95,7 +95,7 @@ class DeterministicUiExecutor(
     private var state = State.START
 
     fun execute(spec: Spec): ExecReport {
-        val service = ClawAccessibilityService.getInstance()
+        val service = ReturnGiftAccessibilityService.getInstance()
             ?: return report(ExecOutcome.FAILED_ACTION, "accessibility service not running")
         enter(State.START)
         try {
@@ -141,7 +141,7 @@ class DeterministicUiExecutor(
     }
 
     /** @return null to continue with the next step, or a terminal report. */
-    private fun executeStep(service: ClawAccessibilityService, step: Step): ExecReport? {
+    private fun executeStep(service: ReturnGiftAccessibilityService, step: Step): ExecReport? {
         while (true) {
             if (shouldAbort()) throw AbortedException()
             budget.check()?.let { return budgetReport(it) }
@@ -215,7 +215,7 @@ class DeterministicUiExecutor(
      * Used for polling during WAIT_FOR_TARGET to avoid burning escalation budget.
      */
     private fun resolveDeterministic(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         step: Step,
     ): SemanticTargetResolver.ResolvedTarget? {
         val chain = step.target ?: return null
@@ -241,7 +241,7 @@ class DeterministicUiExecutor(
      * re-read + bounded AI escalation (≤2 per run). Never reuses node IDs.
      */
     private fun resolveTarget(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         step: Step,
     ): SemanticTargetResolver.ResolvedTarget? {
         // First try deterministic resolution
@@ -283,7 +283,7 @@ class DeterministicUiExecutor(
      * AI escalation budget on loading screens.
      */
     private fun resolveTargetWithWait(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         step: Step,
     ): SemanticTargetResolver.ResolvedTarget? {
         val chain = step.target ?: return null
@@ -312,7 +312,7 @@ class DeterministicUiExecutor(
     }
 
     private fun performAction(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         step: Step,
         resolved: SemanticTargetResolver.ResolvedTarget?,
     ): Boolean {
@@ -346,7 +346,7 @@ class DeterministicUiExecutor(
         }
     }
 
-    private fun currentFocusedEditable(service: ClawAccessibilityService) = try {
+    private fun currentFocusedEditable(service: ReturnGiftAccessibilityService) = try {
         val root = service.rootInActiveWindow
         root?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
             ?.takeIf { it.isEditable }
@@ -355,7 +355,7 @@ class DeterministicUiExecutor(
     }
 
     /** Verify only the minimum state necessary; at most one gated read. */
-    private fun verify(service: ClawAccessibilityService, spec: VerifySpec): Boolean {
+    private fun verify(service: ReturnGiftAccessibilityService, spec: VerifySpec): Boolean {
         spec.foregroundPackage?.let { pkg ->
             if (!service.waitForForeground(pkg, 4_000)) return false
         }
@@ -372,7 +372,7 @@ class DeterministicUiExecutor(
      * must proceed with the information it already has.
      */
     private fun gatedRead(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         purpose: ScreenReadGate.Purpose,
     ): String? {
         val decision = readGate.requestRead(purpose)

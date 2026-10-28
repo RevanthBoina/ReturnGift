@@ -31,7 +31,7 @@ import org.robolectric.annotation.Config
  * never a `Completed` carrying failure text (which the UI pattern-matches as success).
  *
  * The orchestrator's heavy Android singletons (ChannelManager, FloatingCircleManager,
- * ClawApplication) are circumvented by injecting a fake [PipelineRouter] plus the
+ * ReturnGiftApplication) are circumvented by injecting a fake [PipelineRouter] plus the
  * observable [TaskOrchestrator.channelMessageSink] / [floatingStateSink] seams.
  */
 @RunWith(RobolectricTestRunner::class)

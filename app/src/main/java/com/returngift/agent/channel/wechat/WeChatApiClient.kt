@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * WeChat iLink Bot API client.
- * Strictly mirrors the official @tencent-weixin/openclaw-weixin@1.0.2 src/api/api.ts + src/api/session-guard.ts
+ * Strictly mirrors the official @tencent-weixin/returngift-weixin@1.0.2 src/api/api.ts + src/api/session-guard.ts
  */
 class WeChatApiClient(
     private var baseUrl: String = DEFAULT_BASE_URL,

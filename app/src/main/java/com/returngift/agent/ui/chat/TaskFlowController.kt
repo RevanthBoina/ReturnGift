@@ -19,14 +19,14 @@ import com.returngift.agent.ServiceBindingState
 import com.returngift.agent.TaskEvent
 import com.returngift.agent.TaskOrchestrator
 import com.returngift.agent.channel.Channel
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.agent.DirectDeviceDataGuard
 import com.returngift.agent.agent.PipelineRouter
 import com.returngift.agent.agent.TaskPromptEnvelope
 import com.returngift.agent.agent.clarify.ClarificationManager
 import com.returngift.agent.agent.llm.ModelConfigRepository
 import com.returngift.agent.floating.FloatingCircleManager
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.service.ForegroundService
 import com.returngift.agent.service.AutoReplyManager
 import com.returngift.agent.tool.ToolRegistry
@@ -324,7 +324,7 @@ class TaskFlowController(
                 sendTaskRetryCount++
                 addSystem("Accessibility service connecting, please wait...")
                 executor.submit {
-                    val connected = ClawAccessibilityService.awaitRunning(5000)
+                    val connected = ReturnGiftAccessibilityService.awaitRunning(5000)
                     activity.runOnUiThread {
                         if (connected) {
                             sendTask(text)
@@ -717,7 +717,7 @@ class TaskFlowController(
         minimizedForTask = false
         val title = pendingTaskTitle ?: "Task"
         com.returngift.agent.service.ForegroundService.notifyTaskFinished(
-            ClawApplication.instance, success, title.take(60), body
+            ReturnGiftApplication.instance, success, title.take(60), body
         )
     }
 

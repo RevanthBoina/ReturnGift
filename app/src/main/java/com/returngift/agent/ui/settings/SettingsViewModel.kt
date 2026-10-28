@@ -7,7 +7,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import com.returngift.agent.R
 import com.returngift.agent.agent.llm.ActiveModelMode
 import com.returngift.agent.agent.llm.ModelConfigRepository
@@ -46,9 +46,9 @@ class SettingsViewModel : ViewModel() {
         val wechatBotToken = KVUtils.getWechatBotToken().isNotEmpty()
         val map = mapOf(
             MenuAction.LLM_CONFIG.name to SettingValue.Text(getActiveModelDisplayName()),
-            MenuAction.DISCORD.name to SettingValue.Text(ClawApplication.instance.getString(if (discordBotToken) R.string.common_bound else R.string.common_unbound)),
-            MenuAction.TELEGRAM.name to SettingValue.Text(ClawApplication.instance.getString(if (telegramBotToken) R.string.common_bound else R.string.common_unbound)),
-            MenuAction.WECHAT.name to SettingValue.Text(ClawApplication.instance.getString(if (wechatBotToken) R.string.common_bound else R.string.common_unbound)),
+            MenuAction.DISCORD.name to SettingValue.Text(ReturnGiftApplication.instance.getString(if (discordBotToken) R.string.common_bound else R.string.common_unbound)),
+            MenuAction.TELEGRAM.name to SettingValue.Text(ReturnGiftApplication.instance.getString(if (telegramBotToken) R.string.common_bound else R.string.common_unbound)),
+            MenuAction.WECHAT.name to SettingValue.Text(ReturnGiftApplication.instance.getString(if (wechatBotToken) R.string.common_bound else R.string.common_unbound)),
             MenuAction.LAN_CONFIG.name to SettingValue.Text(getLanConfigTrailingText())
         )
         _settingItems.value = map
@@ -57,7 +57,7 @@ class SettingsViewModel : ViewModel() {
     /** Show the actual active model, not stale shared key. */
     private fun getActiveModelDisplayName(): String {
         val config = ModelConfigRepository.snapshot()
-        val app = ClawApplication.instance
+        val app = ReturnGiftApplication.instance
         return if (config.activeMode == ActiveModelMode.LOCAL) {
             val path = config.local.modelPath
             if (path.isNotEmpty() && java.io.File(path).exists()) {
@@ -168,7 +168,7 @@ class SettingsViewModel : ViewModel() {
                         KVUtils.setWechatApiBaseUrl(authResult.baseUrl)
                         ChannelManager.reinitWeChatFromStorage()
                         dialog.showStatusOverlay(
-                            ClawApplication.instance.getString(R.string.channel_config_wechat_confirmed)
+                            ReturnGiftApplication.instance.getString(R.string.channel_config_wechat_confirmed)
                         )
                         refresh()
                         delay(1500)
@@ -201,16 +201,16 @@ class SettingsViewModel : ViewModel() {
                 updateTrailingText(MenuAction.LAN_CONFIG.name, text)
                 text
             } else {
-                ClawApplication.instance.getString(R.string.lan_config_no_wifi)
+                ReturnGiftApplication.instance.getString(R.string.lan_config_no_wifi)
             }
         }
     }
 
     private fun getLanConfigTrailingText(): String {
         return if (ConfigServerManager.isRunning()) {
-            ConfigServerManager.getAddress() ?: ClawApplication.instance.getString(R.string.lan_config_stopped)
+            ConfigServerManager.getAddress() ?: ReturnGiftApplication.instance.getString(R.string.lan_config_stopped)
         } else {
-            ClawApplication.instance.getString(R.string.lan_config_stopped)
+            ReturnGiftApplication.instance.getString(R.string.lan_config_stopped)
         }
     }
 

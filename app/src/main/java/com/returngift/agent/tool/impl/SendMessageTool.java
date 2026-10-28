@@ -7,9 +7,9 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.view.accessibility.AccessibilityNodeInfo;
 
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.core.telemetry.AdaptiveSettleController;
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -67,7 +67,7 @@ public class SendMessageTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        ClawAccessibilityService service = requireAccessibilityService();
+        ReturnGiftAccessibilityService service = requireAccessibilityService();
         if (service == null) {
             return ToolResult.error("Accessibility service is not running");
         }
@@ -157,7 +157,7 @@ public class SendMessageTool extends BaseTool {
      * Check if the current screen is already the chatroom for the given contact.
      * Looks for the contact name in the top toolbar area.
      */
-    private boolean isAlreadyInChatWith(ClawAccessibilityService service, String contact) {
+    private boolean isAlreadyInChatWith(ReturnGiftAccessibilityService service, String contact) {
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
         if (root == null) return false;
         java.util.LinkedHashSet<String> normalizedAliases = ContactMatchUtils.buildNormalizedAliases(contact);
@@ -194,7 +194,7 @@ public class SendMessageTool extends BaseTool {
      * Wait until the given package is the active window.
      * Works for ANY app — just checks packageName on root node.
      */
-    private boolean waitForActiveWindow(ClawAccessibilityService service, String packageName, long timeoutMs) throws InterruptedException {
+    private boolean waitForActiveWindow(ReturnGiftAccessibilityService service, String packageName, long timeoutMs) throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             AccessibilityNodeInfo root = service.getRootInActiveWindow();
@@ -213,7 +213,7 @@ public class SendMessageTool extends BaseTool {
      * Reuses the same node-find logic that typeInBottomEditText uses.
      * Checks every 150ms, max 6000ms total. Early-exits on first appearance.
      */
-    private boolean hasInputField(ClawAccessibilityService service) {
+    private boolean hasInputField(ReturnGiftAccessibilityService service) {
         long deadline = System.currentTimeMillis() + 6_000L;
         while (System.currentTimeMillis() < deadline) {
             AccessibilityNodeInfo root = service.getRootInActiveWindow();
@@ -251,7 +251,7 @@ public class SendMessageTool extends BaseTool {
      * Find a contact by manually traversing the full accessibility tree.
      * More reliable than findAccessibilityNodeInfosByText which misses nodes in some apps.
      */
-    private boolean findAndTapContact(ClawAccessibilityService service, String contact) throws InterruptedException {
+    private boolean findAndTapContact(ReturnGiftAccessibilityService service, String contact) throws InterruptedException {
         java.util.LinkedHashSet<String> normalizedAliases = ContactMatchUtils.buildNormalizedAliases(contact);
         java.util.LinkedHashSet<String> digitAliases = ContactMatchUtils.buildDigitAliases(contact);
         return ContactListUiUtils.searchOrScrollAndFindAndClick(service, contact, normalizedAliases, digitAliases, 12, 800);
@@ -288,7 +288,7 @@ public class SendMessageTool extends BaseTool {
      * In messaging apps, the message input is always at the bottom.
      * Search bars are at the top — we pick the one with the highest Y value.
      */
-    private boolean typeInBottomEditText(ClawAccessibilityService service, String message) throws InterruptedException {
+    private boolean typeInBottomEditText(ReturnGiftAccessibilityService service, String message) throws InterruptedException {
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
         if (root == null) {
             XLog.w(TAG, "typeInBottomEditText: root is null!");
@@ -354,7 +354,7 @@ public class SendMessageTool extends BaseTool {
      * 2. If multiple matches, pick the one near the bottom-right (typical send button position)
      * 3. Fallback: press Enter key without leaving the current chat
      */
-    private boolean tapSendOrEnter(ClawAccessibilityService service, String expectedMessage) throws InterruptedException {
+    private boolean tapSendOrEnter(ReturnGiftAccessibilityService service, String expectedMessage) throws InterruptedException {
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
         if (root == null) return false;
 
@@ -379,7 +379,7 @@ public class SendMessageTool extends BaseTool {
     }
 
     private boolean didMessageLeaveComposer(
-            ClawAccessibilityService service,
+            ReturnGiftAccessibilityService service,
             String expectedMessage,
             String pathLabel
     ) {

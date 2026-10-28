@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Screen Capture Manager - captures accessibility tree XML on screen transitions.
  * 
- * Hooks into ClawAccessibilityService window-change callbacks to dump accessibility-tree
+ * Hooks into ReturnGiftAccessibilityService window-change callbacks to dump accessibility-tree
  * XML, computes sha256 hash for fixture validation, and supports device profile tagging.
  */
 public class ScreenCaptureManager {
@@ -297,7 +297,7 @@ public class ScreenCaptureManager {
      * Capture the current screen and build XML tree.
      */
     private void captureCurrentScreen(String packageName) {
-        ClawAccessibilityService service = ClawAccessibilityService.getInstance();
+        ReturnGiftAccessibilityService service = ReturnGiftAccessibilityService.getInstance();
         if (service == null) {
             XLog.w(TAG, "Accessibility service not available for capture");
             return;

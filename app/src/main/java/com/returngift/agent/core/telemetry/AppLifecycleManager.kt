@@ -6,7 +6,7 @@ package com.returngift.agent.core.telemetry
 import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 
 /**
@@ -85,7 +85,7 @@ object AppLifecycleManager {
         }
 
         // Final check via the centralized accessibility foreground getter (exact match)
-        val service = ClawAccessibilityService.getInstance()
+        val service = ReturnGiftAccessibilityService.getInstance()
         if (service != null && service.foregroundPackage == packageName) {
             val elapsed = SystemClock.elapsedRealtime() - startTime
             return LaunchResult(
@@ -110,7 +110,7 @@ object AppLifecycleManager {
      * fallback rather than kept as a source of false positives.
      */
     fun getActiveForegroundPackage(context: Context): String? {
-        val service = ClawAccessibilityService.getInstance() ?: return null
+        val service = ReturnGiftAccessibilityService.getInstance() ?: return null
         return service.foregroundPackage
     }
 }

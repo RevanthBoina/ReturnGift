@@ -12,7 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import com.returngift.agent.service.ClawAccessibilityService;
+import com.returngift.agent.service.ReturnGiftAccessibilityService;
 
 /**
  * Generic contact/chat-list search helpers.
@@ -41,7 +41,7 @@ public final class ContactListUiUtils {
     private ContactListUiUtils() {}
 
     public static boolean prepareForContactLookup(
-        ClawAccessibilityService service,
+        ReturnGiftAccessibilityService service,
         String packageName,
         int maxBacks,
         long settleMs
@@ -80,7 +80,7 @@ public final class ContactListUiUtils {
     }
 
     public static boolean scrollAndFindAndClick(
-        ClawAccessibilityService service,
+        ReturnGiftAccessibilityService service,
         LinkedHashSet<String> normalizedAliases,
         LinkedHashSet<String> digitAliases,
         int maxScrolls,
@@ -126,7 +126,7 @@ public final class ContactListUiUtils {
     }
 
     public static boolean searchOrScrollAndFindAndClick(
-        ClawAccessibilityService service,
+        ReturnGiftAccessibilityService service,
         String rawQuery,
         LinkedHashSet<String> normalizedAliases,
         LinkedHashSet<String> digitAliases,
@@ -230,7 +230,7 @@ public final class ContactListUiUtils {
     }
 
     private static SearchAttemptResult trySearchAndClick(
-        ClawAccessibilityService service,
+        ReturnGiftAccessibilityService service,
         String rawQuery,
         Set<String> normalizedAliases,
         Set<String> digitAliases,
@@ -284,7 +284,7 @@ public final class ContactListUiUtils {
         return SearchAttemptResult.NO_MATCH;
     }
 
-    private static String activePackageName(ClawAccessibilityService service) {
+    private static String activePackageName(ReturnGiftAccessibilityService service) {
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
         if (root == null || root.getPackageName() == null) {
             return null;
@@ -343,7 +343,7 @@ public final class ContactListUiUtils {
         return scrollableContainers > 0 && visibleTextRows >= 3 && clickableRows >= 2;
     }
 
-    private static String safeScreenSnapshot(ClawAccessibilityService service) {
+    private static String safeScreenSnapshot(ReturnGiftAccessibilityService service) {
         try {
             return service.getScreenTree();
         } catch (Exception e) {
@@ -352,7 +352,7 @@ public final class ContactListUiUtils {
     }
 
     private static boolean dismissBlockingOverlay(
-        ClawAccessibilityService service,
+        ReturnGiftAccessibilityService service,
         AccessibilityNodeInfo root,
         long settleMs
     ) throws InterruptedException {

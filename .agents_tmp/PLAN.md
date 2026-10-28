@@ -58,7 +58,7 @@ For every candidate marked relocate/discard: re-verify using `git grep -n "<Exac
 **Step 1.1: Triage `core/` package (16 files).**
 - **Goal:** recover genuinely useful implementations; discard only true dead code.
 - **Method:** open each file, read its purpose. Prime candidates for wiring: `core/accessibility/ScreenTreeTokenOptimizer` + `SemanticNodeFlattener` (wire into the `getScreenTree()` path if functional — AGENTS.md already advertises this behavior). `core/input/*` (`TouchInputLayer`/`DynamicIMEInjector`/`DirectActionDispatcher`) — check whether they supersede or complement `InputTextTool` paths. `core/vision`, `core/game`, `core/terminal`, `core/telemetry` — evaluate individually; discard only after the Phase-0 gate.
-- **Reference:** `app/src/main/java/com/returngift/agent/core/`, `service/ClawAccessibilityService.java`, `tool/impl/InputTextTool.java`.
+- **Reference:** `app/src/main/java/com/returngift/agent/core/`, `service/ReturnGiftAccessibilityService.java`, `tool/impl/InputTextTool.java`.
 
 **Step 1.2: Triage `server/` package (4 files).**
 - **Goal:** decide whether the embedded config server is a live feature path or superseded by `dev/GitHubCodeEngine`.
@@ -85,7 +85,7 @@ For every candidate marked relocate/discard: re-verify using `git grep -n "<Exac
 **Step 2.2: Screen-tree token optimization (depends on Step 1.1 outcome).**
 - **Goal:** reduce per-read token cost in the agent loop (fewer tokens = faster + cheaper + fewer stalls).
 - **Method:** if `ScreenTreeTokenOptimizer`/`SemanticNodeFlattener` survive Phase 1.1, wire them into `getScreenTree()`; if discarded as non-functional, implement a minimal inline flattener (collapse layout-only containers, drop invisible nodes) sized to the loop's actual need.
-- **Reference:** `agent/exec/ScreenReadGate.kt`, `service/ClawAccessibilityService.java`, `core/accessibility/`.
+- **Reference:** `agent/exec/ScreenReadGate.kt`, `service/ReturnGiftAccessibilityService.java`, `core/accessibility/`.
 
 **Step 2.3: Skill-source duplication guard.**
 - **Goal:** prevent stale-asset drift between root `skill_library/skills/` and bundled `assets/skill_library/skills/`.

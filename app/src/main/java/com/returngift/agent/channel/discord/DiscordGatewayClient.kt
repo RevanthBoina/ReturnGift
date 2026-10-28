@@ -69,7 +69,7 @@ class DiscordGatewayClient private constructor() {
     private val connectionStateListeners = CopyOnWriteArrayList<ConnectionStateListener>()
 
     interface OnDiscordMessageListener {
-        fun onDiscordMessage(channelId: String, messageId: String, content: String)
+        fun onDiscordMessage(channelId: String, messageId: String, content: String, senderId: String)
     }
 
     interface ConnectionStateListener {
@@ -265,7 +265,8 @@ class DiscordGatewayClient private constructor() {
 
             XLog.d(TAG, "Message received: channelId=$channelId, messageId=$messageId, content=$content")
 
-            messageListener?.onDiscordMessage(channelId, messageId, content)
+            val senderId = author?.get("id")?.takeIf { !it.isJsonNull }?.asString ?: ""
+            messageListener?.onDiscordMessage(channelId, messageId, content, senderId)
         } catch (e: Exception) {
             XLog.e(TAG, "Failed to handle MESSAGE_CREATE: ${e.message}", e)
         }
@@ -322,8 +323,8 @@ class DiscordGatewayClient private constructor() {
                 )
                 add("properties", JsonObject().apply {
                     addProperty("os", "android")
-                    addProperty("browser", "claw")
-                    addProperty("device", "claw")
+                    addProperty("browser", "ReturnGift")
+                    addProperty("device", "ReturnGift")
                 })
             })
         }

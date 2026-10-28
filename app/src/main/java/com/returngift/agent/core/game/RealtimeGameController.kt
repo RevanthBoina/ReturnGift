@@ -5,7 +5,7 @@ package com.returngift.agent.core.game
 
 import android.os.SystemClock
 import com.returngift.agent.core.input.TouchInputLayer
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -46,7 +46,7 @@ object RealtimeGameController {
     /**
      * Starts the real-time game control loop with an initial policy.
      */
-    fun start(service: ClawAccessibilityService, policy: GameControlPolicy) {
+    fun start(service: ReturnGiftAccessibilityService, policy: GameControlPolicy) {
         if (isRunning.getAndSet(true)) {
             XLog.w(TAG, "RealtimeGameController is already running. Updating policy.")
             currentPolicy = policy
@@ -110,7 +110,7 @@ object RealtimeGameController {
      * Stops the controller and releases all touch inputs.
      */
     @JvmStatic
-    fun stop(service: ClawAccessibilityService?) {
+    fun stop(service: ReturnGiftAccessibilityService?) {
         isRunning.set(false)
         controllerThread?.interrupt()
         controllerThread = null
@@ -118,21 +118,21 @@ object RealtimeGameController {
     }
 
     @JvmStatic
-    fun releaseAll(service: ClawAccessibilityService? = null) {
+    fun releaseAll(service: ReturnGiftAccessibilityService? = null) {
         stop(service)
     }
 
     @JvmStatic
     fun isActive(): Boolean = isRunning.get()
 
-    private fun executePhysicsStep(service: ClawAccessibilityService, policy: GameControlPolicy) {
+    private fun executePhysicsStep(service: ReturnGiftAccessibilityService, policy: GameControlPolicy) {
         // Fast duty-cycle modulation: hold gas for ~100ms
         val gas = policy.gasCoords
         val holdDuration = (FRAME_INTERVAL_MS * 3 * policy.throttleDutyCycle).toLong().coerceIn(30L, 200L)
         TouchInputLayer.holdTouch(service, gas.first, gas.second, holdDuration)
     }
 
-    private fun isAdOverlayPresent(service: ClawAccessibilityService): Boolean {
+    private fun isAdOverlayPresent(service: ReturnGiftAccessibilityService): Boolean {
         val root = service.rootInActiveWindow ?: return false
         val pkg = root.packageName?.toString().orEmpty()
 

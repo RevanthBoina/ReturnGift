@@ -17,7 +17,7 @@ import com.returngift.agent.utils.XLog
  *         resolved under
  *
  * Before resolving: if the app's current fingerprint
- * (ClawAccessibilityService.getScreenFingerprint) equals the fingerprint
+ * (ReturnGiftAccessibilityService.getScreenFingerprint) equals the fingerprint
  * stored with the entry, return the cached descriptor directly (skip the
  * tree query).
  *

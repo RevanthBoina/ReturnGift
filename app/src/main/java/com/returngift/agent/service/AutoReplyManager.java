@@ -15,7 +15,7 @@ import com.returngift.agent.AppCapabilityCoordinator;
 import com.returngift.agent.tool.ToolRegistry;
 import com.returngift.agent.tool.ToolResult;
 import com.returngift.agent.tool.impl.SendMessageTool;
-import com.returngift.agent.ClawApplication;
+import com.returngift.agent.ReturnGiftApplication;
 import com.returngift.agent.ServiceBindingState;
 import com.returngift.agent.utils.ChatNoiseFilterUtils;
 import com.returngift.agent.utils.ContactListUiUtils;
@@ -236,7 +236,7 @@ public class AutoReplyManager {
 
     private void syncForegroundNotification() {
         try {
-            Context context = ClawApplication.Companion.getInstance();
+            Context context = ReturnGiftApplication.Companion.getInstance();
             if (enabled && !monitoredTargets.isEmpty()) {
                 ForegroundService.Companion.showMonitorStatus(context);
                 KeepAliveJobService.Companion.schedule(context);
@@ -250,8 +250,8 @@ public class AutoReplyManager {
     }
 
     /**
-     * Called from ClawNotificationListener (primary, reliable) or
-     * ClawAccessibilityService (fallback if NotificationListener not enabled).
+     * Called from ReturnGiftNotificationListener (primary, reliable) or
+     * ReturnGiftAccessibilityService (fallback if NotificationListener not enabled).
      */
     public void onNotificationReceived(String packageName, String title, String text) {
         if (!enabled) return;
@@ -264,7 +264,7 @@ public class AutoReplyManager {
     }
 
     /**
-     * Fallback: Called from ClawAccessibilityService.onAccessibilityEvent.
+     * Fallback: Called from ReturnGiftAccessibilityService.onAccessibilityEvent.
      * Only used if NotificationListenerService is not connected.
      */
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -272,7 +272,7 @@ public class AutoReplyManager {
         if (!isAccessibilityHealthyForReply()) return;
 
         // Skip if NotificationListenerService is active — it's more reliable
-        if (ClawNotificationListener.isConnected()) return;
+        if (ReturnGiftNotificationListener.isConnected()) return;
 
         String packageName = event.getPackageName() != null ? event.getPackageName().toString() : "";
         if (!monitoredApps.contains(packageName)) return;
@@ -294,7 +294,7 @@ public class AutoReplyManager {
     }
 
     private boolean isAccessibilityHealthyForReply() {
-        ClawApplication app = ClawApplication.Companion.getInstance();
+        ReturnGiftApplication app = ReturnGiftApplication.Companion.getInstance();
         if (app == null) return false;
         ServiceBindingState state = AppCapabilityCoordinator.INSTANCE.accessibilityState(app);
         if (state == ServiceBindingState.READY || state == ServiceBindingState.CONNECTING) {
@@ -305,8 +305,8 @@ public class AutoReplyManager {
         return false;
     }
 
-    private boolean ensureDeviceReadyForReply(ClawAccessibilityService svc, MonitorTarget target, String incomingMessage) {
-        ClawApplication app = ClawApplication.Companion.getInstance();
+    private boolean ensureDeviceReadyForReply(ReturnGiftAccessibilityService svc, MonitorTarget target, String incomingMessage) {
+        ReturnGiftApplication app = ReturnGiftApplication.Companion.getInstance();
         if (app == null) {
             failAutoReply(target, incomingMessage, AutoReplyFailureStage.SCREEN_LOCKED,
                 "Application context unavailable while preparing auto-reply", null);
@@ -420,7 +420,7 @@ public class AutoReplyManager {
                     return;
                 }
                 // Open the messaging app and navigate to the contact's chat
-                ClawAccessibilityService svc = ClawAccessibilityService.getConnectedInstance(12000L);
+                ReturnGiftAccessibilityService svc = ReturnGiftAccessibilityService.getConnectedInstance(12000L);
                 if (svc == null) {
                     failAutoReply(finalTarget, incomingMessage, AutoReplyFailureStage.ACCESSIBILITY_UNAVAILABLE,
                         "No accessibility service, cannot open chat", null);
@@ -556,7 +556,7 @@ public class AutoReplyManager {
 
                     // Dismiss the messaging app's notifications so the next message
                     // triggers a fresh notification event (not an update to existing one).
-                    ClawNotificationListener.dismissNotifications(packageName);
+                    ReturnGiftNotificationListener.dismissNotifications(packageName);
 
                     // Stay in the current app. NotificationListener continues to receive
                     // future messages without forcing the user back to Home.
@@ -762,7 +762,7 @@ public class AutoReplyManager {
     /**
      * Check if we're already in a chatroom with the given contact.
      */
-    private boolean isInChatroom(ClawAccessibilityService service, String contact) {
+    private boolean isInChatroom(ReturnGiftAccessibilityService service, String contact) {
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
         if (root == null) return false;
         CharSequence pkg = root.getPackageName();
@@ -777,7 +777,7 @@ public class AutoReplyManager {
         );
     }
 
-    private boolean waitForChatroom(ClawAccessibilityService service, String contact) {
+    private boolean waitForChatroom(ReturnGiftAccessibilityService service, String contact) {
         for (int attempt = 1; attempt <= 4; attempt++) {
             if (isInChatroom(service, contact)) {
                 return true;
@@ -816,7 +816,7 @@ public class AutoReplyManager {
      * fall back to LLM-assisted UI interaction if Java path fails.
      * This makes it app-agnostic — no per-app code needed.
      */
-    private ToolResult typeAndSendInOpenChat(ClawAccessibilityService service, String message) {
+    private ToolResult typeAndSendInOpenChat(ReturnGiftAccessibilityService service, String message) {
         try {
             AccessibilityNodeInfo root = service.getRootInActiveWindow();
             if (root == null) return ToolResult.error("No active window");
@@ -876,7 +876,7 @@ public class AutoReplyManager {
      * LLM-assisted: ask the LLM to find the send button on the current screen.
      * Single targeted LLM call — NOT a full agent loop. Fast (~2s).
      */
-    private ToolResult tapSendViaLlm(ClawAccessibilityService service, String alreadyTypedMessage) {
+    private ToolResult tapSendViaLlm(ReturnGiftAccessibilityService service, String alreadyTypedMessage) {
         try {
             // Read current screen as text
             com.returngift.agent.tool.impl.GetScreenInfoTool screenTool = new com.returngift.agent.tool.impl.GetScreenInfoTool();
@@ -935,7 +935,7 @@ public class AutoReplyManager {
      * Full LLM-assisted type and send — when no EditText is found at all.
      * Asks LLM to identify both input field and send button from the screen.
      */
-    private ToolResult typeAndSendViaLlm(ClawAccessibilityService service, String message) {
+    private ToolResult typeAndSendViaLlm(ReturnGiftAccessibilityService service, String message) {
         try {
             com.returngift.agent.tool.impl.GetScreenInfoTool screenTool = new com.returngift.agent.tool.impl.GetScreenInfoTool();
             com.returngift.agent.tool.ToolResult screenResult = screenTool.execute(java.util.Collections.emptyMap());
@@ -969,7 +969,7 @@ public class AutoReplyManager {
     /**
      * Execute a JSON array of actions returned by the LLM.
      */
-    private ToolResult executeLlmActions(ClawAccessibilityService service, String jsonResponse, String message) {
+    private ToolResult executeLlmActions(ReturnGiftAccessibilityService service, String jsonResponse, String message) {
         try {
             // Extract JSON array from response (LLM might add explanation text)
             String json = jsonResponse.trim();
@@ -1108,7 +1108,7 @@ public class AutoReplyManager {
      *   them: "Bring two bottles of water"
      */
     private String readConversationContext() {
-        ClawAccessibilityService service = ClawAccessibilityService.getConnectedInstance(12000L);
+        ReturnGiftAccessibilityService service = ReturnGiftAccessibilityService.getConnectedInstance(12000L);
         if (service == null) return "";
 
         AccessibilityNodeInfo root = service.getRootInActiveWindow();

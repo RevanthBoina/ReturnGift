@@ -6,7 +6,7 @@ package com.returngift.agent.core.vision
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.returngift.agent.core.accessibility.SemanticNodeFlattener
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.XLog
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -44,7 +44,7 @@ object VisualGroundingFallbackEngine {
      */
     @JvmStatic
     fun extractVisualTargets(
-        service: ClawAccessibilityService,
+        service: ReturnGiftAccessibilityService,
         nodeIdMap: ConcurrentHashMap<String, IntArray>,
         counter: AtomicInteger
     ): List<VisualTarget> {

@@ -16,7 +16,7 @@ import com.returngift.agent.agent.skill.SkillRegistry
 import com.returngift.agent.channel.Channel
 import com.returngift.agent.channel.ChannelManager
 import com.returngift.agent.floating.FloatingCircleManager
-import com.returngift.agent.service.ClawAccessibilityService
+import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.service.ForegroundService
 import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.utils.KVUtils
@@ -42,10 +42,47 @@ class TaskOrchestrator(
         const val TIER1_SEND_CONFIRM_TIMEOUT_MS = 5_000L
         /** C4: KV key for process-death reconciliation — stores "messageID|channel" of the live task. */
         const val KEY_ACTIVE_TASK = "key_active_task"
+
+        /** One shared, daemon timer for task deadlines (never holds the process open). */
+        private val DEADLINE_EXECUTOR: java.util.concurrent.ScheduledExecutorService =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+                Thread(r, "task-deadline").apply { isDaemon = true }
+            }
     }
 
     private lateinit var agentService: AgentService
     val taskSessionStore = TaskSessionStore()
+
+    /**
+     * Hard wall-clock cap for one task.
+     *
+     * With the confirmation prompts off, stopping is the owner's control — the
+     * notification's Stop action and the floating "Tap to stop" pill. This is the
+     * backstop for when the owner is not looking: a task that runs past the cap is
+     * cancelled through exactly the same path the Stop button uses.
+     */
+    internal var taskWallClockCapMs: Long = 10 * 60_000L
+    @Volatile private var deadlineFuture: java.util.concurrent.ScheduledFuture<*>? = null
+
+    private fun armTaskDeadline(messageID: String) {
+        disarmTaskDeadline()
+        deadlineFuture = DEADLINE_EXECUTOR.schedule({
+            try {
+                if (taskSessionStore.snapshot().messageId == messageID && isTaskRunning()) {
+                    XLog.w(TAG, "Task $messageID hit the ${taskWallClockCapMs / 1000}s cap — stopping it")
+                    taskEventCallback?.invoke(TaskEvent.Progress(0, "Stopped: time limit reached"))
+                    cancelCurrentTask()
+                }
+            } catch (e: Throwable) {
+                XLog.w(TAG, "task deadline check failed", e)
+            }
+        }, taskWallClockCapMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    private fun disarmTaskDeadline() {
+        deadlineFuture?.cancel(false)
+        deadlineFuture = null
+    }
 
     // C4: supervisor scope for the orchestrator's background work (D4)
     private val supervisorScope = kotlinx.coroutines.CoroutineScope(
@@ -53,11 +90,11 @@ class TaskOrchestrator(
     )
 
     internal var appContext: android.content.Context
-        get() = injectedAppContext ?: ClawApplication.instance
+        get() = injectedAppContext ?: ReturnGiftApplication.instance
         set(value) { injectedAppContext = value }
     private var injectedAppContext: android.content.Context? = null
 
-    // Router / skill executor are created lazily from ClawApplication so tests can inject
+    // Router / skill executor are created lazily from ReturnGiftApplication so tests can inject
     // their own fakes via the internal *_ForTesting fields (Robolectric tests must not depend
     // on the Android singletons, and the FIX 7/8 DirectIntent/DirectTool terminal paths need
     // controllable fake returns).
@@ -96,6 +133,8 @@ class TaskOrchestrator(
     private fun confirmSendMessage(): Boolean {
         val injected = sendMessageConfirm
         if (injected != null) return injected()
+        // The one consent switch: off (the default) means the message goes.
+        if (!com.returngift.agent.utils.KVUtils.askBeforeRiskyActions()) return true
         val answer = ClarificationManager.request(
             question = "Send this message? Tap Send to confirm, or Cancel.",
             choices = listOf("Send", "Cancel"),
@@ -192,6 +231,7 @@ class TaskOrchestrator(
         event: TaskEvent,
         channelMsg: String? = null
     ) {
+        disarmTaskDeadline()
         val s = taskSessionStore.releaseIfMatches(messageID) ?: return
         // C4: clear the active-task key so process-death reconciliation doesn't double-fire
         KVUtils.remove(KEY_ACTIVE_TASK)
@@ -261,6 +301,7 @@ class TaskOrchestrator(
     // ==================== Task Execution ====================
 
     fun cancelCurrentTask() {
+        disarmTaskDeadline()
         if (!taskSessionStore.markStopping()) return
         // Unblock a parked ask_user call immediately (belt & braces with
         // DefaultAgentService.cancel — cancelPending is idempotent).
@@ -322,6 +363,7 @@ class TaskOrchestrator(
         }
 
         ForegroundService.updateTaskStatus(appContext, "Preparing task...")
+        armTaskDeadline(messageID)
 
         // Tier 1: Deterministic routing (skip on escalation/fallback)
         val route = pipelineRouter.route(task, isEscalation = isFallback)
@@ -338,6 +380,9 @@ class TaskOrchestrator(
             is PipelineRouter.Route.Chat -> "tier2" to "chat"
         }
         com.returngift.agent.agent.tracker.ExecutionTracker.recordTier(messageID, tier, routeInfo)
+        // Temporary routing trace: task id + engine, removed once routing is settled.
+        XLog.i(TAG, "ROUTE task=$messageID engine=$tier/$routeInfo")
+        com.returngift.agent.agent.tracker.UsageCounters.bump("engine", tier)
 
         when (route) {
             is PipelineRouter.Route.DirectIntent -> {
@@ -816,7 +861,7 @@ class TaskOrchestrator(
                     blockedMessageId
                 )
                 try {
-                    val service = ClawAccessibilityService.getInstance()
+                    val service = ReturnGiftAccessibilityService.getInstance()
                     val bitmap = service?.takeScreenshot(5000)
                     if (bitmap != null) {
                         val stream = java.io.ByteArrayOutputStream()

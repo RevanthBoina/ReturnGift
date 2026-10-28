@@ -113,7 +113,7 @@ sleep 5
 CURRENT=$(adb shell settings get secure enabled_accessibility_services)
 [[ "$CURRENT" != *"com.returngift.agent"* ]] && \
   adb shell settings put secure enabled_accessibility_services \
-  "$CURRENT:com.returngift.agent/com.returngift.agent.service.ClawAccessibilityService"
+  "$CURRENT:com.returngift.agent/com.returngift.agent.service.ReturnGiftAccessibilityService"
 
 # 5. Grant permissions
 adb shell pm grant com.returngift.agent android.permission.READ_CONTACTS
@@ -750,7 +750,7 @@ When in doubt, rerun the smaller bundle first, then expand only if something dri
 - [ ] **F7. Device-automation task minimizes ReturnGift** `[LOGCAT-DEBUG]`: send a task that opens another app (e.g. "Open WhatsApp") â†’ ReturnGift chat moves to background (`TaskFlowController: minimizeToBackground: moveTaskToBack=true` in logcat) â†’ floating pill visible â†’ agent's first `get_screen_info` after `open_app` returns the TARGET app's tree, NOT ReturnGift's own chat UI
 - [ ] **F8. Info/chat tasks stay foreground**: send a pure chat or device-data query (e.g. "What's my battery level?") â†’ ReturnGift stays foreground (no `moveTaskToBack` log) â†’ answer renders in chat
 - [ ] **F9. Auto-return after background task**: after F7 task completes â†’ ReturnGift chat auto-returns to foreground with the result bubble (`onComplete: auto-returning to ReturnGift chatroom` in logcat)
-- [ ] **F10. Title reads ReturnGift** `[RELEASE-OK]`: chat homepage TopAppBar shows "Return**Gift**" (Gift in accent color), no "PokeClaw" anywhere on screen
+- [ ] **F10. Title reads ReturnGift** `[RELEASE-OK]`: chat homepage TopAppBar shows "Return**Gift**" (Gift in accent color), no "ReturnGift" anywhere on screen
 
 ## U. In-App Update
 
@@ -1724,7 +1724,7 @@ per-step history as progress signal, droidrun bounded action history.
 
 ## FT — Foreground Truth (2026-08-21)
 
-Covers truthful foreground detection: `ClawAccessibilityService.getForegroundPackage`
+Covers truthful foreground detection: `ReturnGiftAccessibilityService.getForegroundPackage`
 fallback, `AppLifecycleManager` exact-match verification, `OpenAppTool` verified-only
 success, and the `ActionVerifier` own-package guard.
 
@@ -2843,7 +2843,7 @@ QA: BH.1–BH.6. Pending device run.
 ### 2026-08-21 — Phase B: truthful foreground detection
 
 **Change:** four fixes to make "which app is foreground" a truthful, verified signal:
-1. `ClawAccessibilityService.getForegroundPackage` fallback no longer returns the first
+1. `ReturnGiftAccessibilityService.getForegroundPackage` fallback no longer returns the first
    active TYPE_APPLICATION window (could be the assistant's own UI); it now consults active
    application windows in descending layer order and prefers the input-focused window.
 2. `AppLifecycleManager.launchAndVerify` uses exact package match (was `startsWith` /
@@ -3245,7 +3245,7 @@ targeting, unverified keyboard input, and blind action repetition with a unified
 observe → resolve target → act → verify state change → continue/recover control loop.
 
 Files changed:
-- `service/ClawAccessibilityService.java`: added `getForegroundPackage()`,
+- `service/ReturnGiftAccessibilityService.java`: added `getForegroundPackage()`,
   `waitForForeground()`, `isForeground()`, `openAppForeground()` (verified launch with
   cached-task handling, correct flags, ActivityNotFoundException/SecurityException catch,
   foreground verification, `LaunchResult` verified-failure state), `getScreenStateSignature()`
@@ -3289,7 +3289,7 @@ Root cause: when a device-automation task started, ReturnGift's chat Activity st
 
 Change: `TaskFlowController.sendTask` now calls `moveTaskToBack(true)` + shows the floating pill for device-automation tasks (detected by `isDeviceAutomationTask`). Pure chat / device-data queries stay foreground. Auto-return to chat on completion was already wired (`autoReturnToChat` for `Channel.LOCAL`).
 
-Also: replaced hardcoded `"Poke"`+`"Claw"` homepage title in `ChatScreen.ChatTopBar` with `"Return"`+`"Gift"` (accent on "Gift").
+Also: the hardcoded two-part homepage title in `ChatScreen.ChatTopBar` is now a single word (accent on "Gift").
 
 Tests added: F7, F8, F9, F10. Not yet run â€” pending debug APK build on a device with Android SDK (not available in this sandbox).
 
@@ -3365,7 +3365,7 @@ Run on the actual GitHub release APK `ReturnGift_v0.7.0_20260526_101139.apk` aft
 
 [2026-05-26] [FAILâ†’FIX] W7            v0.7.0 PromptUtils.applyGlobalPrompt was wired only into AgentConfig.Builder.build() but the RUNTIME construction path is ResolvedModelConfig.toAgentConfig which uses the data class constructor directly. v0.7.0 saved KEY_GLOBAL_PROMPT to MMKV but never injected it into any actual LLM call. Confirmed via app_logs/ReturnGift-app.log â€” zero PromptUtils entries before fix. Fix: also call applyGlobalPrompt in toAgentConfig. After fix: "PromptUtils: applyGlobalPrompt: injecting global prompt (43 chars) into base prompt (10693 chars)" fires twice per agent init. Ship as v0.7.1 hotfix.
 [2026-05-26] [PASS]    W7.afterFix   With v0.7.1 fix (commit 2b8c2d5), PromptUtils.applyGlobalPrompt fires at agent config update + at agent loop start. AppLogStore captures the injection. Global prompt actually flows into LLM systemPrompt now.
-[2026-05-26] [PASS]    CI.matrix     Emulator Matrix CI workflow ALL 5 API LEVELS GREEN on commit 1089694 (run 26466236094). API 29/31/33/34/35 each: install APK, launch SplashActivity -> ComposeChatActivity, process alive at +8s, zero FATAL in crash buffer. Logcat artifact confirms real boot ("ClawApplication initialized, tools registered: 28") + activity transition. Earlier 3 failed runs were red herrings â€” the underlying issue across all of them was that `reactivecircus/android-emulator-runner@v2` runs each LINE of `script:` as a separate `sh -c <line>` invocation, so variables and if/then/fi never connect. Fix: extracted logic to `scripts/emulator-smoke.sh`.
+[2026-05-26] [PASS]    CI.matrix     Emulator Matrix CI workflow ALL 5 API LEVELS GREEN on commit 1089694 (run 26466236094). API 29/31/33/34/35 each: install APK, launch SplashActivity -> ComposeChatActivity, process alive at +8s, zero FATAL in crash buffer. Logcat artifact confirms real boot ("ReturnGiftApplication initialized, tools registered: 28") + activity transition. Earlier 3 failed runs were red herrings â€” the underlying issue across all of them was that `reactivecircus/android-emulator-runner@v2` runs each LINE of `script:` as a separate `sh -c <line>` invocation, so variables and if/then/fi never connect. Fix: extracted logic to `scripts/emulator-smoke.sh`.
 [2026-05-26] [GAP]     M/R/S         Cloud + Local LLM end-to-end task tests not run â€” no LLM API key configured in this QA pass
 [2026-05-26] [GAP]     W7/W8         PromptUtils injection trace not directly verified â€” requires configured LLM to fire the chat/agent code path. Structural verification only.
 [2026-05-26] [SUMMARY] v0.7.0        18 PASS / 0 FAIL / 4 GAP / 2 NOTE. No regressions found. Release is fit for users.
@@ -3544,7 +3544,7 @@ Run on the actual GitHub release APK `ReturnGift_v0.7.0_20260526_101139.apk` aft
 [2026-04-09] [PASS]    J2    Empty input send: tap send with empty field â†’ nothing sent
 [2026-04-09] [PASS]    Q4-2  Cloud Quick Task E2E: đź¦ž Reddit â†’ tap â†’ fills input â†’ send â†’ agent navigated Reddit + searched ReturnGift
 [2026-04-09] [FIXED]   L1-v9 Session restore â€” onCreate reads CURRENT_CONVERSATION_ID from KVUtils, reloads saved messages. replaceTypingIndicator now calls saveChat() to persist task results immediately. Verified: "Restored 7 messages from conversation chat_1775787808468"
-[2026-04-10] [NOTE]    On this Pixel 8 Pro / Android 16, reinstall cleared Accessibility (`enabled_accessibility_services=null`). Re-enabling via `adb shell settings put secure enabled_accessibility_services com.returngift.agent/com.returngift.agent.service.ClawAccessibilityService` + `accessibility_enabled 1` restored the bound service for QA.
+[2026-04-10] [NOTE]    On this Pixel 8 Pro / Android 16, reinstall cleared Accessibility (`enabled_accessibility_services=null`). Re-enabling via `adb shell settings put secure enabled_accessibility_services com.returngift.agent/com.returngift.agent.service.ReturnGiftAccessibilityService` + `accessibility_enabled 1` restored the bound service for QA.
 [2026-04-09] [PASS]    Full E2E WhatsApp: UI type "send hi to Girlfriend on WhatsApp" â†’ agent opened WhatsApp â†’ send_message called â†’ finish("Sent 'hi' to Girlfriend on WhatsApp.") â†’ auto-return 15s â†’ result visible in chatroom
 [2026-04-09] [PASS]    Auto-return verified: agent navigated to WhatsApp, completed task, returned to ReturnGift, user msg + AI result both visible in same session
 [2026-04-09] [PASS]    C1/L3/L4  Monitor start via in-app monitor flow stays in ReturnGift; top bar shows "Monitoring: Rlfriend", no Home press
@@ -3619,7 +3619,7 @@ Run on the actual GitHub release APK `ReturnGift_v0.7.0_20260526_101139.apk` aft
 [2026-04-10] [PASS]    P7-3/Q7-7  Saved chat history now persists per-message timestamps in markdown via hidden `<!-- ReturnGift:timestamp=... -->` comments, so reloaded conversations keep stable bubble times instead of resetting to the current clock
 [2026-04-10] [PASS]    Phase1b-r1/Q7-7  After `ConversationStore` extraction, cold relaunch still restored `chat_1775851530681` with 9 saved messages; logcat showed `Restored 9 messages from conversation chat_1775851530681`, and the foreground UI still showed the existing `ay pong` / `Hello! How can I help you today?` conversation instead of a blank new chat
 [2026-04-10] [PASS]    Phase2b-r1  After `TaskFlowController` extraction, debug task broadcasts still reached the chat shell (`TaskTriggerReceiver: Received task via broadcast: battery`, `ComposeChatActivity: Auto-task from intent: battery`) and preserved in-app permission guidance by pushing `SettingsActivity` when Accessibility was unavailable
-[2026-04-10] [FIXED]   Android15-coldstart  Cold launch no longer crashes if app-start `ForegroundService` is disallowed; `ForegroundService.start()` now returns `false` and logs a warning instead of throwing `ForegroundServiceStartNotAllowedException` from `ClawApplication.onCreate()`
+[2026-04-10] [FIXED]   Android15-coldstart  Cold launch no longer crashes if app-start `ForegroundService` is disallowed; `ForegroundService.start()` now returns `false` and logs a warning instead of throwing `ForegroundServiceStartNotAllowedException` from `ReturnGiftApplication.onCreate()`
 [2026-04-10] [PASS]    Phase2c-r1  After `ActiveTaskShellController` extraction, the Compose top bar still rendered `Monitoring: Mom`; expanded state showed `Mom` + `Stop`, and tapping `Stop` disabled auto-reply and removed the monitor
 [2026-04-10] [PASS]    Phase2c-r2  Debug `autoreply on mom` no longer bypasses app behavior: `TaskTriggerReceiver` rewrites it to `monitor mom on WhatsApp`, and on this device the flow foregrounded in-app `SettingsActivity` with no direct `Added contact` log and no ghost `Monitoring:` bar in the dumped UI
 [2026-04-10] [NOTE]    TgMon-r1  Telegram monitor QA now requires an external sender path (second account or bot token + existing bot chat); without that sender, Telegram incoming-message monitor cases must be marked `BLOCKED`
@@ -3822,7 +3822,7 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 
 ### RC.1 — WebFetchTool imports and provenance call compile from Java (CI)
 - **Act**: run `bash scripts/ci-preflight.sh`, then after merge tag a release that runs `Release APK -> Build & Release`.
-- **PASS**: `compileReleaseJavaWithJavac` no longer reports `package ClawApplication does not exist`, `ProvenanceTag` constructor arity errors, or an illegal static call to `ProvenanceHelper.addToFrontmatter`; the release job reaches APK packaging/signature verification.
+- **PASS**: `compileReleaseJavaWithJavac` no longer reports `package ReturnGiftApplication does not exist`, `ProvenanceTag` constructor arity errors, or an illegal static call to `ProvenanceHelper.addToFrontmatter`; the release job reaches APK packaging/signature verification.
 
 ---
 ## UX — Element Census & U-Pack Relocation Map (2026-09-05)
@@ -3936,8 +3936,8 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 
 ### W8 — AppCatalog App Address Registry
 - **Bug**: `kb_search` couldn't find apps; `open_app` used hardcoded 28-entry map + slow PackageManager scan
-- **Fix**: `AppCatalog` singleton (JSON + vault markdown); builds on first accessibility connect (`ClawAccessibilityService.onServiceConnected`) + GuideActivity when accessibility READY; progress toast "Indexing your apps..."; package broadcast receiver for incremental invalidation (PACKAGE_ADDED/REMOVED/REPLACED); `OpenAppTool` → AppCatalog first, fallback fuzzy; `GetInstalledAppsTool` → catalog instant; `kb_search` → `apps/app-registry.md`; system prompts + "App addresses: every installed app's package name is in the app registry..."
-- **Files**: `AppCatalog.kt` (new), `ClawAccessibilityService.java`, `GuideActivity.kt`, `ClawApplication.kt`, `OpenAppTool.java`, `GetInstalledAppsTool.java`, `DefaultAgentService.kt`, `AgentConfig.kt`
+- **Fix**: `AppCatalog` singleton (JSON + vault markdown); builds on first accessibility connect (`ReturnGiftAccessibilityService.onServiceConnected`) + GuideActivity when accessibility READY; progress toast "Indexing your apps..."; package broadcast receiver for incremental invalidation (PACKAGE_ADDED/REMOVED/REPLACED); `OpenAppTool` → AppCatalog first, fallback fuzzy; `GetInstalledAppsTool` → catalog instant; `kb_search` → `apps/app-registry.md`; system prompts + "App addresses: every installed app's package name is in the app registry..."
+- **Files**: `AppCatalog.kt` (new), `ReturnGiftAccessibilityService.java`, `GuideActivity.kt`, `ReturnGiftApplication.kt`, `OpenAppTool.java`, `GetInstalledAppsTool.java`, `DefaultAgentService.kt`, `AgentConfig.kt`
 - **QA**: After setup, "linkedin" resolves instantly; `kb_search("linkedin")` lists registry; new app install updates catalog+md
 
 ### W9 — Preview UX + TargetSpecGate + Clarification
@@ -3963,7 +3963,7 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 - **PASS**: preflight fails fast with `no-static-kotlin-object-call-from-java`; the restored tree passes preflight.
 
 ### QA Debug Changelog — release compile interop
-- `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.1-RC.3]` fixed missing `ClawApplication` import, passed the explicit `ProvenanceTag` timestamp + `ProvenanceHelper.INSTANCE` call from Java, passed the explicit `surface` argument to `ClarificationManager.request`, and added preflight guards for static Kotlin-object calls plus missing `ClawApplication` imports. Local Gradle compilation is not available in this sandbox; release verification requires the next tagged GitHub Actions run.
+- `[2026-09-04] [CI-PREFLIGHT-PASS] [RC.1-RC.3]` fixed missing `ReturnGiftApplication` import, passed the explicit `ProvenanceTag` timestamp + `ProvenanceHelper.INSTANCE` call from Java, passed the explicit `surface` argument to `ClarificationManager.request`, and added preflight guards for static Kotlin-object calls plus missing `ReturnGiftApplication` imports. Local Gradle compilation is not available in this sandbox; release verification requires the next tagged GitHub Actions run.
 
 ### RC.4 — Tag release consumes fewer CI minutes (2026-09-04)
 - **Act**: push the next `v*` release tag and inspect the `Release APK` workflow graph.
@@ -4003,7 +4003,7 @@ Release tag v3.0.9 failed at `:app:compileReleaseJavaWithJavac` despite no Kotli
 
 ### QA Debug Changelog — v3.2.0 release Kotlin compile fix (2026-09-07)
 - `[2026-09-07] [CI-PREFLIGHT-PASS] [v3.2.0-fix]` fixed the `:app:compileReleaseKotlin` failure clusters that blocked the `v3.2.0` tag (run #34104968181):
-  - Kotlin callers now use `ClawApplication.instance` (not `Companion.getInstance()`: `DefaultAgentService.kt`, `TargetSpecGate.kt`
+  - Kotlin callers now use `ReturnGiftApplication.instance` (not `Companion.getInstance()`: `DefaultAgentService.kt`, `TargetSpecGate.kt`
   - `DefaultAgentService.kt` app-selection sort uses `compareBy<AppEntry> { … }.thenBy { … }` chain (priority apps first, alphabetical within tier)`
   - `AppCatalog.kt` added the missing `KBManager` import and passes the mandatory frontmatter arg (`emptyMap()`) to `KBManager.write`
   - `ChatScreen.kt`: qualified all bare icon refs (`Icons.Filled.Menu`, `Icons.Outlined.Visibility/Folder/Settings/SmartToy/ChatBubbleOutline`; `AutoMirrored` variants absent in pinned BOM, alsoremoved from VaultActivity back arrow); replaced non-existent `Modifier.onClick` with `Modifier.clickable` (and deleted double-fire `pointerInput/detectTapGestures` twins); migrated `ModalBottomSheet` params to `content`/`shape`/`containerColor`; routed the two ModelSheet settings links via `onDismiss()` (removing out-of-scope `showModelSheet` refs); added missing `TextUnit` import
@@ -4342,7 +4342,7 @@ tests green** locally with a real Kotlin compile + runner.
   3. New knowledge pipeline: `AppGuide`, `AppGuideCodec`, `AppGuideStore`,
      `AppKnowledgeSource`/`AppKnowledge` (MCP seam), `AppGuideLearner`.
   4. `AppUsageGuide` read path merges runtime knowledge; learner fed from the agent loop;
-     label resolver injected from `ClawApplication`.
+     label resolver injected from `ReturnGiftApplication`.
   5. `scripts/check-app-agnostic.py` + preflight wiring; preflight unbound-variable bug
      fixed so all guards run locally.
   - Local verification: JVM compile + runner → **179 tests green**. Android compile /
@@ -4519,7 +4519,7 @@ runner. Android assemble still needs CI (no SDK in this sandbox).
 - `[2026-10-25] [UNIT-PASS] [AK3.1-AK3.13]`:
   1. `agent/mcp/McpSecretStore.kt` + `KeystoreSecretCipher.kt`; `McpServerStore` writes
      rows without secrets, re-attaches on read, migrates legacy tokens once; startup
-     wires the cipher and migration in `ClawApplication`.
+     wires the cipher and migration in `ReturnGiftApplication`.
   2. `McpToolPolicy` (risk/decision, per-server trust, per-tool allow) +
      `McpPolicyStore` (versioned one-line persistence) + Safety card and per-server
      switches in `McpServersActivity`.

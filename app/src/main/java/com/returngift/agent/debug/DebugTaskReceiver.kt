@@ -103,7 +103,7 @@ class DebugTaskReceiver : BroadcastReceiver() {
                         activateNow = true,
                     )
                 }
-                val vm = com.returngift.agent.ClawApplication.appViewModelInstance
+                val vm = com.returngift.agent.ReturnGiftApplication.appViewModelInstance
                 vm.updateAgentConfig()
                 vm.initAgent()
                 vm.afterInit()
@@ -116,7 +116,7 @@ class DebugTaskReceiver : BroadcastReceiver() {
 
         if (task == "cancel:" || task == "__cancel__") {
             try {
-                val vm = com.returngift.agent.ClawApplication.appViewModelInstance
+                val vm = com.returngift.agent.ReturnGiftApplication.appViewModelInstance
                 vm.stopTask()
                 vm.clearTaskCallback()
                 XLog.i("DebugTaskReceiver", "Debug task cancellation requested")
@@ -128,7 +128,7 @@ class DebugTaskReceiver : BroadcastReceiver() {
         }
 
         try {
-            val vm = com.returngift.agent.ClawApplication.appViewModelInstance
+            val vm = com.returngift.agent.ReturnGiftApplication.appViewModelInstance
             vm.startTask(task, "debug_${System.currentTimeMillis()}") { /* no UI callback for debug */ }
             XLog.i("DebugTaskReceiver", "Task started: $task")
         } catch (e: Exception) {
@@ -174,18 +174,18 @@ class DebugTaskReceiver : BroadcastReceiver() {
                 }
 
             XLog.i("DebugTaskReceiver", "Executing debug tool: $toolName params=$params")
-            breadcrumb(com.returngift.agent.ClawApplication.instance, "executeTool start tool=$toolName params=$params")
+            breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "executeTool start tool=$toolName params=$params")
             val result = ToolRegistry.getInstance().executeTool(toolName, params)
             if (result.isSuccess) {
                 XLog.i("DebugTaskReceiver", "Debug tool success: $toolName -> ${result.data}")
-                breadcrumb(com.returngift.agent.ClawApplication.instance, "executeTool success tool=$toolName data=${result.data}")
+                breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "executeTool success tool=$toolName data=${result.data}")
             } else {
                 XLog.w("DebugTaskReceiver", "Debug tool failed: $toolName -> ${result.error}")
-                breadcrumb(com.returngift.agent.ClawApplication.instance, "executeTool fail tool=$toolName error=${result.error}")
+                breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "executeTool fail tool=$toolName error=${result.error}")
             }
         } catch (e: Exception) {
             XLog.e("DebugTaskReceiver", "Failed to execute debug tool", e)
-            breadcrumb(com.returngift.agent.ClawApplication.instance, "executeTool exception tool=$toolName error=${e.message}")
+            breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "executeTool exception tool=$toolName error=${e.message}")
         }
     }
 
@@ -203,7 +203,7 @@ class DebugTaskReceiver : BroadcastReceiver() {
                 "Simulating incoming message: contact=$contact app=$app ensureTargetEnabled=$ensureTargetEnabled message='$simulateMessage'"
             )
             breadcrumb(
-                com.returngift.agent.ClawApplication.instance,
+                com.returngift.agent.ReturnGiftApplication.instance,
                 "simulateIncomingMessage contact=$contact app=$app ensureTargetEnabled=$ensureTargetEnabled message=$simulateMessage"
             )
             AutoReplyManager.getInstance().debugSimulateIncomingMessage(
@@ -222,30 +222,30 @@ class DebugTaskReceiver : BroadcastReceiver() {
             when (action.lowercase()) {
                 "status" -> {
                     XLog.i("DebugTaskReceiver", "Local backend status: ${LocalBackendHealth.debugStateSummary()}")
-                    breadcrumb(com.returngift.agent.ClawApplication.instance, "backend status ${LocalBackendHealth.debugStateSummary()}")
+                    breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "backend status ${LocalBackendHealth.debugStateSummary()}")
                 }
                 "force_cpu_safe" -> {
                     val reason = intent.getStringExtra("backend_reason")?.trim().orEmpty().ifEmpty { "debug" }
                     LocalBackendHealth.debugForceCpuSafe(reason)
                     XLog.i("DebugTaskReceiver", "Forced CPU-safe mode: ${LocalBackendHealth.debugStateSummary()}")
-                    breadcrumb(com.returngift.agent.ClawApplication.instance, "backend force_cpu_safe reason=$reason ${LocalBackendHealth.debugStateSummary()}")
+                    breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "backend force_cpu_safe reason=$reason ${LocalBackendHealth.debugStateSummary()}")
                 }
                 "clear_cpu_safe" -> {
                     LocalBackendHealth.debugClearCpuSafeMode()
                     XLog.i("DebugTaskReceiver", "Cleared CPU-safe mode: ${LocalBackendHealth.debugStateSummary()}")
-                    breadcrumb(com.returngift.agent.ClawApplication.instance, "backend clear_cpu_safe ${LocalBackendHealth.debugStateSummary()}")
+                    breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "backend clear_cpu_safe ${LocalBackendHealth.debugStateSummary()}")
                 }
                 "mark_pending_gpu_init" -> {
                     val modelPath = intent.getStringExtra("backend_model_path")?.trim().orEmpty()
                         .ifEmpty { "/debug/model.litertlm" }
                     LocalBackendHealth.debugMarkPendingGpuInit(modelPath)
                     XLog.i("DebugTaskReceiver", "Marked pending GPU init: ${LocalBackendHealth.debugStateSummary()}")
-                    breadcrumb(com.returngift.agent.ClawApplication.instance, "backend mark_pending_gpu_init model=$modelPath ${LocalBackendHealth.debugStateSummary()}")
+                    breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "backend mark_pending_gpu_init model=$modelPath ${LocalBackendHealth.debugStateSummary()}")
                 }
                 "clear_pending_gpu_init" -> {
                     LocalBackendHealth.debugClearPendingGpuInit()
                     XLog.i("DebugTaskReceiver", "Cleared pending GPU init: ${LocalBackendHealth.debugStateSummary()}")
-                    breadcrumb(com.returngift.agent.ClawApplication.instance, "backend clear_pending_gpu_init ${LocalBackendHealth.debugStateSummary()}")
+                    breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "backend clear_pending_gpu_init ${LocalBackendHealth.debugStateSummary()}")
                 }
                 "recover_pending_gpu_crash" -> {
                     val recovered = LocalBackendHealth.recoverPendingGpuCrashIfNeeded()
@@ -253,16 +253,16 @@ class DebugTaskReceiver : BroadcastReceiver() {
                         "DebugTaskReceiver",
                         "Recover pending GPU crash recovered=$recovered: ${LocalBackendHealth.debugStateSummary()}"
                     )
-                    breadcrumb(com.returngift.agent.ClawApplication.instance, "backend recover_pending_gpu_crash recovered=$recovered ${LocalBackendHealth.debugStateSummary()}")
+                    breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "backend recover_pending_gpu_crash recovered=$recovered ${LocalBackendHealth.debugStateSummary()}")
                 }
                 else -> {
                     XLog.w("DebugTaskReceiver", "Unknown backend_action=$action")
-                    breadcrumb(com.returngift.agent.ClawApplication.instance, "backend unknown action=$action")
+                    breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "backend unknown action=$action")
                 }
             }
         } catch (e: Exception) {
             XLog.e("DebugTaskReceiver", "Failed backend_action=$action", e)
-            breadcrumb(com.returngift.agent.ClawApplication.instance, "backend exception action=$action error=${e.message}")
+            breadcrumb(com.returngift.agent.ReturnGiftApplication.instance, "backend exception action=$action error=${e.message}")
         }
     }
 

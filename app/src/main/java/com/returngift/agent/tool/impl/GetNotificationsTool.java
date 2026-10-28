@@ -7,8 +7,8 @@ import android.app.Notification;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
 
-import com.returngift.agent.ClawApplication;
-import com.returngift.agent.service.ClawNotificationListener;
+import com.returngift.agent.ReturnGiftApplication;
+import com.returngift.agent.service.ReturnGiftNotificationListener;
 import com.returngift.agent.tool.BaseTool;
 import com.returngift.agent.tool.ToolParameter;
 import com.returngift.agent.tool.ToolResult;
@@ -52,12 +52,12 @@ public class GetNotificationsTool extends BaseTool {
 
     @Override
     public ToolResult execute(Map<String, Object> params) {
-        if (!ClawNotificationListener.isConnected()) {
+        if (!ReturnGiftNotificationListener.isConnected()) {
             return ToolResult.error("Notification Access is not enabled. Ask the user to enable it in Settings.");
         }
 
         try {
-            StatusBarNotification[] notifications = ClawNotificationListener.getActiveNotificationList();
+            StatusBarNotification[] notifications = ReturnGiftNotificationListener.getActiveNotificationList();
             if (notifications == null || notifications.length == 0) {
                 return ToolResult.success("No active notifications.");
             }
@@ -112,7 +112,8 @@ public class GetNotificationsTool extends BaseTool {
             }
 
             XLog.d(TAG, "Read " + count + " notifications");
-            return ToolResult.success(sb.toString().trim());
+            return ToolResult.success(
+                    com.returngift.agent.agent.UntrustedContent.INSTANCE.wrap("notifications", sb.toString().trim()));
 
         } catch (Exception e) {
             XLog.e(TAG, "Failed to read notifications", e);
@@ -135,7 +136,7 @@ public class GetNotificationsTool extends BaseTool {
 
     private String getAppLabel(String packageName) {
         try {
-            android.content.pm.PackageManager pm = ClawApplication.Companion.getInstance().getPackageManager();
+            android.content.pm.PackageManager pm = ReturnGiftApplication.Companion.getInstance().getPackageManager();
             android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(packageName, 0);
             return pm.getApplicationLabel(ai).toString();
         } catch (Exception e) {

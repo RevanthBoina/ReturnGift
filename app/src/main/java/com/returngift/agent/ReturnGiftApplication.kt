@@ -24,12 +24,12 @@ import com.blankj.utilcode.util.NetworkUtils
  * Application entry point
  */
 
-val appViewModel: AppViewModel by lazy { ClawApplication.appViewModelInstance }
-class ClawApplication : BaseApp() {
+val appViewModel: AppViewModel by lazy { ReturnGiftApplication.appViewModelInstance }
+class ReturnGiftApplication : BaseApp() {
 
     companion object {
-        private const val TAG = "ClawApplication"
-        lateinit var instance: ClawApplication
+        private const val TAG = "ReturnGiftApplication"
+        lateinit var instance: ReturnGiftApplication
             private set
         lateinit var appViewModelInstance: AppViewModel
     }
@@ -69,6 +69,9 @@ class ClawApplication : BaseApp() {
         Thread({
             runCatching { com.returngift.agent.agent.mcp.McpServerStore.migrateLegacySecrets() }
                 .onFailure { XLog.w(TAG, "MCP secret migration failed", it) }
+            // Provider keys follow the same rule: one encrypted copy, no plaintext left.
+            runCatching { com.returngift.agent.utils.KVUtils.migrateProviderKeys() }
+                .onFailure { XLog.w(TAG, "provider key migration failed", it) }
         }, "mcp-secret-migration").start()
         // MCP: connect configured servers off the main thread; a dead server never
         // delays startup (failures are logged and skipped).
@@ -93,7 +96,7 @@ class ClawApplication : BaseApp() {
         // handled. YAML skills with an id matching a built-in override the built-in.
         com.returngift.agent.agent.skill.SkillRegistry.loadYamlSkills(this)
         com.returngift.agent.agent.PlaybookManager.loadAll(this)
-        XLog.e(TAG, "ClawApplication initialized, tools registered: ${ToolRegistry.getInstance().getAllTools().size}, skills registered: ${com.returngift.agent.agent.skill.SkillRegistry.getAll().size}")
+        XLog.e(TAG, "ReturnGiftApplication initialized, tools registered: ${ToolRegistry.getInstance().getAllTools().size}, skills registered: ${com.returngift.agent.agent.skill.SkillRegistry.getAll().size}")
 
         // W8: Register package broadcast receiver for app catalog invalidation
         registerPackageBroadcastReceiver()

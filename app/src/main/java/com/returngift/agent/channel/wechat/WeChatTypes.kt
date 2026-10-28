@@ -5,7 +5,7 @@ package com.returngift.agent.channel.wechat
 
 /**
  * WeChat iLink Bot protocol constants and data classes.
- * Strictly mirrors the official @tencent-weixin/openclaw-weixin@1.0.2 src/api/types.ts
+ * Strictly mirrors the official @tencent-weixin/returngift-weixin@1.0.2 src/api/types.ts
  */
 
 // ==================== Protocol Constants ====================

@@ -6,7 +6,7 @@ package com.returngift.agent.agent.tracker
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.returngift.agent.ClawApplication
+import com.returngift.agent.ReturnGiftApplication
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -33,7 +33,7 @@ class LeaveEventZeroRowTest {
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         // We use a test-specific database name to avoid interfering with other tests
-        ClawApplication.testDbName = testDbName
+        ReturnGiftApplication.testDbName = testDbName
     }
 
     @After
@@ -43,7 +43,7 @@ class LeaveEventZeroRowTest {
         if (dbFile.exists()) {
             dbFile.delete()
         }
-        ClawApplication.testDbName = null
+        ReturnGiftApplication.testDbName = null
     }
 
     /**
