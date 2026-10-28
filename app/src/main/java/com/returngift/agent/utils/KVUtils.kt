@@ -168,6 +168,16 @@ object KVUtils {
     fun getTelegramBotToken(): String = getString(KEY_TELEGRAM_BOT_TOKEN, "")
     fun setTelegramBotToken(value: String) = putString(KEY_TELEGRAM_BOT_TOKEN, value)
 
+    // ==================== Channel owner ====================
+    // Whoever writes through a channel first owns it on this phone; anyone else gets
+    // a sentence back instead of the phone acting. Silent: no screen asks about it.
+    private fun channelOwnerKey(channel: String) = "channel_owner_${channel.lowercase()}"
+
+    fun getChannelOwner(channel: String): String = getString(channelOwnerKey(channel), "")
+
+    fun setChannelOwner(channel: String, senderId: String) =
+        putString(channelOwnerKey(channel), senderId)
+
     // ==================== WeChat iLink Bot Config ====================
     fun getWechatBotToken(): String = getString(KEY_WECHAT_BOT_TOKEN, "")
     fun setWechatBotToken(value: String) = putString(KEY_WECHAT_BOT_TOKEN, value)

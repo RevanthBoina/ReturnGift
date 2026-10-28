@@ -154,6 +154,7 @@
     <string name="channel_msg_tool_execution">[%1$s]: %2$s</string>
     <string name="channel_msg_task_error">Error: %s</string>
     <string name="channel_msg_no_accessibility">Accessibility permission missing, cannot execute task</string>
+    <string name="channel_msg_not_owner">This phone only takes tasks from its owner.</string>
     <string name="channel_msg_task_in_progress">A task is already running, please wait</string>
     <string name="channel_msg_system_dialog_blocked">A system dialog may be blocking the screen. Please check and handle it manually, then try again.</string>
     <string name="interrupt_task_paused">Task paused — screen changed unexpectedly. Tap Resume when you are ready.</string>

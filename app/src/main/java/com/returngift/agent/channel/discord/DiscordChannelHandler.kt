@@ -37,10 +37,10 @@ class DiscordChannelHandler(
         DiscordApiClient.getInstance().init(botToken)
         DiscordGatewayClient.getInstance().setOnDiscordMessageListener(
             object : DiscordGatewayClient.OnDiscordMessageListener {
-                override fun onDiscordMessage(channelId: String, messageId: String, content: String) {
+                override fun onDiscordMessage(channelId: String, messageId: String, content: String, senderId: String) {
                     lastChannelId = channelId
                     XLog.i(TAG, "[${channel.displayName}] Message received: $content, channelId=$channelId")
-                    ChannelManager.dispatchMessage(channel, content, messageId)
+                    ChannelManager.dispatchMessage(channel, content, messageId, senderId)
                 }
             }
         )

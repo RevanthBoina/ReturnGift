@@ -10,6 +10,7 @@ import com.returngift.agent.ServiceBindingState
 import com.returngift.agent.TaskOrchestrator
 import com.returngift.agent.service.ReturnGiftAccessibilityService
 import com.returngift.agent.utils.KVUtils
+import com.returngift.agent.utils.XLog
 
 /**
  * Channel initialization and message routing.
@@ -19,6 +20,10 @@ class ChannelSetup(
     private val taskOrchestrator: TaskOrchestrator
 ) {
 
+    private companion object {
+        const val TAG = "ChannelSetup"
+    }
+
     fun setup() {
         ChannelManager.init(
             discordBotToken = KVUtils.getDiscordBotToken().ifEmpty { null },
@@ -27,8 +32,25 @@ class ChannelSetup(
             wechatApiBaseUrl = KVUtils.getWechatApiBaseUrl().ifEmpty { null }
         )
         ChannelManager.setOnMessageReceivedListener(object : ChannelManager.OnMessageReceivedListener {
-            override fun onMessageReceived(channel: Channel, message: String, messageID: String) {
+            override fun onMessageReceived(
+                channel: Channel,
+                message: String,
+                messageID: String,
+                senderId: String?,
+            ) {
                 val app = ReturnGiftApplication.instance
+                // One owner per channel: the first sender claims it, and everyone else
+                // gets a sentence back rather than control of this phone. Channels that
+                // cannot report a sender id are left alone.
+                val owner = KVUtils.getChannelOwner(channel.name)
+                if (owner.isEmpty()) {
+                    if (!senderId.isNullOrBlank()) KVUtils.setChannelOwner(channel.name, senderId)
+                } else if (!senderId.isNullOrBlank() && senderId != owner) {
+                    XLog.w(TAG, "Ignoring ${channel.displayName} message from a non-owner sender")
+                    ChannelManager.sendMessage(channel, app.getString(R.string.channel_msg_not_owner), messageID)
+                    ChannelManager.flushMessages(channel)
+                    return
+                }
                 val capabilityState = AppCapabilityCoordinator.accessibilityState(app)
                 if (capabilityState == ServiceBindingState.DISABLED) {
                     ChannelManager.sendMessage(channel, "Accessibility service is not enabled. Please enable ReturnGift in Settings > Accessibility.", messageID)

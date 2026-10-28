@@ -100,8 +100,10 @@ class TelegramChannelHandler(
                         val messageId = message.getInt("message_id")
                         lastChatId = chatId
 
+                        val senderId = message.optJSONObject("from")?.optLong("id")?.toString()
+                            ?: chatId.toString()
                         XLog.i(TAG, "[${channel.displayName}] Message received: $text, chatId=$chatId")
-                        ChannelManager.dispatchMessage(channel, text, messageId.toString())
+                        ChannelManager.dispatchMessage(channel, text, messageId.toString(), senderId)
                     }
                 } catch (_: java.net.SocketTimeoutException) {
                     XLog.d(TAG, "Telegram polling timeout, continuing to poll")

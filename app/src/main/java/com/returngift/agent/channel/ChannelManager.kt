@@ -33,7 +33,11 @@ object ChannelManager {
      * Callback interface for received messages
      */
     interface OnMessageReceivedListener {
-        fun onMessageReceived(channel: Channel, message: String, messageID: String)
+        /**
+         * @param senderId who wrote it on that platform, when the channel knows. Used to
+         *        keep the phone answering its owner and nothing else.
+         */
+        fun onMessageReceived(channel: Channel, message: String, messageID: String, senderId: String?)
     }
 
     @JvmStatic
@@ -177,7 +181,7 @@ object ChannelManager {
      * Called internally by ChannelHandlers to dispatch received messages to registered listeners.
      */
     @JvmStatic
-    fun dispatchMessage(channel: Channel, message: String, messageID: String) {
-        messageListener?.onMessageReceived(channel, message, messageID)
+    fun dispatchMessage(channel: Channel, message: String, messageID: String, senderId: String? = null) {
+        messageListener?.onMessageReceived(channel, message, messageID, senderId)
     }
 }
