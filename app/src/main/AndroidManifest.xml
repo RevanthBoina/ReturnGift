@@ -95,6 +95,13 @@
             android:name=".ui.settings.AppAllowListActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+        <!-- The door behind a "tap to fix" notification: no UI, straight to the settings page. -->
+        <activity
+            android:name=".service.CapabilityFixActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Transparent" />
         <activity
             android:name=".ui.settings.UsageActivity"
             android:exported="false"
