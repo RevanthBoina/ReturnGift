@@ -122,7 +122,7 @@ class TaskOrchestratorTier1Test {
 
         orchestrator.startNewTask(Channel.LOCAL, "stub", "m1")
         assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
-        assertTrue("task not finished", awaitFinished())
+        assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
         val failed = terminalEvents.filterIsInstance<TaskEvent.Failed>()
         assertEquals("events=$terminalEvents", 1, failed.size)
@@ -141,7 +141,7 @@ class TaskOrchestratorTier1Test {
         orchestrator.taskEventCallback = { event -> terminalEvents.add(event); if (event is TaskEvent.Completed) latch.countDown() }
         orchestrator.startNewTask(Channel.LOCAL, "stub", "m1")
         assertTrue(latch.await(5, TimeUnit.SECONDS))
-        assertTrue("task not finished", awaitFinished())
+        assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
         assertEquals(1, terminalEvents.filterIsInstance<TaskEvent.Completed>().size)
         assertTrue("expected ✓ message", channelMessages.any { it.startsWith("✓") })
         assertFalse(orchestrator.isTaskRunning())
@@ -172,7 +172,7 @@ class TaskOrchestratorTier1Test {
         orchestrator.taskEventCallback = { event -> terminalEvents.add(event); if (event is TaskEvent.Completed) latch.countDown() }
         orchestrator.startNewTask(Channel.LOCAL, "stub_x", "m1") // DirectTool branch
         assertTrue(latch.await(5, TimeUnit.SECONDS))
-        assertTrue("task not finished", awaitFinished())
+        assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
         assertEquals(0, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
         assertTrue(channelMessages.any { it.startsWith("✓") })
         assertFalse(orchestrator.isTaskRunning())
@@ -280,7 +280,7 @@ class TaskOrchestratorTier1Test {
 
         orchestrator.startNewTask(Channel.LOCAL, "skill", "m1")
         assertTrue("no terminal event; events=$terminalEvents", latch.await(5, TimeUnit.SECONDS))
-        assertTrue("task not finished", awaitFinished())
+        assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
         assertTrue(
             "expected a Cancelled event, got $terminalEvents",
@@ -369,7 +369,7 @@ class TaskOrchestratorTier1Test {
         }
         orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
         assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
-        assertTrue("task not finished", awaitFinished())
+        assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
         assertEquals(0, router.executedTool.size)
         assertEquals(1, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
@@ -396,7 +396,7 @@ class TaskOrchestratorTier1Test {
             }
             orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
             assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
-            assertTrue("task not finished", awaitFinished())
+            assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
             assertEquals(0, router.executedTool.size)
             assertTrue(
@@ -422,7 +422,7 @@ class TaskOrchestratorTier1Test {
         }
         orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
         assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
-        assertTrue("task not finished", awaitFinished())
+        assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
         assertEquals(listOf("send_message"), router.executedTool)
         assertEquals(1, terminalEvents.filterIsInstance<TaskEvent.Completed>().size)
@@ -444,7 +444,7 @@ class TaskOrchestratorTier1Test {
 
         orchestrator.startNewTask(Channel.LOCAL, "stub", "m1")
         assertTrue("terminal event not delivered", latch.await(10, TimeUnit.SECONDS))
-        assertTrue("task not finished", awaitFinished())
+        assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
         // Should have progress event for escalation
         assertTrue("expected Progress event for escalation", terminalEvents.any { it is TaskEvent.Progress })
@@ -476,7 +476,7 @@ class TaskOrchestratorTier1Test {
 
             orchestrator.startNewTask(Channel.LOCAL, "stub_tool", "m1")
             assertTrue("terminal event not delivered", latch.await(10, TimeUnit.SECONDS))
-            assertTrue("task not finished", awaitFinished())
+            assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
             // Should have progress event for escalation
             assertTrue("expected Progress event for escalation", terminalEvents.any { it is TaskEvent.Progress })
@@ -512,7 +512,7 @@ class TaskOrchestratorTier1Test {
 
             orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
             assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
-            assertTrue("task not finished", awaitFinished())
+            assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
             // Should have a Failed terminal event (safety block - no escalation)
             assertEquals("events=$terminalEvents", 1, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
@@ -543,7 +543,7 @@ class TaskOrchestratorTier1Test {
 
             orchestrator.startNewTask(Channel.LOCAL, "sendmsg", "m1")
             assertTrue("terminal event not delivered", latch.await(5, TimeUnit.SECONDS))
-            assertTrue("task not finished", awaitFinished())
+            assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
             // Should have a Failed terminal event (user cancel - no escalation)
             assertEquals("events=$terminalEvents", 1, terminalEvents.filterIsInstance<TaskEvent.Failed>().size)
@@ -585,7 +585,7 @@ class TaskOrchestratorTier1Test {
 
             orchestrator.startNewTask(Channel.LOCAL, "stub_tool", "m1")
             assertTrue("terminal event not delivered", latch.await(10, TimeUnit.SECONDS))
-            assertTrue("task not finished", awaitFinished())
+            assertTrue("task not finished; events=$terminalEvents msgs=$channelMessages", awaitFinished())
 
             // Should have progress event for escalation
             assertTrue("expected Progress event for escalation", terminalEvents.any { it is TaskEvent.Progress })
