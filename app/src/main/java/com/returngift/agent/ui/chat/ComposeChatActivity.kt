@@ -372,13 +372,9 @@ ChatScreen(
     }
 
     private fun handleIntentAutomation(intent: Intent?, initialDelayMs: Long) {
-        // Share sheet: the text someone shared IS the task ("Send to ReturnGift").
-        val sharedText = if (intent?.action == Intent.ACTION_SEND) {
-            intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()?.takeIf { it.isNotEmpty() }
-        } else {
-            null
-        }
-        val taskText = intent?.getStringExtra(EXTRA_TASK)?.takeIf { it.isNotBlank() } ?: sharedText
+        // Shared text no longer arrives here: the share target is ShareTaskReceiver, which
+        // starts the task silently. This screen only runs tasks handed to it explicitly.
+        val taskText = intent?.getStringExtra(EXTRA_TASK)?.takeIf { it.isNotBlank() }
         val chatText = intent?.getStringExtra(EXTRA_CHAT)?.takeIf { it.isNotBlank() }
         val automationText = taskText ?: chatText ?: return
         val isTask = taskText != null
