@@ -236,8 +236,17 @@ class TaskOrchestrator(
         // C4: clear the active-task key so process-death reconciliation doesn't double-fire
         KVUtils.remove(KEY_ACTIVE_TASK)
         taskEventCallback?.invoke(event)
-        channelMsg?.let { sendChannelMessage(s.channel ?: Channel.LOCAL, it, s.messageId) }
-        ForegroundService.resetToIdle(appContext); if (ok) setSuccessFloatingState() else setErrorFloatingState(); onTaskFinished()
+        channelMsg?.let { msg ->
+            runCatching { sendChannelMessage(s.channel ?: Channel.LOCAL, msg, s.messageId) }
+                .onFailure { XLog.w(TAG, "terminal channel message failed", it) }
+        }
+        // Cleanup is isolated step by step: a notification or floating-pill failure must
+        // never leave the task lock held or the owner without an ending.
+        runCatching { ForegroundService.resetToIdle(appContext) }
+            .onFailure { XLog.w(TAG, "terminal resetToIdle failed", it) }
+        runCatching { if (ok) setSuccessFloatingState() else setErrorFloatingState() }
+            .onFailure { XLog.w(TAG, "terminal floating state failed", it) }
+        onTaskFinished()
         // D3: only auto-dequeue on Completed. Cancelled / Failed / Blocked leave the queue
         // intact and emit a "still waiting" system line so the user decides whether to start it.
         when (event) {

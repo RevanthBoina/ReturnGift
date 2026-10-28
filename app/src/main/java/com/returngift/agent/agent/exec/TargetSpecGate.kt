@@ -39,6 +39,19 @@ object TargetSpecGate {
             Regex("""\b(message|text|sms|call|phone)\s+(\d+|a\s+couple\s+of|several|some|a\s+few|two|three|four|five|six|seven|eight|nine|ten)\s+(?:contacts?|people|persons?)\b"""),
         )
         
+        // "open chrome and one more app": the count is relative to what is already named,
+        // so a named app still leaves the request under-specified.
+        val moreApps = Regex(
+            """\b(\d+|one|another|a\s+couple\s+of|two|three|four|five|six|seven|eight|nine|ten)\s+more\s+apps?\b"""
+        ).find(lower)
+        if (moreApps != null) {
+            val named = countNamedApps(lower, knownAppAliases)
+            val extra = parseCount(moreApps.groupValues[1])
+            if (named >= 1 && extra >= 1) {
+                return MissingTargets(named + extra, named, "apps", findNamedApps(lower, knownAppAliases))
+            }
+        }
+
         for (pattern in appPatterns) {
             val match = pattern.find(lower)
             if (match != null) {
@@ -83,6 +96,7 @@ object TargetSpecGate {
     private fun parseCount(s: String): Int {
         val trimmed = s.trim().lowercase()
         return when (trimmed) {
+            "one", "another" -> 1
             "a couple of", "a couple" -> 2
             "several" -> 3
             "some", "a few" -> 2
