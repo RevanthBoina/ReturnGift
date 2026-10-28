@@ -48,97 +48,78 @@ object KVUtils {
         mmkv = MMKV.defaultMMKV()
     }
 
-    // ==================== String ====================
-    fun putString(key: String, value: String?): Boolean {
-        return mmkv.encode(key, value)
-    }
+    /**
+     * Every accessor is a no-op before [init]. A task must not die because the store
+     * was never opened — JVM unit tests have no MMKV at all — so reads return their
+     * default and writes report failure instead of throwing.
+     */
+    private inline fun <T> store(fallback: T, block: (MMKV) -> T): T =
+        if (::mmkv.isInitialized) block(mmkv) else fallback
 
-    fun getString(key: String, defaultValue: String = ""): String {
-        return mmkv.decodeString(key, defaultValue) ?: defaultValue
-    }
+    // ==================== String ====================
+    fun putString(key: String, value: String?): Boolean = store(false) { it.encode(key, value) }
+
+    fun getString(key: String, defaultValue: String = ""): String =
+        store(defaultValue) { it.decodeString(key, defaultValue) ?: defaultValue }
 
     // ==================== Int ====================
-    fun putInt(key: String, value: Int): Boolean {
-        return mmkv.encode(key, value)
-    }
+    fun putInt(key: String, value: Int): Boolean = store(false) { it.encode(key, value) }
 
-    fun getInt(key: String, defaultValue: Int = DEFAULT_INT): Int {
-        return mmkv.decodeInt(key, defaultValue)
-    }
+    fun getInt(key: String, defaultValue: Int = DEFAULT_INT): Int =
+        store(defaultValue) { it.decodeInt(key, defaultValue) }
 
     // ==================== Long ====================
-    fun putLong(key: String, value: Long): Boolean {
-        return mmkv.encode(key, value)
-    }
+    fun putLong(key: String, value: Long): Boolean = store(false) { it.encode(key, value) }
 
-    fun getLong(key: String, defaultValue: Long = DEFAULT_LONG): Long {
-        return mmkv.decodeLong(key, defaultValue)
-    }
+    fun getLong(key: String, defaultValue: Long = DEFAULT_LONG): Long =
+        store(defaultValue) { it.decodeLong(key, defaultValue) }
 
     // ==================== Boolean ====================
-    fun putBoolean(key: String, value: Boolean): Boolean {
-        return mmkv.encode(key, value)
-    }
+    fun putBoolean(key: String, value: Boolean): Boolean = store(false) { it.encode(key, value) }
 
-    fun getBoolean(key: String, defaultValue: Boolean = DEFAULT_BOOL): Boolean {
-        return mmkv.decodeBool(key, defaultValue)
-    }
+    fun getBoolean(key: String, defaultValue: Boolean = DEFAULT_BOOL): Boolean =
+        store(defaultValue) { it.decodeBool(key, defaultValue) }
 
     // ==================== Float ====================
-    fun putFloat(key: String, value: Float): Boolean {
-        return mmkv.encode(key, value)
-    }
+    fun putFloat(key: String, value: Float): Boolean = store(false) { it.encode(key, value) }
 
-    fun getFloat(key: String, defaultValue: Float = DEFAULT_FLOAT): Float {
-        return mmkv.decodeFloat(key, defaultValue)
-    }
+    fun getFloat(key: String, defaultValue: Float = DEFAULT_FLOAT): Float =
+        store(defaultValue) { it.decodeFloat(key, defaultValue) }
 
     // ==================== Double ====================
-    fun putDouble(key: String, value: Double): Boolean {
-        return mmkv.encode(key, value)
-    }
+    fun putDouble(key: String, value: Double): Boolean = store(false) { it.encode(key, value) }
 
-    fun getDouble(key: String, defaultValue: Double = DEFAULT_DOUBLE): Double {
-        return mmkv.decodeDouble(key, defaultValue)
-    }
+    fun getDouble(key: String, defaultValue: Double = DEFAULT_DOUBLE): Double =
+        store(defaultValue) { it.decodeDouble(key, defaultValue) }
 
     // ==================== Bytes ====================
-    fun putBytes(key: String, value: ByteArray?): Boolean {
-        return mmkv.encode(key, value)
-    }
+    fun putBytes(key: String, value: ByteArray?): Boolean = store(false) { it.encode(key, value) }
 
-    fun getBytes(key: String): ByteArray? {
-        return mmkv.decodeBytes(key)
-    }
+    fun getBytes(key: String): ByteArray? = store<ByteArray?>(null) { it.decodeBytes(key) }
 
     // ==================== Common Operations ====================
-    fun contains(key: String): Boolean {
-        return mmkv.containsKey(key)
-    }
+    fun contains(key: String): Boolean = store(false) { it.containsKey(key) }
 
     fun remove(key: String) {
-        mmkv.removeValueForKey(key)
+        store(Unit) { it.removeValueForKey(key) }
     }
 
     fun remove(vararg keys: String) {
-        mmkv.removeValuesForKeys(keys)
+        store(Unit) { it.removeValuesForKeys(keys) }
     }
 
     fun clear() {
-        mmkv.clearAll()
+        store(Unit) { it.clearAll() }
     }
 
-    fun getAllKeys(): Array<String> {
-        return mmkv.allKeys() ?: emptyArray()
-    }
+    fun getAllKeys(): Array<String> = store(emptyArray()) { it.allKeys() ?: emptyArray() }
 
     /**
      * Flush to disk synchronously (default is async)
      */
     fun sync() {
-        mmkv.sync()
+        store(Unit) { it.sync() }
     }
-
 
     // ==================== Onboarding ====================
     private const val KEY_GUIDE_SHOWN = "KEY_GUIDE_SHOWN"
