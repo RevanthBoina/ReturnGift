@@ -14,8 +14,8 @@ import org.junit.Test
  */
 class ProviderRouterTest {
 
-    private const val T0 = 1_000_000L
-    private var now = T0
+    private val t0 = 1_000_000L
+    private var now = t0
 
     private fun ledger(): TokenLedger = TokenLedger(clock = { now }, )
 
@@ -53,7 +53,7 @@ class ProviderRouterTest {
     private val local = route("LOCAL", "local", input = 0.0, output = 0.0, quality = 3.2, latencyMs = 2_500)
     private val catalog = listOf(cheap, strong, tinyContext, noTools, vision, local)
 
-    private fun resetClock() { now = T0 }
+    private fun resetClock() { now = t0 }
 
     // ── catalog ─────────────────────────────────────────────────────────────
 
