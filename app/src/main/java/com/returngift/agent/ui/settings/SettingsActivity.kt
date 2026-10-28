@@ -65,6 +65,7 @@ class SettingsActivity : BaseActivity() {
     private var permRestricted: com.returngift.agent.widget.MenuItem? = null
     private var permAppAccess: com.returngift.agent.widget.MenuItem? = null
     private var permHealth: com.returngift.agent.widget.MenuItem? = null
+    private var permBackup: com.returngift.agent.widget.MenuItem? = null
     private var permConnections: com.returngift.agent.widget.MenuItem? = null
     private var externalAutomationItem: com.returngift.agent.widget.MenuItem? = null
     private var globalPromptItem: com.returngift.agent.widget.MenuItem? = null
@@ -333,6 +334,16 @@ class SettingsActivity : BaseActivity() {
             title = "Health check",
             onClick = {
                 startActivity(Intent(this@SettingsActivity, HealthCheckActivity::class.java))
+            },
+            showDivider = true
+        )
+
+        // Reinstalling should not cost the guides and chats the agent learned.
+        permBackup = permissionsGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_storage,
+            title = "Backup & restore",
+            onClick = {
+                startActivity(Intent(this@SettingsActivity, BackupActivity::class.java))
             },
             showDivider = true
         )
