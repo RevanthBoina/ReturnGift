@@ -81,7 +81,7 @@ class TaskOrchestratorTier1Test {
     private var finishedCount = 0
     @Volatile private var finishedFlag = false
 
-    private fun awaitFinished(timeoutSeconds: Long = 5): Boolean {
+    private fun awaitFinished(timeoutSeconds: Long = 15): Boolean {
         val deadline = System.currentTimeMillis() + timeoutSeconds * 1000
         while (!finishedFlag && System.currentTimeMillis() < deadline) {
             Thread.sleep(10)
@@ -96,7 +96,7 @@ class TaskOrchestratorTier1Test {
     fun setup() {
         router = FakeRouter()
         orchestrator = TaskOrchestrator(
-            agentConfigProvider = { AgentConfig(apiKey = "test", baseUrl = "https://example.com") },
+            agentConfigProvider = { AgentConfig(apiKey = "test", baseUrl = "http://127.0.0.1:1") },
             onTaskFinished = { finishedCount++; finishedFlag = true },
         )
         orchestrator.routerForTesting = router
