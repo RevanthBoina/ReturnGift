@@ -827,7 +827,7 @@ class TaskOrchestrator(
                         )
                         quietly("flushMessages") { ChannelManager.flushMessages(cancelledSession.channel) }
                     }
-                    quietly("setErrorState") { FloatingCircleManager.setErrorState() }
+                    quietly("setErrorState") { setErrorFloatingState() }
                     onTaskFinished()
                     XLog.d(TAG, "Current task cancelled by user")
                     return
@@ -844,7 +844,7 @@ class TaskOrchestrator(
                 taskEventCallback?.invoke(TaskEvent.Completed(answer, modelName))
                 quietly("resetToIdle") { ForegroundService.resetToIdle(appContext) }
                 quietly("flushMessages") { ChannelManager.flushMessages(completedSession.channel ?: channel) }
-                quietly("setSuccessState") { FloatingCircleManager.setSuccessState() }
+                quietly("setSuccessState") { setSuccessFloatingState() }
                 // Auto-return to ReturnGift after in-app task completes
                 if (completedSession.autoReturnToChat) {
                     XLog.i(TAG, "onComplete: auto-returning to ReturnGift chatroom")
@@ -879,7 +879,7 @@ class TaskOrchestrator(
                     failedMessageId
                 )
                 quietly("flushMessages") { ChannelManager.flushMessages(failedChannel) }
-                quietly("setErrorState") { FloatingCircleManager.setErrorState() }
+                quietly("setErrorState") { setErrorFloatingState() }
                 onTaskFinished()
             }
 
@@ -910,7 +910,7 @@ class TaskOrchestrator(
                 } catch (e: Exception) {
                     XLog.e(TAG, "Failed to send screenshot for system dialog", e)
                 }
-                quietly("setErrorState") { FloatingCircleManager.setErrorState() }
+                quietly("setErrorState") { setErrorFloatingState() }
                 onTaskFinished()
             }
         })
@@ -924,7 +924,7 @@ class TaskOrchestrator(
                     messageID
                 )
                 quietly("resetToIdle") { ForegroundService.resetToIdle(appContext) }
-                quietly("setErrorState") { FloatingCircleManager.setErrorState() }
+                quietly("setErrorState") { setErrorFloatingState() }
                 onTaskFinished()
             }
         }
