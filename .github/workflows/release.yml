@@ -157,6 +157,47 @@ jobs:
           echo "KEY_PASSWORD=$KEY_PASS" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
 
+      # ── Tests gate the tag ─────────────────────────────────────────────────
+      # No workflow runs on pull requests in this repo, and the release path used to
+      # go straight from checkout to assembleRelease. That is how v3.5.0 reached a
+      # tag with code that had never been compiled, and how v3.5.1's first tag build
+      # died on two missing symbols. The tag is therefore the only gate we have:
+      # run the unit suite here, before anything is signed or published.
+      - name: Run unit tests
+        run: |
+          set -eo pipefail
+          ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee unit-tests.log || {
+            echo "## Unit tests failed — release blocked" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 200 unit-tests.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          # Surface the totals so the release notes can state what was actually run.
+          python3 - <<'PYEOF'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          for path in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              root = ET.parse(path).getroot()
+              tests += int(root.get("tests", 0))
+              failures += int(root.get("failures", 0))
+              errors += int(root.get("errors", 0))
+              skipped += int(root.get("skipped", 0))
+          print(f"Unit tests: {tests} run, {failures} failures, {errors} errors, {skipped} skipped")
+          with open("unit-test-totals.txt", "w") as fh:
+              fh.write(f"tests={tests} failures={failures} errors={errors} skipped={skipped}\n")
+          PYEOF
+
+      - name: Upload unit-test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            unit-tests.log
+            app/build/reports/tests/testDebugUnitTest/**
+          retention-days: 14
+
       - name: Build signed release APK
         run: |
           set -eo pipefail
