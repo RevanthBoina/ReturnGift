@@ -15,7 +15,7 @@ import org.junit.Test
  */
 class RequestProfilerTest {
 
-    private const val K = 1_000
+    private val k = 1_000
 
     private fun text(chars: Int) = RequestProfiler.Facts(
         systemChars = chars,
