@@ -158,6 +158,16 @@ User Task → Tier 1 Deterministic Parser → Direct Intent/Tool
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v3.6.0
+- **The agent now lives in the notification shade.** Every question it has, every permission it needs and every follow-up task arrives as one notification you can answer with one tap or one typed line — from the lock screen, without opening the app. The chat becomes a read-only mirror: it shows *Asked: …* and *You: …*, and only falls back to in-app buttons when Android refuses to post notifications.
+- **The command notification is the control surface.** A progress notification carries a *Type a task…* reply box and Stop; the result replaces the text in the same notification, keeping the reply box and Undo when the last action can still be undone. All actions finish in a non-exported receiver — only a tap on the body opens the app.
+- **Questions survive the app dying.** A pending question stores its id, a random nonce and the task text, so an answer after a kill resumes the task instead of being lost; a stale tap updates the notification to "expired" rather than answering a question that no longer exists.
+- **Silence pauses instead of cancelling.** The question timeout is the checkpoint TTL (30 min) with the foreground service held open while waiting, so the task resumes from its checkpoint when you answer, and says "Expired — reply to start again" when it does not.
+- **Permissions stay quiet by default.** The master switch is off, so nothing is asked; when it is on, asks are Allow once / Always allow / Deny, "Always" writes the existing remember store, Deny aborts only that step, and system-only grants get a single "tap to fix" notification per 10 minutes instead of a loop.
+- **It asks less.** The agent asks only when required information is missing with no sensible default, or when two plausible targets would give different outcomes — otherwise it takes the best default and names it in the result.
+- **Share to start work.** "Send to ReturnGift" in the share sheet starts a task silently through the same intake as the notification reply; nothing is pulled to the foreground.
+- Lock screens stay clean: questions and results are generic until the phone is unlocked.
+
 ### v3.5.1
 - **MCP servers are treated as untrusted principals.** Plain HTTP is refused (only loopback is exempt), bearer tokens are encrypted with an Android Keystore key instead of sitting in a server row, and credentials are masked in logs and error text. Each server has its own trust switch, tools can be blocked by name, and anything that changes remote state asks first — destructive verbs ask every time. Tool output is bounded and fenced as untrusted data before the model reads it.
 - **The plan is now a contract, not a hint.** Every tool call is attributed to a step, the tool's real result is that step's evidence, and `finish` is refused while a step that promised an outcome is unproven. Off-plan actions are recorded (or refused in strict mode), failed steps stay on their step instead of silently advancing, and an interrupted task resumes from a saved checkpoint rather than restarting and reporting success.
