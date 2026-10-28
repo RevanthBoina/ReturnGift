@@ -16,7 +16,7 @@ import org.junit.Test
  *  3. **multi-clause** — `open YouTube then search cats` is two instructions; the
  *     plan may only claim the first, and the entity must not swallow clause two.
  */
-object PlanAmbiguityTest {
+class PlanAmbiguityTest {
 
     private val ctx = PlanContext(
         apps = listOf(

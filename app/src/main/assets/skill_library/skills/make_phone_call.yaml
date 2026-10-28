@@ -67,13 +67,19 @@ execution:
         - { op: confirm_with_user, render: "Call {contact.display_name}?" }
 
 recovery:
-  - on: permission_denied
-    do: [request_permission(CALL_PHONE), retry_once]
-  - on: invalid_number
-    do: [abort, notify_user("The number doesn't look valid: {phone_number}")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't place the call."
+  - "on": permission_denied
+    do:
+      - 'request_permission(CALL_PHONE)'
+      - retry_once
+  - "on": invalid_number
+    do:
+      - abort
+      - 'notify_user("The number doesn''t look valid: {phone_number}")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't place the call."
 
 routing:
   priority: 85
@@ -85,8 +91,8 @@ routing:
     - "make a voice call to {contact}"
     - "give {contact} a call"
   anti_triggers:
-    - "send a message to {contact}" -> send_message
-    - "video call {contact}" -> unsupported
+    - "send a message to {contact} -> send_message"
+    - "video call {contact} -> unsupported"
   required_entities: []
 
 output:

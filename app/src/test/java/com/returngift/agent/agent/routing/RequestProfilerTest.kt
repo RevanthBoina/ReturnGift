@@ -13,7 +13,7 @@ import org.junit.Test
  * These tests are pure arithmetic on purpose; the interesting bug class is "a part
  * of the prompt was invisible", and that is exactly what a facts record can prove.
  */
-object RequestProfilerTest {
+class RequestProfilerTest {
 
     private const val K = 1_000
 

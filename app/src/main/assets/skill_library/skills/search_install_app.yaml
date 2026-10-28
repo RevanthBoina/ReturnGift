@@ -62,11 +62,14 @@ execution:
         - { id: submit, op: press, key: KEYCODE_ENTER }
 
 recovery:
-  - on: app_not_found
-    do: [notify_user("No results for \"{app_name}\" on Play Store.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't find \"{app_name}\" on the Play Store."
+  - "on": app_not_found
+    do:
+      - 'notify_user("No results for \"{app_name}\" on Play Store.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't find \"{app_name}\" on the Play Store."
 
 routing:
   priority: 60
@@ -77,8 +80,8 @@ routing:
     - "find and install {app_name}"
     - "find {app_name} on google play"
   anti_triggers:
-    - "open {app_name}" -> open_app
-    - "search the web for {app_name}" -> web_search
+    - "open {app_name} -> open_app"
+    - "search the web for {app_name} -> web_search"
   required_entities: [app_name]
   disambiguate_against: [open_app, web_search]
 

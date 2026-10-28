@@ -57,13 +57,17 @@ execution:
         - { id: select_file, op: tap, target: { by: text, matches: "{filename}", clickable: true }, guard: { text_similarity_to: "{filename}", min: 0.70 } }
 
 recovery:
-  - on: file_not_found
-    do: [notify_user("No file matching \"{filename}\" found in Drive.")]
-  - on: multiple_matches
-    do: [prompt_user("Which file? I see: {candidates}")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't find \"{filename}\" in Drive."
+  - "on": file_not_found
+    do:
+      - 'notify_user("No file matching \"{filename}\" found in Drive.")'
+  - "on": multiple_matches
+    do:
+      - 'prompt_user("Which file? I see: {candidates}")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't find \"{filename}\" in Drive."
 
 routing:
   priority: 55
@@ -75,8 +79,8 @@ routing:
     - "show me {filename} from drive"
     - "locate {filename} in my drive"
   anti_triggers:
-    - "open drive" -> open_app
-    - "create a new document" -> create_document
+    - "open drive -> open_app"
+    - "create a new document -> create_document"
   required_entities: [filename]
   disambiguate_against: [open_app, create_document]
 

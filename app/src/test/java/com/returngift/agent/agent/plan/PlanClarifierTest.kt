@@ -11,7 +11,7 @@ import org.junit.Test
  * Answers must change the plan. This is the regression that matters: ask "where?",
  * get "LinkedIn", and the second plan has to open LinkedIn — not the old guess.
  */
-object PlanClarifierTest {
+class PlanClarifierTest {
 
     private fun ctx() = PlanContext(
         apps = listOf(

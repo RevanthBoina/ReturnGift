@@ -53,11 +53,15 @@ execution:
         - { id: submit, op: press, key: KEYCODE_ENTER }
 
 recovery:
-  - on: not_signed_in
-    do: [abort, notify_user("Please sign in to GitHub first.")]
-  - on: all_routes_failed
-    do: [escalate: llm_open_loop, budget_steps: 4]
-  terminal_message: "I couldn't search GitHub."
+  - "on": not_signed_in
+    do:
+      - abort
+      - 'notify_user("Please sign in to GitHub first.")'
+  - "on": all_routes_failed
+    do:
+      - 'escalate: llm_open_loop'
+      - 'budget_steps: 4'
+terminal_message: "I couldn't search GitHub."
 
 routing:
   priority: 55
@@ -69,8 +73,8 @@ routing:
     - "github search {query}"
     - "find code for {query} on github"
   anti_triggers:
-    - "open github" -> open_app
-    - "search the web for {query}" -> web_search
+    - "open github -> open_app"
+    - "search the web for {query} -> web_search"
   required_entities: [query]
   disambiguate_against: [web_search, open_app]
 

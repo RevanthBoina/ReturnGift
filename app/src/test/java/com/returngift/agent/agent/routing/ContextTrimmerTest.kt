@@ -11,7 +11,7 @@ import org.junit.Test
  * not fit *before* paying for a failing call. The rules that matter are what must
  * never be dropped — the system prompt and the newest turn.
  */
-object ContextTrimmerTest {
+class ContextTrimmerTest {
 
     private fun items(vararg spec: Triple<Int, Int, Boolean>): List<ContextTrimmer.Item> =
         spec.map { (index, chars, droppable) -> ContextTrimmer.Item(index, chars, droppable) }

@@ -17,7 +17,7 @@ import org.junit.Test
  * tool names route back to the right server, and an MCP resource can update app
  * knowledge without a release.
  */
-object McpRuntimeTest {
+class McpRuntimeTest {
 
     /** In-memory storage seam: no MMKV, no Android. */
     private class FakeStorage : AppGuideStore.Storage {

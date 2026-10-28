@@ -13,7 +13,7 @@ import org.junit.Test
  * survive session loss and auth failures, never blow up the agent loop, and never
  * let a server flood the prompt.
  */
-object McpClientTest {
+class McpClientTest {
 
     private fun config(token: String? = "secret") = McpServerConfig(
         id = "guides",
