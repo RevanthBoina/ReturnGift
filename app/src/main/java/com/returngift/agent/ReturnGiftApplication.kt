@@ -69,6 +69,9 @@ class ReturnGiftApplication : BaseApp() {
         Thread({
             runCatching { com.returngift.agent.agent.mcp.McpServerStore.migrateLegacySecrets() }
                 .onFailure { XLog.w(TAG, "MCP secret migration failed", it) }
+            // Provider keys follow the same rule: one encrypted copy, no plaintext left.
+            runCatching { com.returngift.agent.utils.KVUtils.migrateProviderKeys() }
+                .onFailure { XLog.w(TAG, "provider key migration failed", it) }
         }, "mcp-secret-migration").start()
         // MCP: connect configured servers off the main thread; a dead server never
         // delays startup (failures are logged and skipped).

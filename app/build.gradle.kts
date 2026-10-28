@@ -84,14 +84,11 @@ android {
         buildConfigField("String", "BUILD_FINGERPRINT", "\"${getBuildFingerprint()}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Optional: shrink the installed APK by dropping native-library ABIs you don't
-        // need. Unset by default, which keeps a universal APK (all ABIs) — required for
-        // CI/public release builds, since you don't know every installer's device.
-        // For a single personal-device build, set RETURNGIFT_ABI (env var or
-        // local.properties), e.g. RETURNGIFT_ABI=arm64-v8a — covers effectively every
-        // Android phone sold since ~2017 and is the biggest lever on install size, since
-        // the on-device model runtime ships native .so files per ABI.
-        val restrictAbi = readLocalOrEnvString("RETURNGIFT_ABI")
+        // One phone, one ABI. arm64-v8a covers every Android phone since ~2017 and
+        // drops the other native copies of the on-device runtime, which is the single
+        // biggest lever on install size. Override with RETURNGIFT_ABI (env or
+        // local.properties) for a different device, or set it empty for a universal APK.
+        val restrictAbi = readLocalOrEnvString("RETURNGIFT_ABI", "arm64-v8a")
         if (restrictAbi.isNotEmpty()) {
             ndk {
                 abiFilters += restrictAbi.split(",").map { it.trim() }

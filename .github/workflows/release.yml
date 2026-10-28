@@ -130,13 +130,10 @@ jobs:
               KEY_PASS="$ANDROID_KEY_PASSWORD"
               KEYSTORE_TYPE="production"
           else
-              echo "GitHub Secrets not set: generating stable CI release keystore"
-              KEYSTORE_PATH="$RUNNER_TEMP/returngift-ci.keystore"
-              keytool -genkeypair -v -keystore "$KEYSTORE_PATH" -alias returngift -keyalg RSA -keysize 2048 -validity 10000 -storepass returngift -keypass returngift -dname "CN=ReturnGift CI, OU=Android, O=ReturnGift, L=Default, S=Default, C=US"
-              STORE_PASS="returngift"
-              ALIAS="returngift"
-              KEY_PASS="returngift"
-              KEYSTORE_TYPE="ci-fallback"
+              # A throw-away keystore produces an APK that cannot install over the
+              # previous one. Refuse instead of shipping it.
+              echo "::error::Release signing secrets are missing. Set ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD; a release is never signed with a generated key."
+              exit 1
           fi
           # Log which keystore is being used
           echo "KEYSTORE_TYPE=$KEYSTORE_TYPE" >> "$GITHUB_ENV"

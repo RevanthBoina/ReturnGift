@@ -308,14 +308,89 @@ object KVUtils {
   private const val KEY_FAST_LOCAL_MODEL_PATH = "KEY_FAST_LOCAL_MODEL_PATH"
   const val KEY_GENERATION_PROFILE_V1 = "KEY_GENERATION_PROFILE_V1"
   
-  fun getLlmApiKey(): String = getString(KEY_LLM_API_KEY, "")
-    fun setLlmApiKey(value: String) = putString(KEY_LLM_API_KEY, value)
+  // ── provider API keys, encrypted at rest ──────────────────────────────────
+  //
+  // A provider key is a billable credential, so it lives in the same
+  // Keystore-backed store the remote-tool tokens use. The plaintext slots are
+  // only read to migrate an existing install; once the sealed copy round-trips
+  // they are cleared. Getters/setters keep their signatures: nothing else changes.
 
-    /** Per-provider API key storage — allows users to save keys for multiple providers simultaneously. */
-    fun getApiKeyForProvider(provider: String): String =
-        getString("KEY_LLM_API_KEY_${provider.uppercase()}", "")
-    fun setApiKeyForProvider(provider: String, key: String) =
-        putString("KEY_LLM_API_KEY_${provider.uppercase()}", key)
+  private const val KEY_PROVIDER_KEY_SEALED = "provider_key_sealed_"
+
+  private val CLOUD_PROVIDER_SLOTS = listOf(
+    "OPENAI", "ANTHROPIC", "GOOGLE", "GROQ", "OPENROUTER", "DEEPSEEK", "XAI", "MISTRAL", "QWEN",
+  )
+
+  private fun sealedSlot(provider: String) = KEY_PROVIDER_KEY_SEALED + provider.uppercase()
+
+  private fun plainSlot(provider: String) =
+    if (provider.equals("DEFAULT", ignoreCase = true)) KEY_LLM_API_KEY
+    else "KEY_LLM_API_KEY_${provider.uppercase()}"
+
+  private fun seal(value: String): String? = try {
+    val cipher = com.returngift.agent.agent.mcp.McpSecretStore.cipher
+    if (cipher.isSecure) cipher.encrypt(value) else null
+  } catch (e: Throwable) {
+    null
+  }
+
+  private fun unseal(blob: String): String? = try {
+    com.returngift.agent.agent.mcp.McpSecretStore.cipher.decrypt(blob)
+  } catch (e: Throwable) {
+    null
+  }
+
+  /**
+   * Read a provider key, migrating a legacy plaintext value the first time it is seen.
+   *
+   * Fails soft: without a usable Keystore the legacy value is returned as-is rather
+   * than the key disappearing.
+   */
+  private fun readProviderKey(provider: String): String {
+    val sealed = getString(sealedSlot(provider), "")
+    if (sealed.isNotEmpty()) unseal(sealed)?.let { return it }
+    val legacy = getString(plainSlot(provider), "")
+    if (legacy.isEmpty()) return ""
+    if (stickSealed(provider, legacy)) putString(plainSlot(provider), "")
+    return legacy
+  }
+
+  private fun writeProviderKey(provider: String, key: String) {
+    if (key.isBlank()) {
+      putString(sealedSlot(provider), "")
+      putString(plainSlot(provider), "")
+      return
+    }
+    if (stickSealed(provider, key)) {
+      putString(plainSlot(provider), "")
+    } else {
+      // No Keystore: keep working rather than losing the key.
+      putString(plainSlot(provider), key)
+    }
+  }
+
+  /** Encrypt, verify the ciphertext round-trips, then store it. */
+  private fun stickSealed(provider: String, key: String): Boolean {
+    val blob = seal(key) ?: return false
+    if (unseal(blob) != key) return false
+    putString(sealedSlot(provider), blob)
+    return true
+  }
+
+  /** One background pass at startup so no plaintext key survives an update. */
+  fun migrateProviderKeys() {
+    (listOf("DEFAULT") + CLOUD_PROVIDER_SLOTS).forEach { provider ->
+      runCatching { readProviderKey(provider) }
+        .onFailure { XLog.w("KVUtils", "provider key migration skipped for $provider", it) }
+    }
+  }
+
+  fun getLlmApiKey(): String = readProviderKey("DEFAULT")
+  fun setLlmApiKey(value: String) = writeProviderKey("DEFAULT", value)
+
+  /** Per-provider API key storage — allows users to save keys for multiple providers simultaneously. */
+  fun getApiKeyForProvider(provider: String): String = readProviderKey(provider)
+  fun setApiKeyForProvider(provider: String, key: String) = writeProviderKey(provider, key)
     fun getLlmBaseUrl(): String = getString(KEY_LLM_BASE_URL, "")
     fun setLlmBaseUrl(value: String) = putString(KEY_LLM_BASE_URL, value)
     fun getLlmModelName(): String = getString(KEY_LLM_MODEL_NAME, "")
