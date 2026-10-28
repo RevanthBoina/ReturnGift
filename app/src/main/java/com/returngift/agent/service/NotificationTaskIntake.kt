@@ -58,6 +58,13 @@ object NotificationTaskIntake {
                         ForegroundService.notifyTaskFinished(context, false, task, "Blocked by a system dialog.")
                     else -> Unit
                 }
+                if (event is TaskEvent.Completed || event is TaskEvent.Failed ||
+                    event is TaskEvent.Cancelled || event is TaskEvent.Blocked
+                ) {
+                    // The run is over: drop the callback so a chat screen that comes back
+                    // to the front owns the next task's events again.
+                    runCatching { vm.clearTaskCallback() }
+                }
             }
         }.onFailure {
             XLog.w(TAG, "could not start the task from the notification", it)

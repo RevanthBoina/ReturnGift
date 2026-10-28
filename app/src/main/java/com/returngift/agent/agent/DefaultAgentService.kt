@@ -750,7 +750,9 @@ class DefaultAgentService : AgentService {
                     question = question,
                     choices = choices,
                     allowFreeText = true,
-                    timeoutMs = 120_000L
+                    // Waits on the notification like every other ask: silence must not
+                    // cancel work the owner has not seen yet.
+                    timeoutMs = com.returngift.agent.agent.clarify.ClarificationManager.DEFAULT_TIMEOUT_MS
                 )
                 
                 if (answer != null && answer.isNotBlank()) {
@@ -1979,7 +1981,7 @@ callback.onSystemDialogBlocked(iterations, totalTokens)
                 question = match.askPrompt,
                 choices = emptyList(),
                 allowFreeText = true,
-                timeoutMs = 120_000L // 2 minutes
+                timeoutMs = com.returngift.agent.agent.clarify.ClarificationManager.DEFAULT_TIMEOUT_MS
             )
             if (answer == null || answer.isBlank()) {
                 XLog.w(TAG, "No post text provided by user — cancelling")

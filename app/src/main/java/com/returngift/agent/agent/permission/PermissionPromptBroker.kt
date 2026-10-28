@@ -18,11 +18,11 @@ import java.util.concurrent.TimeUnit
  * surface the first-encounter prompt (it never did), so the agent silently
  * proceeded. [request] now:
  *
- *  1. opens ReturnGift's own permission card in the foreground
- *     ([PermissionPromptLauncher] → `PermissionPromptActivity`),
- *  2. parks the calling (agent) thread until the user picks a choice,
- *  3. posts a heads-up notification with the same choices when the app is in
- *     the background (so the request is never invisible),
+ *  1. posts the ask as a notification
+ *     ([com.returngift.agent.service.NotificationPrompter]) answered in place,
+ *  2. parks the calling (agent) thread until the owner picks a choice,
+ *  3. falls back to ReturnGift's own permission card only when Android refuses
+ *     to post notifications ([PermissionPromptLauncher] → `PermissionPromptActivity`),
  *  4. returns [PermissionRequest.safeDefault] (CANCEL) on timeout/cancel.
  *
  * Only ONE request can be pending at a time — a second request returns the safe

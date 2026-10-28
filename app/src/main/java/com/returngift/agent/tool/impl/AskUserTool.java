@@ -79,8 +79,8 @@ public class AskUserTool extends BaseTool {
                 "generic");
 
         if (answer == null || answer.trim().isEmpty()) {
-            return ToolResult.error("The user did not answer within " +
-                    (ClarificationManager.DEFAULT_TIMEOUT_MS / 1000) + "s (or the task was stopped). " +
+            return ToolResult.error("The question expired unanswered after " +
+                    (ClarificationManager.DEFAULT_TIMEOUT_MS / 60_000L) + " minutes (or the task was stopped). " +
                     "Proceed with the safest reasonable default and say so explicitly, or call finish " +
                     "honestly explaining what was missing.");
         }
