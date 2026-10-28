@@ -60,10 +60,18 @@
             android:screenOrientation="portrait" />
         <activity
             android:name=".ui.chat.ComposeChatActivity"
-            android:exported="false"
+            android:exported="true"
+            android:label="Ask ReturnGift"
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize">
+            <!-- Share sheet: "Send to ReturnGift" starts a task with the shared text. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".ui.settings.ThemeActivity"
             android:exported="false"
@@ -157,6 +165,17 @@
                 <action android:name="com.returngift.agent.RUN_CHAT" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".service.QuickLaunchTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="Ask ReturnGift"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".service.ReturnGiftNotificationListener"
