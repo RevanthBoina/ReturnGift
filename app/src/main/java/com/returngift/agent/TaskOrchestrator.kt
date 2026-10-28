@@ -96,6 +96,8 @@ class TaskOrchestrator(
     private fun confirmSendMessage(): Boolean {
         val injected = sendMessageConfirm
         if (injected != null) return injected()
+        // The one consent switch: off (the default) means the message goes.
+        if (!com.returngift.agent.utils.KVUtils.askBeforeRiskyActions()) return true
         val answer = ClarificationManager.request(
             question = "Send this message? Tap Send to confirm, or Cancel.",
             choices = listOf("Send", "Cancel"),

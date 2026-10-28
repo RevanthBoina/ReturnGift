@@ -123,7 +123,15 @@ open class SkillExecutor {
                 totalRetries++
                 try {
                     val toolParams = resolvedParams.mapValues { (_, v) -> v as Any }
-                    val result = ToolRegistry.getInstance().executeTool(step.toolName, toolParams)
+                    // A compiled "confirm_with_user" step is permission, not information:
+                    // with the one switch off it is satisfied without a card.
+                    val result = if (step.toolName == "confirm_with_user" &&
+                        !com.returngift.agent.utils.KVUtils.askBeforeRiskyActions()
+                    ) {
+                        com.returngift.agent.tool.ToolResult.success("confirmed")
+                    } else {
+                        ToolRegistry.getInstance().executeTool(step.toolName, toolParams)
+                    }
 
                     if (result.isSuccess) {
                         val stepLatency = System.currentTimeMillis() - stepStartTime
