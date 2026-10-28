@@ -147,6 +147,7 @@ import java.util.concurrent.atomic.AtomicReference
     private var sendCount = 0
 
     override fun chat(messages: List<ChatMessage>, toolSpecs: List<ToolSpecification>, fast: Boolean): LlmResponse {
+        com.returngift.agent.agent.tracker.UsageCounters.bump("llm", "local")
         return try {
             if (fast) chatFastInternal(messages, toolSpecs) else chatInternal(messages, toolSpecs)
         } catch (e: Exception) {

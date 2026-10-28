@@ -66,6 +66,7 @@ class SettingsActivity : BaseActivity() {
     private var permAppAccess: com.returngift.agent.widget.MenuItem? = null
     private var permHealth: com.returngift.agent.widget.MenuItem? = null
     private var permBackup: com.returngift.agent.widget.MenuItem? = null
+    private var permUsage: com.returngift.agent.widget.MenuItem? = null
     private var permConnections: com.returngift.agent.widget.MenuItem? = null
     private var externalAutomationItem: com.returngift.agent.widget.MenuItem? = null
     private var globalPromptItem: com.returngift.agent.widget.MenuItem? = null
@@ -334,6 +335,16 @@ class SettingsActivity : BaseActivity() {
             title = "Health check",
             onClick = {
                 startActivity(Intent(this@SettingsActivity, HealthCheckActivity::class.java))
+            },
+            showDivider = true
+        )
+
+        // Local counters only: which channels, engines, routines and skills get used.
+        permUsage = permissionsGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_menu_manage,
+            title = "Usage",
+            onClick = {
+                startActivity(Intent(this@SettingsActivity, UsageActivity::class.java))
             },
             showDivider = true
         )

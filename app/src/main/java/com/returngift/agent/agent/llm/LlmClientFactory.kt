@@ -107,6 +107,7 @@ class LlmClientLeaveTracker(
         fast: Boolean
     ): LlmResponse {
         val response = delegate.chat(messages, toolSpecs, fast)
+        com.returngift.agent.agent.tracker.UsageCounters.bump("llm", provider)
 
         // Record LEAVE event: one row per response
         ExecutionTracker.recordLeave(

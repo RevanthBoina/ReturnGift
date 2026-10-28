@@ -51,6 +51,7 @@ class ChannelSetup(
                     ChannelManager.flushMessages(channel)
                     return
                 }
+                com.returngift.agent.agent.tracker.UsageCounters.bump("channel", channel.name)
                 val capabilityState = AppCapabilityCoordinator.accessibilityState(app)
                 if (capabilityState == ServiceBindingState.DISABLED) {
                     ChannelManager.sendMessage(channel, "Accessibility service is not enabled. Please enable ReturnGift in Settings > Accessibility.", messageID)

@@ -382,6 +382,7 @@ class TaskOrchestrator(
         com.returngift.agent.agent.tracker.ExecutionTracker.recordTier(messageID, tier, routeInfo)
         // Temporary routing trace: task id + engine, removed once routing is settled.
         XLog.i(TAG, "ROUTE task=$messageID engine=$tier/$routeInfo")
+        com.returngift.agent.agent.tracker.UsageCounters.bump("engine", tier)
 
         when (route) {
             is PipelineRouter.Route.DirectIntent -> {

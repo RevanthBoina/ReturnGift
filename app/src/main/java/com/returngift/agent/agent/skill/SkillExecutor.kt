@@ -48,6 +48,7 @@ open class SkillExecutor {
         stopRequested: (() -> Boolean)? = null,
         wallClockMs: Long = BoundedExecution.DEFAULT_WALL_CLOCK_MS
     ): SkillResult {
+        com.returngift.agent.agent.tracker.UsageCounters.bump("skill", skill.id)
         val startTime = System.currentTimeMillis()
         
         XLog.i(TAG, "Executing skill: ${skill.id} with params: $params")
