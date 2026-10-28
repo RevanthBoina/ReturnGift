@@ -129,8 +129,12 @@ class TaskOrchestratorTier1Test {
         val failed = terminalEvents.filterIsInstance<TaskEvent.Failed>()
         assertEquals("events=$terminalEvents", 1, failed.size)
         assertEquals("events=$terminalEvents", 0, terminalEvents.filterIsInstance<TaskEvent.Completed>().size)
-        val message = channelMessages.firstOrNull { it.startsWith("✗") }
-        assertTrue("expected ✗ channel message, got $channelMessages", message != null)
+        // A dead intent is escalated to the agent loop (W6) rather than dead-ended, so the
+        // only hard requirement here is that nothing claims success.
+        assertTrue("expected escalation Progress; events=$terminalEvents",
+            terminalEvents.any { it is TaskEvent.Progress && it.description.contains("switching to AI control") })
+        assertTrue("no success message may be sent; msgs=$channelMessages",
+            channelMessages.none { it.startsWith("✓") })
         assertFalse("expected error floating state", floatingStates.last())
         // lock released: a new task can start
         assertFalse(orchestrator.isTaskRunning())

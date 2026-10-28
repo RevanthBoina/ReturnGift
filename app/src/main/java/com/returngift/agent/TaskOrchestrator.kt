@@ -163,9 +163,12 @@ class TaskOrchestrator(
         }
     }
 
-    /** Terminal callbacks report to the owner, but a channel failure must not stop them. */
+    /**
+     * Terminal callbacks report to the owner, but a channel failure must not stop them.
+     * Goes through [sendChannelMessage] so the observable seam sees every ending.
+     */
     private fun safeChannelSend(channel: Channel, content: String, messageId: String) {
-        runCatching { ChannelManager.sendMessage(channel, content, messageId) }
+        runCatching { sendChannelMessage(channel, content, messageId) }
             .onFailure { XLog.w(TAG, "terminal channel send failed", it) }
     }
 
