@@ -268,6 +268,17 @@ jobs:
                   )
                   name = f"{case.get('classname','?').split('.')[-1]} > {case.get('name','?')}"
                   lines.append(f"{name}\n    {detail[:300]}\n    {first_frame[:200]}")
+                  # The test's own log is the only place a background-thread crash shows up.
+                  for tag in ("system-err", "system-out"):
+                      node2 = None
+                      for parent in (case, root):
+                          found = parent.find(tag)
+                          if found is not None and found.text:
+                              node2 = found
+                              break
+                      if node2 is not None and len(lines) < 6:
+                          tail = "\n".join(node2.text.strip().splitlines()[-14:])[:1200]
+                          lines.append(f"    [{tag}]\n    " + tail.replace("\n", "\n    "))
           if lines:
               emit("unitTests", "\n\n".join(lines))
               raise SystemExit(0)
