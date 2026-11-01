@@ -29,6 +29,7 @@ import com.google.ai.edge.litertlm.SamplerConfig
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 data class ChatSessionUiState(
@@ -54,6 +55,8 @@ class ChatSessionController(
     companion object {
         private const val TAG = "ChatSessionController"
         private const val STREAM_UI_THROTTLE_MS = 60L
+        /** Wall clock a single local reply may take before we stop waiting for it. */
+        private const val LOCAL_REPLY_TIMEOUT_SECONDS = 180L
         private const val BASE_SYSTEM_PROMPT = "You are a helpful AI assistant on an Android phone."
         private const val READY_POLL_MS = 500L
         private const val READY_POLL_ATTEMPTS = 60
@@ -372,7 +375,23 @@ class ChatSessionController(
             addSystem("ℹ️ That question was already closed (timed out or cancelled) — your message was sent as a new chat instead.")
         }
         addUser(text, markEdited)
+        // No model attached to the chat surface: say so in the transcript instead of
+        // queueing a send that can never produce a reply (the message used to vanish).
+        if (cloudClient == null && (conversation == null || !isModelReady)) {
+            uiState.isAwaitingReply.value = false
+            val status = uiState.modelStatus.value.trim().ifBlank { "No model selected" }
+            addSystem("⚠ The model is not ready ($status), so this message was not sent. Open Models to load or pick one, then send again.")
+            onPersistConversation()
+            return
+        }
         uiState.isAwaitingReply.value = true
+        // One placeholder at a time: a reply that died without replacing its bubble used
+        // to leave a "..." behind, and the next send made a second one.
+        while (uiState.messages.lastOrNull()
+                ?.let { it.role == ChatMessage.Role.ASSISTANT && it.content == "..." } == true
+        ) {
+            uiState.messages.removeAt(uiState.messages.lastIndex)
+        }
         uiState.messages.add(ChatMessage(ChatMessage.Role.ASSISTANT, "..."))
 
         executor.submit {
@@ -455,7 +474,13 @@ class ChatSessionController(
                             streamDone.countDown()
                         }
                     })
-                    streamDone.await()
+                    // A native callback that never fires used to block this thread (and
+                    // the composer, which stays "waiting") forever. Bound it and report.
+                    if (!streamDone.await(LOCAL_REPLY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                        throw IllegalStateException(
+                            "The local model did not answer within ${LOCAL_REPLY_TIMEOUT_SECONDS}s — tap send to try again."
+                        )
+                    }
                     streamError.get()?.let { throw Exception(it.message ?: "local stream failed", it) }
                     val responseText = partial.toString().ifEmpty { "(no response)" }
                     val inputTokensEst = text.length / 4 + 1

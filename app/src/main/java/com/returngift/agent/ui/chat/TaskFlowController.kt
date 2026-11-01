@@ -239,7 +239,7 @@ class TaskFlowController(
             // The user's next message is consumed as the answer; "resume" re-runs
             // this branch (now fresh-checked against the same checkpoint), anything
             // else discards the checkpoint and starts a new task.
-            addSystem("⏳ That interrupted task is over ${com.returngift.agent.agent.checkpoint.TaskCheckpointStore.FRESHNESS_MS / 3_600_000}h old — start fresh instead? Type \"resume\" to still resume it, or send anything else to start fresh.")
+            echoThenRefuse(text, "⏳ That interrupted task is over ${com.returngift.agent.agent.checkpoint.TaskCheckpointStore.FRESHNESS_MS / 3_600_000}h old — start fresh instead? Type \"resume\" to still resume it, or send anything else to start fresh.")
             staleResumeCheckpoint = peeked
             return
         }
@@ -265,7 +265,7 @@ class TaskFlowController(
                     com.returngift.agent.agent.checkpoint.TaskCheckpointStore.renderPromptContext(checkpoint)
             } else if (com.returngift.agent.agent.checkpoint.TaskCheckpointStore.isResumeKeyword(text)) {
                 // Resume card/button tapped after the checkpoint was already consumed.
-                addSystem("No interrupted task to resume.")
+                echoThenRefuse(text, "No interrupted task to resume.")
                 return
             }
         }
@@ -277,7 +277,7 @@ class TaskFlowController(
         }
 
         if (appViewModel.isTaskRunning()) {
-            addSystem("Another task is still running. Stop it first.")
+            echoThenRefuse(text, "Another task is still running. Stop it first.")
             onTaskTerminal?.invoke(TaskEvent.Failed("Another task is still running. Stop it first."))
             return
         }
@@ -307,7 +307,7 @@ class TaskFlowController(
                     XLog.i(TAG, "sendTask: allowing non-interactive task without Accessibility")
                 } else {
                 Toast.makeText(activity, "Enable Accessibility Service to run tasks", Toast.LENGTH_LONG).show()
-                addSystem("⚠️ Task mode needs Accessibility Service enabled. Opening Settings...")
+                echoThenRefuse(text, "⚠️ Task mode needs Accessibility Service enabled. Opening Settings...")
                 openSettings()
                 sendTaskRetryCount = 0
                 onTaskTerminal?.invoke(TaskEvent.Failed("Accessibility Service is required for this task."))
@@ -326,7 +326,7 @@ class TaskFlowController(
                 } else {
                 if (sendTaskRetryCount >= 1) {
                     Toast.makeText(activity, "Accessibility service not connected. Try toggling it off and on.", Toast.LENGTH_LONG).show()
-                    addSystem("Accessibility service didn't connect. Try toggling it off and on in Settings.")
+                    echoThenRefuse(text, "Accessibility service didn't connect. Try toggling it off and on in Settings.")
                     openSettings()
                     sendTaskRetryCount = 0
                     onTaskTerminal?.invoke(TaskEvent.Failed("Accessibility service did not connect."))
@@ -341,7 +341,7 @@ class TaskFlowController(
                             sendTask(text)
                         } else {
                             Toast.makeText(activity, "Accessibility service didn't connect", Toast.LENGTH_LONG).show()
-                            addSystem("Accessibility service didn't connect. Go to Settings and toggle it off then on.")
+                            echoThenRefuse(text, "Accessibility service didn't connect. Go to Settings and toggle it off then on.")
                             sendTaskRetryCount = 0
                             onTaskTerminal?.invoke(TaskEvent.Failed("Accessibility service did not connect."))
                         }
@@ -361,7 +361,7 @@ class TaskFlowController(
                     XLog.i(TAG, "sendTask: allowing non-interactive task while Accessibility is degraded")
                 } else {
                     Toast.makeText(activity, "Accessibility service disconnected. Open Settings and toggle it back on.", Toast.LENGTH_LONG).show()
-                    addSystem("Accessibility service disconnected. Open Settings and toggle it off then on.")
+                    echoThenRefuse(text, "Accessibility service disconnected. Open Settings and toggle it off then on.")
                     openSettings()
                     sendTaskRetryCount = 0
                     onTaskTerminal?.invoke(TaskEvent.Failed("Accessibility service is disconnected."))
@@ -388,6 +388,7 @@ class TaskFlowController(
 
         if (!KVUtils.hasLlmConfig()) {
             Toast.makeText(activity, "Configure LLM in Settings first", Toast.LENGTH_LONG).show()
+            echoThenRefuse(text, "⚠ No model is configured, so nothing was sent. Open Models, add a provider key, then send again.")
             onTaskTerminal?.invoke(TaskEvent.Failed("Configure LLM in Settings first."))
             return
         }
@@ -826,6 +827,18 @@ class TaskFlowController(
 
     private fun addSystem(text: String) {
         uiState.messages.add(ChatMessage(ChatMessage.Role.SYSTEM, text))
+    }
+
+    /**
+     * Show the owner's own words before a gate refuses the task.
+     *
+     * The reasons below are real (no Accessibility, another task running, no model), but a
+     * refusal that never echoed the message looked like the send button did nothing at all.
+     */
+    private fun echoThenRefuse(text: String, reason: String) {
+        addUser(text)
+        addSystem(reason)
+        onPersistConversation()
     }
 
     private fun openSettings() {
