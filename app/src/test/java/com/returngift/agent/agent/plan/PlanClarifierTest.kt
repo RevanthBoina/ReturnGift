@@ -157,18 +157,31 @@ class PlanClarifierTest {
 
     @Test
     fun decliningTheApprovalStopsEverything() {
-        val outcome = runLoop(risky, Scripted("Cancel"))
+        listOf("Cancel", "No", "not now").forEach { answer ->
+            val outcome = runLoop(risky, Scripted(answer))
+            Assert.assertTrue(
+                "expected ApprovalDeclined for \"$answer\", got $outcome",
+                outcome is PlanQuestionFlow.Outcome.ApprovalDeclined,
+            )
+        }
+    }
+
+    @Test
+    fun aTimeoutOnAQuestionCancelsInsteadOfGuessing() {
+        val outcome = runLoop("unsubscribe from youtube", Scripted(null))
+        Assert.assertTrue("expected Cancelled, got $outcome", outcome is PlanQuestionFlow.Outcome.Cancelled)
+    }
+
+    @Test
+    fun aTimeoutOnTheApprovalRunsNothing() {
+        // Not answering the approval is not a yes. It is reported as a decline, so the
+        // chat says "nothing was changed" instead of asking for a detail that is not missing.
+        val scripted = Scripted("LinkedIn", null)
+        val outcome = runLoop("unsubscribe from youtube", scripted)
         Assert.assertTrue(
             "expected ApprovalDeclined, got $outcome",
             outcome is PlanQuestionFlow.Outcome.ApprovalDeclined,
         )
-    }
-
-    @Test
-    fun aTimeoutOnAnyQuestionCancelsInsteadOfGuessing() {
-        val scripted = Scripted("LinkedIn", null) // platform answered, approval timed out
-        val outcome = runLoop("unsubscribe from youtube", scripted)
-        Assert.assertTrue("expected Cancelled, got $outcome", outcome is PlanQuestionFlow.Outcome.Cancelled)
         Assert.assertTrue(scripted.asked.size <= PlanQuestionFlow.MAX_QUESTIONS)
     }
 

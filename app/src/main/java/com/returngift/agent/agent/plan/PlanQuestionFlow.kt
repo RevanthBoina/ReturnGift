@@ -31,10 +31,10 @@ object PlanQuestionFlow {
             val answers: Map<String, String>,
         ) : Outcome()
 
-        /** The ask returned null (timeout) or the user cancelled. */
+        /** An informational question went unanswered (timeout) or was cancelled. */
         data class Cancelled(val question: String) : Outcome()
 
-        /** The user declined the irreversible-action approval. */
+        /** The irreversible-action approval was declined, cancelled or timed out. */
         data class ApprovalDeclined(val question: String) : Outcome()
 
         /** Still blocked after [MAX_QUESTIONS] — never spins, never guesses. */
@@ -66,16 +66,21 @@ object PlanQuestionFlow {
 
                 val answer = ask(question)
                 asked++
-                if (answer.isNullOrBlank() || answer.equals("Cancel", ignoreCase = true)) {
-                    return Outcome.Cancelled(question.question)
-                }
-                answers[question.id] = answer
-                // The approval is a yes/no gate, not new information.
                 if (question.id == APPROVAL_ID) {
-                    if (!answer.startsWith("Yes", ignoreCase = true)) {
+                    // The approval is a yes/no gate, not new information: anything that
+                    // is not an explicit yes — "Cancel", a timeout, a stray word — means
+                    // the action does not run. It is a decision, not a missing detail,
+                    // so it is reported as a decline rather than "I need to know …".
+                    if (answer == null || !answer.trim().startsWith("Yes", ignoreCase = true)) {
                         return Outcome.ApprovalDeclined(question.question)
                     }
+                    answers[question.id] = answer
                     approvalGranted = true
+                } else {
+                    if (answer.isNullOrBlank() || answer.equals("Cancel", ignoreCase = true)) {
+                        return Outcome.Cancelled(question.question)
+                    }
+                    answers[question.id] = answer
                 }
                 askedThisRound = true
             }
