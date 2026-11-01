@@ -2552,27 +2552,33 @@ private fun ChatInputBar(
                     // the typed reply is routed as the clarification answer, not a new task.
                     if (isTaskRunning && !clarificationPending) {
                         onStopAll()
-                    } else if ((!isAwaitingReply || clarificationPending) && inputEnabled && text.isNotBlank()) {
-                        if (clarificationPending || !isLocalModel || isTaskMode) {
+                    } else if (text.isNotBlank()) {
+                        // Text that was typed always goes somewhere. Previously a stale
+                        // "awaiting reply" flag or a disabled input swallowed the tap and
+                        // the message was never even shown as sent; now the tap always
+                        // routes the text, and whatever stops it says why in the chat.
+                        if (clarificationPending || isTaskMode) {
                             onSendTask(text.trim())
-                            text = ""
-                            focusManager.clearFocus()
-                            keyboardController?.hide()
                         } else {
+                            // Chat vs device task is decided by the intent classifier, not
+                            // by which model is active: a cloud chat must not need
+                            // Accessibility, and a local chat must reach the local model.
                             onSendChat(text.trim())
-                            text = ""
-                            focusManager.clearFocus()
-                            keyboardController?.hide()
                         }
+                        text = ""
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
                     }
                 },
                 modifier = Modifier
                     .size(34.dp)
-                    .alpha(if ((text.isBlank() || !inputEnabled || (isAwaitingReply && !clarificationPending)) && !isTaskRunning) 0.35f else 1f),
+                    // Dimmed only when there is nothing to send: a disabled-looking
+                    // button that still sends is better than a dead one that does not.
+                    .alpha(if (text.isBlank() && !isTaskRunning) 0.35f else 1f),
                 containerColor = when {
                     isTaskRunning && !clarificationPending -> Color(0xFFF44336)
                     clarificationPending -> colors.accent
-                    isAwaitingReply -> colors.background
+                    isAwaitingReply && text.isBlank() -> colors.background
                     text.isBlank() -> colors.background
                     isTaskMode && isLocalModel -> colors.accent
                     else -> colors.userBubble
@@ -2583,13 +2589,13 @@ private fun ChatInputBar(
                 Icon(
                     when {
                         isTaskRunning && !clarificationPending -> Icons.Default.Close
-                        isAwaitingReply && !clarificationPending -> Icons.Default.MoreHoriz
+                        isAwaitingReply && !clarificationPending && text.isBlank() -> Icons.Default.MoreHoriz
                         else -> Icons.Default.ArrowUpward
                     },
                     contentDescription = when {
                         isTaskRunning && !clarificationPending -> "Stop"
                         clarificationPending -> "Send answer"
-                        isAwaitingReply -> "Waiting for reply"
+                        isAwaitingReply && text.isBlank() -> "Waiting for reply"
                         else -> "Send"
                     },
                     tint = Color.White,

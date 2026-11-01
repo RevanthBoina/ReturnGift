@@ -158,6 +158,12 @@ User Task → Tier 1 Deterministic Parser → Direct Intent/Tool
 ### Release Changelog
 
 <!-- CHANGELOG_START -->
+### v3.6.1
+- **A typed message always goes somewhere.** Tapping send used to do nothing at all when the composer believed it was still waiting for a reply, or when no model was ready: the text sat there and nothing was ever sent. The button now always routes what you typed — chat to the model, device work to the agent — and the chat says exactly why anything it refuses was refused.
+- **Chat is decided by the request, not by the kind of model.** With a cloud model selected every message was forced down the device-automation path, so a plain question waited on the Accessibility service before it ever reached the model. Questions now go straight to the model; only device work needs the service.
+- **No more silent refusals.** "No model configured", "another task is running", "Accessibility is off" and the resume prompts now echo your message first and then explain, instead of leaving the send looking broken.
+- **A stuck reply can no longer wedge the composer.** A local-model answer that never completes is released after three minutes with a visible error instead of holding the input forever, and a stranded "…" bubble is cleared on the next send.
+
 ### v3.6.0
 - **The agent now lives in the notification shade.** Every question it has, every permission it needs and every follow-up task arrives as one notification you can answer with one tap or one typed line — from the lock screen, without opening the app. The chat becomes a read-only mirror: it shows *Asked: …* and *You: …*, and only falls back to in-app buttons when Android refuses to post notifications.
 - **The command notification is the control surface.** A progress notification carries a *Type a task…* reply box and Stop; the result replaces the text in the same notification, keeping the reply box and Undo when the last action can still be undone. All actions finish in a non-exported receiver — only a tap on the body opens the app.
