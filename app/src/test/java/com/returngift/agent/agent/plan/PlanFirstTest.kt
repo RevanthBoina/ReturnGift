@@ -226,6 +226,17 @@ class PlanFirstTest {
     }
 
     @Test
+    fun unsubscribePlansAnUnfollowFlow() {
+        // Separate from the router's classification test: this one is about parsing.
+        val p = PlanFirst.plan("unsubscribe from youtube on LinkedIn", ctx())
+        Assert.assertEquals(PlanCapability.UNFOLLOW_ENTITY, p.blueprint.intent.capability)
+        Assert.assertEquals("youtube", p.blueprint.intent.entity, ignoreCase = true)
+        Assert.assertEquals(listOf("Yes, do it", "Cancel"), p.blueprint.questions.single().choices)
+        Assert.assertTrue(p.blueprint.steps.any { it.detail == "Unfollow" })
+        Assert.assertTrue(p.blueprint.steps.any { it.detail.contains("the button shows Follow") })
+    }
+
+    @Test
     fun riskyRequestAsksForApproval() {
         val p = PlanFirst.plan("post and then delete the old post on LinkedIn", ctx())
         Assert.assertTrue(p.blueprint.questions.any { it.id == "approval" })

@@ -197,6 +197,21 @@ fun AppAllowListScreen(onBack: () -> Unit) {
                             },
                         )
                         ToggleRow(
+                            title = "Strict plan mode",
+                            subtitle = if (com.returngift.agent.utils.KVUtils.strictPlanMode()) {
+                                "On — the agent may only run actions the plan accounts for; " +
+                                    "remote MCP tools are refused while a plan runs."
+                            } else {
+                                "Off — the plan still has to be proven step by step, but the " +
+                                    "agent may adapt when the screen differs."
+                            },
+                            checked = com.returngift.agent.utils.KVUtils.strictPlanMode(),
+                            onCheckedChange = {
+                                com.returngift.agent.utils.KVUtils.setStrictPlanMode(it)
+                                prefsVersion++
+                            },
+                        )
+                        ToggleRow(
                             title = "Ask before a new app",
                             subtitle = if (snapshot.askBeforeNewApp) {
                                 "The permission card opens the first time the agent touches an app."

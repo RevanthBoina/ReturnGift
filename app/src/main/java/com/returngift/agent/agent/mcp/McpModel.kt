@@ -22,8 +22,21 @@ object McpProtocol {
     /** Version this client prefers when opening a session. */
     const val PREFERRED_VERSION = "2025-06-18"
 
-    /** Versions this client understands; a server may pick any of them. */
-    val SUPPORTED_VERSIONS = listOf("2025-06-18", "2025-03-26", "2024-11-05")
+    /**
+     * Versions this client understands; a server may pick any of them.
+     *
+     * 2025-11-25 was accepted after checking what it requires of a *client*, not just
+     * for being newer: it keeps the `initialize` handshake, keeps `Mcp-Session-Id`,
+     * and its one added client MUST — send `MCP-Protocol-Version` on every request
+     * after initialization — is already what [McpClient.baseHeaders] does. Its new
+     * features (icons, OAuth discovery, elicitation variants, tasks) are all
+     * negotiated, and we advertise none of them.
+     *
+     * 2026-07-28 is deliberately absent: it removes the handshake and the session
+     * header and requires `server/discover` plus per-request `_meta`, which is a
+     * different transport, not a version bump.
+     */
+    val SUPPORTED_VERSIONS = listOf("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 
     const val HEADER_SESSION = "Mcp-Session-Id"
     const val HEADER_PROTOCOL = "MCP-Protocol-Version"

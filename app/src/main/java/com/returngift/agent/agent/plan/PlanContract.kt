@@ -17,10 +17,13 @@ package com.returngift.agent.agent.plan
  *    non-idempotent action ([checkpoint] / [fromCheckpoint]).
  *
  * Modes, because enforcement must not brick a phone:
- *  - [Mode.GUARDED] (default): off-plan actions are allowed and recorded; only
- *    completion is gated (the promise the user actually saw: the steps *and* the
- *    check at the end).
- *  - [Mode.STRICT]: a call that does not belong to the current step is refused.
+ *  - [Mode.GUARDED] (default, and what the setting ships as): off-plan actions are
+ *    allowed and recorded; only completion is gated (the promise the user actually
+ *    saw: the steps *and* the check at the end).
+ *  - [Mode.STRICT] (opt-in switch): a call the plan cannot match is refused, and a
+ *    call that targets something other than the planned app is refused too. A step
+ *    that promises an observed outcome is only DONE when the caller reports that
+ *    outcome as verified.
  *
  * Pure Kotlin, injectable clock, no Android — so the whole state machine is tested.
  */
@@ -32,6 +35,8 @@ class PlanContract private constructor(
     val offPlanCalls: MutableList<String>,
     val approvals: MutableSet<String>,
     val riskClass: RiskClass,
+    /** Digest stored by [checkpoint]; null for payloads written before it existed. */
+    val storedPlanDigest: String? = null,
 ) {
 
     enum class Mode { GUARDED, STRICT }
@@ -117,17 +122,47 @@ class PlanContract private constructor(
         if (approval != null && !approvals.contains(approval.number.toString())) {
             return Gate.Ask("The plan asks for your approval first: ${approval.detail}")
         }
-        if (mode == Mode.STRICT && toolName !in OBSERVATION_TOOLS) {
+        if (mode == Mode.STRICT && toolName !in OBSERVATION_TOOLS && toolName !in PLAN_NEUTRAL_TOOLS) {
             val target = actionsFor(toolName)
             val current = current()
-            if (target.isNotEmpty() && current != null && current.action !in target) {
+            if (target.isEmpty()) {
+                // "Never run an action this contract cannot match": a remote (MCP) or
+                // otherwise unknown tool has no step to answer for, so strict mode does
+                // not let it through on the strength of its own name.
+                return Gate.Deny(
+                    "Off-plan action '$toolName': it satisfies no step of this plan " +
+                        "(${states.joinToString(", ") { it.detail }})."
+                )
+            }
+            if (current != null && current.action !in target) {
                 return Gate.Deny(
                     "Off-plan action '$toolName': step ${current.number} is " +
                         "\"${current.detail}\" — do that first (or say the UI differs)."
                 )
             }
+            val mismatch = targetMismatch(toolName, params)
+            if (mismatch != null) return Gate.Deny(mismatch)
         }
         return Gate.Allow
+    }
+
+    /**
+     * Why [params] point at something other than the app this plan names, or null.
+     *
+     * Only app-opening tools carry an explicit target today, and the parser already
+     * resolved the plan's app, so the comparison is exact rather than fuzzy: a label
+     * or package that is not the planned one is a different action.
+     */
+    private fun targetMismatch(toolName: String, params: Map<String, Any>): String? {
+        if (toolName !in APP_OPENING_TOOLS) return null
+        val requested = params["package_name"]?.toString()?.trim()?.lowercase()
+            ?.takeIf { it.isNotEmpty() } ?: return null
+        val planned = blueprint.intent.platform ?: return null
+        val wanted = listOf(planned.packageName, planned.label)
+            .map { it.trim().lowercase() }
+            .filter { it.isNotEmpty() }
+        if (wanted.any { requested == it }) return null
+        return "'$requested' is not the planned app ${planned.label}"
     }
 
     fun recordApproval(stepNumber: Int) {
@@ -154,11 +189,25 @@ class PlanContract private constructor(
      *
      * @return the step this call affected, or null when the call belongs to no step
      */
-    fun observe(toolName: String, success: Boolean, data: String?, nowMs: Long = System.currentTimeMillis()): StepState? {
+    fun observe(
+        toolName: String,
+        success: Boolean,
+        data: String?,
+        nowMs: Long = System.currentTimeMillis(),
+        params: Map<String, Any> = emptyMap(),
+        /** True only when the caller *observed* the promised outcome. */
+        verified: Boolean = false,
+    ): StepState? {
         if (toolName == FINISH_TOOL) return null
         val actions = actionsFor(toolName)
         if (actions.isEmpty()) {
             offPlanCalls += toolName
+            return null
+        }
+        // A call that drove a different app than the plan names is not this plan's
+        // progress: it is recorded (GUARDED) or refused earlier (STRICT), never DONE.
+        targetMismatch(toolName, params)?.let { reason ->
+            offPlanCalls += "$toolName ($reason)"
             return null
         }
         // Retry first: a FAILED step is still the step to satisfy, so a retry must
@@ -188,7 +237,17 @@ class PlanContract private constructor(
 
         val step = states[index]
         val evidence = data?.trim()?.take(EVIDENCE_MAX_CHARS)
-        states[index] = if (success) {
+        // A VERIFY step promises an outcome, not an action: a successful screen read
+        // is only evidence that something was on screen, never that it was the label
+        // the plan promised. Without the caller's confirmation the step stays open.
+        val needsOutcome = step.action == PlanAction.VERIFY
+        states[index] = if (success && needsOutcome && !verified) {
+            step.copy(
+                status = if (step.status == StepStatus.PENDING) StepStatus.ACTIVE else step.status,
+                evidence = evidence ?: "screen read",
+                note = "not confirmed: the promised outcome was not observed",
+            )
+        } else if (success) {
             step.copy(
                 status = StepStatus.DONE,
                 evidence = evidence ?: "ok",
@@ -246,7 +305,13 @@ class PlanContract private constructor(
 
     // ── checkpoint ──────────────────────────────────────────────────────────
 
-    /** Compact, one-line serialisation for crash/interruption recovery. */
+    /**
+     * Compact, one-line serialisation for crash/interruption recovery.
+     *
+     * The trailing [planDigest] is what makes a resume safe: statuses are stored by
+     * step number, so without it a rebuilt plan with different wording would silently
+     * inherit "already done" from a plan the user never saw.
+     */
     fun checkpoint(): String = buildString {
         append("v1|").append(encode(taskId)).append('|').append(mode.name).append('|')
         append(riskClass.name).append('|')
@@ -257,7 +322,11 @@ class PlanContract private constructor(
             if (step.requiresEvidence) append('!')
             step.evidence?.let { append(':').append(encode(it)) }
         }
+        append('|').append(planDigest())
     }
+
+    /** Fingerprint of the plan this contract was built from. */
+    fun planDigest(): String = digestOf(blueprint)
 
     /** Everything the user/model needs in one line (logs, diagnostics). */
     fun summary(): String = buildString {
@@ -305,6 +374,12 @@ class PlanContract private constructor(
          * checking is how the agent notices that the UI differs from the plan.
          */
         val OBSERVATION_TOOLS = setOf("get_screen_info", "take_screenshot", "wait", "get_foreground_app")
+
+        /** Tools that are part of the loop itself, not of any plan step. */
+        private val PLAN_NEUTRAL_TOOLS = setOf("ask_user")
+
+        /** Tools whose arguments name the app they act on. */
+        private val APP_OPENING_TOOLS = setOf("open_app", "switch_app")
 
         /** Tap-shaped steps a tap-shaped tool can satisfy (declared before use). */
         private val TAP_LIKE = setOf(
@@ -399,6 +474,15 @@ class PlanContract private constructor(
             -> RiskClass.NORMAL
         }
 
+        /** Stable fingerprint of a plan's steps (number + action + wording). */
+        fun digestOf(blueprint: TaskBlueprint): String {
+            val canonical = blueprint.steps.sortedBy { it.number }
+                .joinToString("\n") { "${it.number}|${it.action.name}|${it.detail}" }
+            val bytes = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(canonical.toByteArray(Charsets.UTF_8))
+            return bytes.take(8).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        }
+
         /** Restore from [checkpoint]; null when the payload is unreadable. */
         fun fromCheckpoint(
             text: String,
@@ -410,7 +494,10 @@ class PlanContract private constructor(
             if (parts[0] != "v1") return null
             val mode = Mode.entries.firstOrNull { it.name == parts[2] } ?: Mode.GUARDED
             val risk = RiskClass.entries.firstOrNull { it.name == parts[3] } ?: riskClass
-            val approvals = parts[4].split(',').mapNotNull { it.toIntOrNull() }.map { it.toString() }
+            // Approvals are deliberately NOT reused: a resume can be minutes or hours
+            // later, against a screen the user approved in a different moment. The
+            // field stays in the payload (diagnostics), but a resumed plan asks again.
+            val approvals = emptySet<String>()
             val states = parts[5].split(';').mapNotNull { chunk ->
                 val pieces = chunk.split(':')
                 val number = pieces.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
@@ -439,6 +526,9 @@ class PlanContract private constructor(
                 offPlanCalls = mutableListOf(),
                 approvals = approvals.toMutableSet(),
                 riskClass = risk,
+                // The 7th field only exists in payloads written since the plan
+                // fingerprint was added; older ones fall back to the structural check.
+                storedPlanDigest = parts.getOrNull(6)?.takeIf { it.isNotBlank() },
             )
             return contract
         }

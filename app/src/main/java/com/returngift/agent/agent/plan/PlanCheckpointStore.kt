@@ -33,13 +33,21 @@ object PlanCheckpointStore {
 
     private fun sink(): AppGuideStore.Storage = storage ?: AppGuideStore.storage
 
-    /** Stable fingerprint of a request: same words → same plan slot. */
+    /**
+     * Stable fingerprint of a request: same words → same plan slot.
+     *
+     * SHA-256 rather than `String.hashCode()`: 32 bits collide after a few tens of
+     * thousands of requests, and a collision here would resume someone else's plan.
+     * 16 hex chars keep the slot identifier short without that birthday problem.
+     */
     fun keyFor(request: String): String {
         val normalised = request.lowercase()
             .replace(Regex("[^a-z0-9 ]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
-        return Integer.toHexString(normalised.hashCode())
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(normalised.toByteArray(Charsets.UTF_8))
+        return digest.take(8).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
     }
 
     fun encode(key: String, savedAtMs: Long, contract: PlanContract): String =
@@ -86,12 +94,32 @@ object PlanCheckpointStore {
             XLog.w(TAG, "checkpoint did not match the rebuilt plan — starting fresh")
             return null
         }
+        val stored = contract.storedPlanDigest
+        val digestMatches = stored == null || stored == PlanContract.digestOf(blueprint)
+        if (!digestMatches || !sameSteps(contract, blueprint)) {
+            // The request fingerprint matched but the plan did not (an app was
+            // installed/removed, a guide changed). Resuming here would claim progress
+            // on steps the user never saw, so the slot is abandoned instead.
+            XLog.w(TAG, "checkpoint describes a different plan for the same request — starting fresh")
+            clear()
+            return null
+        }
         // A fully finished plan is history, not a resume point.
         if (contract.isComplete()) {
             clear()
             return null
         }
         return contract
+    }
+
+    /** True when the restored states describe exactly the rebuilt plan. */
+    private fun sameSteps(contract: PlanContract, blueprint: TaskBlueprint): Boolean {
+        val expected = blueprint.steps.sortedBy { it.number }
+        val actual = contract.states()
+        if (expected.size != actual.size) return false
+        return expected.zip(actual).all { (step, state) ->
+            step.number == state.number && step.action == state.action && step.detail == state.detail
+        }
     }
 
     fun clear() {

@@ -35,7 +35,8 @@ class PlanContractTest {
         c.observe("tap_node", true, "Companies filter")
         c.observe("tap_node", true, "YouTube company page")
         c.observe("tap_node", true, "Following")
-        c.observe("get_screen_info", true, "button label: Following")
+        // A VERIFY step needs the outcome, not a successful screen read.
+        c.observe("get_screen_info", true, "button label: Following", verified = true)
     }
 
     // ── construction ────────────────────────────────────────────────────────
@@ -247,11 +248,15 @@ class PlanContractTest {
     }
 
     @Test
-    fun approvalsSurviveARestart() {
+    fun approvalsAreNotReusedAcrossARestart() {
+        // OWNER DECISION (applied): a resumed plan asks again. The checkpoint is
+        // minutes-to-hours old and may describe a different screen than the one the
+        // user approved, so carrying the "yes" forward would be consent by staleness.
         val c = contract()
         c.recordApproval(2)
+        Assert.assertTrue(c.approvals.contains("2"))
         val restored = PlanContract.fromCheckpoint(c.checkpoint(), c.blueprint)!!
-        Assert.assertTrue(restored.approvals.contains("2"))
+        Assert.assertFalse(restored.approvals.contains("2"))
     }
 
     // ── action mapping ──────────────────────────────────────────────────────
@@ -277,5 +282,93 @@ class PlanContractTest {
         val c = contract()
         c.observe("open_app", true, "x".repeat(5_000))
         Assert.assertTrue(c.states()[0].evidence!!.length <= 160)
+    }
+
+    // ── strict mode: what it actually refuses (opt-in, off by default) ───────
+
+    @Test
+    fun strictModeRefusesAToolNoStepCanMatch() {
+        // "Never run an action this contract cannot match" — MCP and other tools with
+        // no capability mapping are refused, not waved through on their own name.
+        val c = contract(mode = PlanContract.Mode.STRICT)
+        Assert.assertTrue(c.gate("mcp__srv__delete_record") is PlanContract.Gate.Deny)
+        Assert.assertTrue(c.gate("frobnicate") is PlanContract.Gate.Deny)
+        // Observation and loop tools are how the agent notices the UI differs.
+        Assert.assertTrue(c.gate("get_screen_info") is PlanContract.Gate.Allow)
+        Assert.assertTrue(c.gate("ask_user") is PlanContract.Gate.Allow)
+    }
+
+    @Test
+    fun guardedModeStillAllowsAnUnmappedTool() {
+        val c = contract(mode = PlanContract.Mode.GUARDED)
+        Assert.assertTrue(c.gate("mcp__srv__search") is PlanContract.Gate.Allow)
+        c.observe("mcp__srv__search", true, "rows")
+        Assert.assertEquals(listOf("mcp__srv__search"), c.offPlanCalls)
+    }
+
+    // ── a step is about a target, not only a verb ───────────────────────────
+
+    @Test
+    fun anOpenOfADifferentAppNeverCompletesThePlanStep() {
+        val c = contract() // step 1: Open LinkedIn
+        val state = c.observe(
+            "open_app", true, "opened",
+            params = mapOf("package_name" to "com.example.video"),
+        )
+        Assert.assertNull("a different app must not satisfy the step", state)
+        Assert.assertEquals(PlanContract.StepStatus.ACTIVE, c.states()[0].status)
+        // Recorded — never silently dropped — and named with the reason.
+        Assert.assertTrue(c.offPlanCalls.single().startsWith("open_app"))
+        Assert.assertTrue(c.offPlanCalls.single().contains("LinkedIn"))
+    }
+
+    @Test
+    fun anOpenOfThePlannedAppCompletesIt() {
+        val c = contract()
+        val state = c.observe(
+            "open_app", true, "opened",
+            params = mapOf("package_name" to "com.example.social"),
+        )
+        Assert.assertEquals(PlanContract.StepStatus.DONE, state?.status)
+    }
+
+    @Test
+    fun strictModeRefusesAnActionOnADifferentApp() {
+        val c = contract(mode = PlanContract.Mode.STRICT)
+        val gate = c.gate("open_app", mapOf("package_name" to "com.example.video"))
+        Assert.assertTrue(gate is PlanContract.Gate.Deny)
+        Assert.assertTrue((gate as PlanContract.Gate.Deny).reason.contains("LinkedIn"))
+        Assert.assertTrue(c.gate("open_app", mapOf("package_name" to "com.example.social")) is PlanContract.Gate.Allow)
+    }
+
+    // ── completion needs the promised outcome ───────────────────────────────
+
+    @Test
+    fun aSuccessfulScreenReadAloneDoesNotCompleteTheVerifyStep() {
+        val c = contract()
+        c.observe("open_app", true, "ok")
+        c.observe("input_text", true, "typed")
+        c.observe("tap_node", true, "Companies")
+        c.observe("tap_node", true, "page")
+        c.observe("tap_node", true, "Follow")
+        val state = c.observe("get_screen_info", true, "LinkedIn feed, no button")
+        Assert.assertNotEquals(PlanContract.StepStatus.DONE, state?.status)
+        Assert.assertEquals(PlanContract.StepStatus.ACTIVE, c.states().last().status)
+        Assert.assertTrue(c.states().last().note!!.contains("not confirmed"))
+        Assert.assertFalse(c.completion().canComplete)
+        Assert.assertTrue(c.gate("finish") is PlanContract.Gate.Deny)
+    }
+
+    @Test
+    fun theVerifyStepCompletesWhenTheOutcomeIsObserved() {
+        val c = contract()
+        c.observe("open_app", true, "ok")
+        c.observe("input_text", true, "typed")
+        c.observe("tap_node", true, "Companies")
+        c.observe("tap_node", true, "page")
+        c.observe("tap_node", true, "Follow")
+        c.observe("get_screen_info", true, "button: Following", verified = true)
+        Assert.assertTrue(c.isComplete())
+        Assert.assertTrue(c.gate("finish") is PlanContract.Gate.Allow)
     }
 }

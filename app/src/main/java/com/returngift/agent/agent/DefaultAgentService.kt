@@ -588,52 +588,60 @@ class DefaultAgentService : AgentService {
         // the LinkedIn flow rather than the old guess.
         val planContext = com.returngift.agent.agent.plan.PlanContextFactory.buildOrEmpty()
         var presentation = com.returngift.agent.agent.plan.PlanFirst.plan(rawUserRequest, planContext)
+        // Remembered so an unchanged plan is shown once, not twice: the loop returns
+        // the same presentation when nothing was asked.
+        val shownMarkdown = presentation.markdown
         if (presentation.showPlan && presentation.markdown.isNotBlank()) {
             callback.onContent(0, presentation.markdown)
         }
-        if (presentation.blueprint.needsClarification) {
-            val answers = mutableMapOf<String, String>()
-            for (question in presentation.blueprint.questions.filter { it.blocking }.take(3)) {
-                val answer = com.returngift.agent.agent.clarify.ClarificationManager.request(
-                    question.question,
-                    question.choices,
-                    question.allowFreeText,
-                )
-                if (answer.isNullOrBlank() || answer.equals("Cancel", ignoreCase = true)) {
-                    callback.onComplete(
-                        0,
-                        "Stopped before starting: I need to know \"" + question.question + "\"",
-                        0,
-                        null,
+        // ── Plan questions: a bounded ask → answer → rebuild loop ────────────
+        // The loop lives in PlanQuestionFlow (pure, unit-tested): it asks every
+        // blocking question once, folds the answers back into the sentence, and
+        // treats a granted approval as permission instead of text — so an approved
+        // irreversible action no longer re-asks itself and dead-ends the task.
+        when (
+            val outcome = com.returngift.agent.agent.plan.PlanQuestionFlow.run(
+                rawText = rawUserRequest,
+                ctx = planContext,
+                initial = presentation,
+                ask = { question ->
+                    com.returngift.agent.agent.clarify.ClarificationManager.request(
+                        question.question,
+                        question.choices,
+                        question.allowFreeText,
                     )
-                    return
-                }
-                answers[question.id] = answer
-                // The approval question is a yes/no gate, not new information.
-                if (question.id == "approval" && !answer.startsWith("Yes", ignoreCase = true)) {
-                    callback.onComplete(0, "Cancelled — nothing was changed.", 0, null)
-                    return
+                },
+            )
+        ) {
+            is com.returngift.agent.agent.plan.PlanQuestionFlow.Outcome.Proceed -> {
+                presentation = outcome.presentation
+                if (presentation.markdown.isNotBlank() && presentation.markdown != shownMarkdown) {
+                    callback.onContent(0, presentation.markdown)
                 }
             }
-            val clarified = com.returngift.agent.agent.plan.PlanClarifier.applyAnswers(
-                rawUserRequest,
-                presentation.blueprint,
-                answers,
-            )
-            presentation = com.returngift.agent.agent.plan.PlanFirst.plan(clarified, planContext)
-            if (presentation.markdown.isNotBlank() && clarified != rawUserRequest) {
-                callback.onContent(0, presentation.markdown)
+            is com.returngift.agent.agent.plan.PlanQuestionFlow.Outcome.Cancelled -> {
+                callback.onComplete(
+                    0,
+                    "Stopped before starting: I need to know \"" + outcome.question + "\"",
+                    0,
+                    null,
+                )
+                return
             }
-        }
-        if (presentation.blueprint.needsClarification) {
-            callback.onComplete(
-                0,
-                "I still need one detail before starting:\n" +
-                    presentation.blueprint.questions.joinToString("\n") { "- " + it.question },
-                0,
-                null,
-            )
-            return
+            is com.returngift.agent.agent.plan.PlanQuestionFlow.Outcome.ApprovalDeclined -> {
+                callback.onComplete(0, "Cancelled — nothing was changed.", 0, null)
+                return
+            }
+            is com.returngift.agent.agent.plan.PlanQuestionFlow.Outcome.StillBlocked -> {
+                callback.onComplete(
+                    0,
+                    "I still need one detail before starting:\n" +
+                        outcome.questions.joinToString("\n") { "- " + it },
+                    0,
+                    null,
+                )
+                return
+            }
         }
         if (!presentation.executeAfter) {
             // Explicit "show me the plan" — stop here and wait for a go-ahead.
@@ -658,7 +666,7 @@ class DefaultAgentService : AgentService {
         val planContract = resumedPlan ?: com.returngift.agent.agent.plan.PlanContract.from(
             taskId = taskId,
             blueprint = presentation.blueprint,
-            mode = if (com.returngift.agent.utils.KVUtils.getBoolean("agent_strict_plan_mode", false)) {
+            mode = if (com.returngift.agent.utils.KVUtils.strictPlanMode()) {
                 com.returngift.agent.agent.plan.PlanContract.Mode.STRICT
             } else {
                 com.returngift.agent.agent.plan.PlanContract.Mode.GUARDED
@@ -1595,7 +1603,15 @@ ExecutionTracker.endTask(taskId, "FAILED_ACTION", iterations, totalTokens)
                     result.error?.takeIf { !result.isSuccess && it.isNotBlank() },
                     verification?.detail,
                 ).joinToString(" | ").ifBlank { null }
-                planContract.observe(toolName, result.isSuccess, planEvidence)?.let { step ->
+                planContract.observe(
+                    toolName = toolName,
+                    success = result.isSuccess,
+                    data = planEvidence,
+                    params = params ?: emptyMap(),
+                    // A step that promises an outcome is only done when the verifier
+                    // actually saw that outcome — a successful screen read is not it.
+                    verified = verification?.outcome == ActionVerifier.VerificationOutcome.VERIFIED,
+                )?.let { step ->
                     com.returngift.agent.agent.plan.PlanCheckpointStore.save(planKey, planContract)
                     val next = planContract.current()?.let { " Next: ${it.number}. ${it.detail}." }
                     messages.add(

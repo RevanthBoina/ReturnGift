@@ -52,7 +52,13 @@ class PlanCheckpointStoreTest {
             ?: error("no tool satisfies $action")
 
     private fun runHappyPath(c: PlanContract) {
-        blueprintFor().steps.forEach { step -> c.observe(toolFor(step.action), true, "done: " + step.detail) }
+        blueprintFor().steps.forEach { step ->
+            // A VERIFY step is only satisfied by an observed outcome.
+            c.observe(
+                toolFor(step.action), true, "done: " + step.detail,
+                verified = step.action == PlanAction.VERIFY,
+            )
+        }
     }
 
     // ── key ─────────────────────────────────────────────────────────────────
@@ -148,5 +154,77 @@ class PlanCheckpointStoreTest {
         PlanCheckpointStore.save("k", contract(), t0)
         PlanCheckpointStore.clear()
         Assert.assertNull(PlanCheckpointStore.load("k", blueprintFor(), t0 + 1_000))
+    }
+
+    // ── the rebuilt plan must be the plan that was checkpointed ─────────────
+
+    @Test
+    fun aChangedStepDetailIsNotResumed() {
+        val contract = contract()
+        contract.observe("open_app", success = true, data = "ok")
+        PlanCheckpointStore.save("k", contract, t0)
+
+        val drifted = blueprintFor().let { bp ->
+            bp.copy(steps = bp.steps.mapIndexed { i, step ->
+                if (i == 1) step.copy(detail = "Search \"someone else\"") else step
+            })
+        }
+        Assert.assertNull(PlanCheckpointStore.load("k", drifted, t0 + 1_000))
+    }
+
+    @Test
+    fun aChangedStepActionIsNotResumed() {
+        val contract = contract()
+        contract.observe("open_app", success = true, data = "ok")
+        PlanCheckpointStore.save("k", contract, t0)
+
+        val drifted = blueprintFor().let { bp ->
+            bp.copy(steps = bp.steps.mapIndexed { i, step ->
+                if (i == 1) step.copy(action = PlanAction.TAP) else step
+            })
+        }
+        Assert.assertNull(PlanCheckpointStore.load("k", drifted, t0 + 1_000))
+    }
+
+    @Test
+    fun aChangedStepCountIsNotResumed() {
+        val contract = contract()
+        contract.observe("open_app", success = true, data = "ok")
+        PlanCheckpointStore.save("k", contract, t0)
+
+        val shorter = blueprintFor().let { bp -> bp.copy(steps = bp.steps.dropLast(1)) }
+        Assert.assertNull(PlanCheckpointStore.load("k", shorter, t0 + 1_000))
+    }
+
+    @Test
+    fun aResumeDoesNotCarryTheEarlierApproval() {
+        // OWNER DECISION (applied): approvals are not reused after a restart.
+        val contract = contract()
+        contract.recordApproval(2)
+        PlanCheckpointStore.save("k", contract, t0)
+        val restored = PlanCheckpointStore.load("k", blueprintFor(), t0 + 1_000)!!
+        Assert.assertFalse(restored.approvals.contains("2"))
+    }
+
+    @Test
+    fun theKeyIsAFingerprintNotATruncatedHashCode() {
+        // 16 hex chars of SHA-256 rather than Integer.toHexString(hashCode()): the old
+        // key was 32 bits, where unrelated requests start colliding in aggregate.
+        val a = "follow TechCrunch on LinkedIn"
+        val b = "follow The Verge on YouTube"
+        Assert.assertNotEquals(PlanCheckpointStore.keyFor(a), PlanCheckpointStore.keyFor(b))
+        Assert.assertEquals(16, PlanCheckpointStore.keyFor(a).length)
+        Assert.assertTrue(PlanCheckpointStore.keyFor(a).all { it in "0123456789abcdef" })
+    }
+
+    @Test
+    fun aPayloadWrittenBeforeThePlanFingerprintStillLoads() {
+        // 6-field payload (written before the digest existed): the structural check
+        // alone decides, so an upgrade in the middle of a task does not lose the resume.
+        val contract = contract()
+        contract.observe("open_app", success = true, data = "ok")
+        val legacyBody = contract.checkpoint().substringBeforeLast('|')
+        storage.map["agent_plan_checkpoint_v1"] = "v1|k|$t0|$legacyBody"
+        Assert.assertNotNull(PlanCheckpointStore.load("k", blueprintFor(), t0 + 1_000))
     }
 }

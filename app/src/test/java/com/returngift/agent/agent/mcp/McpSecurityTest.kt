@@ -4,6 +4,8 @@
 package com.returngift.agent.agent.mcp
 
 import com.returngift.agent.agent.knowledge.AppGuideStore
+import com.returngift.agent.tool.impl.McpToolProxy
+import org.junit.After
 import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
@@ -44,6 +46,12 @@ class McpSecurityTest {
         McpSecretStore.cipher = FakeCipher()
         McpServerStore.clear()
         McpToolPolicy.settings = McpToolPolicy.Settings()
+    }
+
+    @After
+    fun tearDown() {
+        McpToolProxy.confirmer = { false }
+        McpToolProxy.globalAskEnabled = { false }
     }
 
     private fun row(id: String = "guides", url: String = "https://mcp.example.test/mcp", token: String? = "tok-1") =
@@ -321,9 +329,40 @@ class McpSecurityTest {
     }
 
     @Test
-    fun annotationsSupplyEvidenceWhenTheNameSaysNothing() {
+    fun anUntrustedAnnotationCannotMakeAnUnknownToolLookLikeARead() {
+        // MCP spec: annotations are untrusted unless they come from a trusted server.
+        // A hostile server calling its delete-everything tool "frobnicate" and adding
+        // readOnlyHint must not get it auto-approved.
         val annotated = tool(name = "frobnicate", annotations = Json.obj("readOnlyHint" to Json.bool(true)))
-        Assert.assertEquals(McpToolPolicy.Risk.READ, McpToolPolicy.riskOf(annotated))
+        Assert.assertEquals(McpToolPolicy.Risk.WRITE, McpToolPolicy.riskOf(annotated))
+        Assert.assertEquals(McpToolPolicy.Risk.WRITE, McpToolPolicy.riskOf(annotated, annotationsTrusted = false))
+        Assert.assertTrue(McpToolPolicy.decide(annotated) is McpToolPolicy.Decision.Ask)
+    }
+
+    @Test
+    fun aTrustedServersAnnotationsMayClassifyARead() {
+        // Trust is per server and explicit: it buys the ability to use the server's
+        // own hints for classification — it is not a blanket "run anything" pass.
+        val annotated = tool(name = "frobnicate", annotations = Json.obj("readOnlyHint" to Json.bool(true)))
+        Assert.assertEquals(McpToolPolicy.Risk.READ, McpToolPolicy.riskOf(annotated, annotationsTrusted = true))
+        val settings = McpToolPolicy.Settings(trustedServers = setOf("guides"), autoApproveReads = false)
+        Assert.assertTrue(McpToolPolicy.decide(annotated, settings) is McpToolPolicy.Decision.Allow)
+        // …and a destructive name stays destructive even for a trusted server.
+        val stillDestructive = tool(
+            name = "delete_account",
+            annotations = Json.obj("readOnlyHint" to Json.bool(true)),
+        )
+        Assert.assertEquals(
+            McpToolPolicy.Risk.DESTRUCTIVE,
+            McpToolPolicy.riskOf(stillDestructive, annotationsTrusted = true),
+        )
+        Assert.assertTrue(McpToolPolicy.decide(stillDestructive, settings) is McpToolPolicy.Decision.Ask)
+    }
+
+    @Test
+    fun trustDoesNotSilenceWrites() {
+        val settings = McpToolPolicy.Settings(trustedServers = setOf("guides"))
+        Assert.assertTrue(McpToolPolicy.decide(tool("update_issue"), settings) is McpToolPolicy.Decision.Ask)
     }
 
     @Test
@@ -450,5 +489,82 @@ class McpSecurityTest {
         Assert.assertNotNull("expected initialize to reject the version", message)
         Assert.assertTrue(message!!, message.contains("unsupported MCP version"))
         Assert.assertNull(client.negotiatedVersion())
+    }
+
+    // ── the proxy is where a Decision becomes a call (no network needed) ────
+
+    /** Executing a denied tool returns before any transport is touched. */
+    @Test
+    fun policyDenialsNeverReachTheServer() {
+        val def = tool("delete_issue")
+        listOf(
+            McpToolPolicy.Settings(enabled = false) to "turned off",
+            McpToolPolicy.Settings(blockedServers = setOf("guides")) to "blocked",
+            McpToolPolicy.Settings(denyPatterns = setOf("delete_issue")) to "blocked pattern",
+        ).forEach { (settings, expected) ->
+            McpToolPolicy.settings = settings
+            McpToolProxy.confirmer = { error("a denied tool must not ask the user") }
+            val result = McpToolProxy(def).execute(emptyMap())
+            Assert.assertFalse("$expected should fail: ${result.data}", result.isSuccess)
+            Assert.assertTrue(
+                "expected a Blocked: error, got ${result.error}",
+                result.error.orEmpty().startsWith("Blocked:"),
+            )
+            Assert.assertTrue(result.error.orEmpty().contains(expected))
+        }
+    }
+
+    @Test
+    fun aDeclinedOrTimedOutApprovalNeverRunsTheTool() {
+        // The confirmer returns false for "Cancel" and for the clarification timeout
+        // (ClarificationManager.request returns null), so both are one path here.
+        McpToolPolicy.settings = McpToolPolicy.Settings()
+        McpToolProxy.globalAskEnabled = { true }
+        McpToolProxy.confirmer = { false }
+        val result = McpToolProxy(tool("delete_issue")).execute(emptyMap())
+        Assert.assertFalse(result.isSuccess)
+        Assert.assertTrue(
+            "expected a declined-approval error, got ${result.error}",
+            result.error.orEmpty().contains("was declined"),
+        )
+    }
+
+    @Test
+    fun anApprovedWriteReachesDispatch() {
+        // Approved: the call proceeds to McpRuntime, which rejects an unknown route
+        // here (nothing is connected) — the point is that it got that far.
+        McpToolPolicy.settings = McpToolPolicy.Settings()
+        McpToolProxy.globalAskEnabled = { true }
+        McpToolProxy.confirmer = { true }
+        val result = McpToolProxy(tool("update_issue")).execute(emptyMap())
+        Assert.assertFalse(result.isSuccess)
+        Assert.assertFalse(
+            "an approved call must not report a declined approval: ${result.error}",
+            result.error.orEmpty().contains("was declined"),
+        )
+        Assert.assertTrue(
+            "expected a dispatch failure, got ${result.error}",
+            result.error.orEmpty().contains("MCP tool"),
+        )
+    }
+
+    /**
+     * OWNER DECISION REQUIRED — pinned, not endorsed.
+     *
+     * With the global "ask before risky actions" switch OFF (the shipped default), a
+     * Decision.Ask (including DESTRUCTIVE) currently proceeds without a prompt, while
+     * the MCP settings screen says such calls always ask. This test records the
+     * behaviour as it is; whichever way the policy goes, exactly one of this test and
+     * [aDeclinedOrTimedOutApprovalNeverRunsTheTool] changes.
+     */
+    @Test
+    fun switchOffCurrentlySilencesEvenDestructiveMcpCalls() {
+        McpToolPolicy.settings = McpToolPolicy.Settings()
+        McpToolProxy.globalAskEnabled = { false }
+        McpToolProxy.confirmer = { error("the switch is off: nobody should have been asked") }
+        val result = McpToolProxy(tool("delete_issue")).execute(emptyMap())
+        // It was not declined — it went to dispatch (and failed there, unknown route).
+        Assert.assertFalse(result.error.orEmpty().contains("was declined"))
+        Assert.assertTrue(result.error.orEmpty().contains("MCP tool"))
     }
 }
