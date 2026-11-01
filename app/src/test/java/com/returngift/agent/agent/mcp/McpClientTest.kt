@@ -132,6 +132,39 @@ class McpClientTest {
         }
     }
 
+    @Test
+    fun theAdditiveRevisionIsAccepted() {
+        // 2025-11-25 keeps the handshake and the session header, and the only client
+        // MUST it adds (send MCP-Protocol-Version on every request) is already done.
+        val transport = ScriptedTransport { req ->
+            val id = (Json.parse(req.body) as JsonValue.Obj).int("id") ?: 1
+            McpHttpResponse(
+                200,
+                mapOf(McpProtocol.HEADER_SESSION to "s"),
+                jsonRpc(id, """{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"x","version":"1"}}"""),
+            )
+        }
+        val client = McpClient(config(), transport)
+        client.initialize()
+        Assert.assertEquals("2025-11-25", client.negotiatedVersion())
+    }
+
+    @Test
+    fun theStatelessRevisionIsStillRejected() {
+        // 2026-07-28 removes initialize and Mcp-Session-Id: accepting its version
+        // string would only produce a session that fails on every later request.
+        val transport = ScriptedTransport { req ->
+            val id = (Json.parse(req.body) as JsonValue.Obj).int("id") ?: 1
+            McpHttpResponse(200, emptyMap(), jsonRpc(id, """{"protocolVersion":"2026-07-28"}"""))
+        }
+        try {
+            McpClient(config(), transport).initialize()
+            Assert.fail("expected a protocol error")
+        } catch (e: McpException) {
+            Assert.assertTrue(e.message!!.contains("unsupported MCP version"))
+        }
+    }
+
     // --------------------------------------------------------------- tools
 
     @Test

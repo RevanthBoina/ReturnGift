@@ -103,4 +103,96 @@ class PlanClarifierTest {
         val first = plan("follow youtube")
         Assert.assertEquals("follow youtube", PlanClarifier.applyAnswers("follow youtube", first.blueprint, emptyMap()))
     }
+
+    // ── the bounded ask → answer → rebuild loop (PlanQuestionFlow) ──────────
+
+    /** Records the questions asked and answers them from a fixed script. */
+    private class Scripted(vararg answers: String?) {
+        val asked = mutableListOf<PlanQuestion>()
+        private val queue = ArrayDeque(answers.toList())
+        fun ask(q: PlanQuestion): String? {
+            asked.add(q)
+            return if (queue.isEmpty()) null else queue.removeFirst()
+        }
+    }
+
+    private fun runLoop(text: String, scripted: Scripted) =
+        PlanQuestionFlow.run(text, ctx(), plan(text), ask = scripted::ask)
+
+    /** `unsubscribe` is both an irreversible verb for the plan and device work. */
+    private val risky = "unsubscribe from youtube on LinkedIn"
+
+    @Test
+    fun anApprovedIrreversibleRequestProceedsWithoutAskingAgain() {
+        // The plan that will run contains this question and nothing else.
+        Assert.assertEquals(listOf(PlanQuestionFlow.APPROVAL_ID), plan(risky).blueprint.questions.map { it.id })
+
+        val scripted = Scripted("Yes, do it")
+        val outcome = runLoop(risky, scripted)
+        Assert.assertTrue("expected Proceed, got $outcome", outcome is PlanQuestionFlow.Outcome.Proceed)
+        // The invariant, stated once: approval is asked exactly once, and nothing is
+        // left to answer before the plan can run.
+        Assert.assertEquals(1, scripted.asked.count { it.id == PlanQuestionFlow.APPROVAL_ID })
+        val proceed = outcome as PlanQuestionFlow.Outcome.Proceed
+        Assert.assertFalse(proceed.presentation.blueprint.needsClarification)
+        Assert.assertTrue(proceed.presentation.executeAfter)
+    }
+
+    @Test
+    fun aQuestionIntroducedByTheFirstAnswerIsStillAsked() {
+        // No app named → "Where should I unsubscribe …?", and that answer re-plans into
+        // the same risky request, which must then ask the approval exactly once.
+        val scripted = Scripted("LinkedIn", "Yes, do it")
+        val outcome = runLoop("unsubscribe from youtube", scripted)
+
+        Assert.assertEquals(
+            listOf("platform", PlanQuestionFlow.APPROVAL_ID),
+            scripted.asked.map { it.id },
+        )
+        Assert.assertTrue("expected Proceed, got $outcome", outcome is PlanQuestionFlow.Outcome.Proceed)
+        val proceed = outcome as PlanQuestionFlow.Outcome.Proceed
+        Assert.assertTrue(proceed.presentation.executeAfter)
+        Assert.assertEquals("Open LinkedIn", proceed.presentation.blueprint.steps.first().detail)
+    }
+
+    @Test
+    fun decliningTheApprovalStopsEverything() {
+        val outcome = runLoop(risky, Scripted("Cancel"))
+        Assert.assertTrue(
+            "expected ApprovalDeclined, got $outcome",
+            outcome is PlanQuestionFlow.Outcome.ApprovalDeclined,
+        )
+    }
+
+    @Test
+    fun aTimeoutOnAnyQuestionCancelsInsteadOfGuessing() {
+        val scripted = Scripted("LinkedIn", null) // platform answered, approval timed out
+        val outcome = runLoop("unsubscribe from youtube", scripted)
+        Assert.assertTrue("expected Cancelled, got $outcome", outcome is PlanQuestionFlow.Outcome.Cancelled)
+        Assert.assertTrue(scripted.asked.size <= PlanQuestionFlow.MAX_QUESTIONS)
+    }
+
+    @Test
+    fun theLoopStopsAtItsBoundAndReportsWhatIsStillMissing() {
+        // An answer that resolves nothing: the loop must stop at the bound, never spin,
+        // and report what it still needs instead of executing on a guess.
+        val asked = mutableListOf<PlanQuestion>()
+        val outcome = PlanQuestionFlow.run(
+            "unsubscribe from youtube", ctx(), plan("unsubscribe from youtube"),
+            ask = { q -> asked.add(q); "Something" },
+        )
+        Assert.assertTrue(asked.size <= PlanQuestionFlow.MAX_QUESTIONS)
+        Assert.assertTrue(
+            "expected StillBlocked, got $outcome",
+            outcome is PlanQuestionFlow.Outcome.StillBlocked,
+        )
+    }
+
+    @Test
+    fun aRequestWithNoQuestionsProceedsUntouched() {
+        val scripted = Scripted()
+        val outcome = runLoop("follow youtube on LinkedIn", scripted)
+        Assert.assertTrue(scripted.asked.isEmpty())
+        Assert.assertTrue(outcome is PlanQuestionFlow.Outcome.Proceed)
+    }
 }

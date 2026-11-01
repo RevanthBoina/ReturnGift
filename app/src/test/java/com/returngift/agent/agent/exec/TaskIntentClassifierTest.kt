@@ -26,6 +26,12 @@ class TaskIntentClassifierTest {
         assertEquals(Intent.DEVICE_AUTOMATION, TaskIntentClassifier.classify("Open WhatsApp and send Mom a message").intent)
         assertEquals(Intent.DEVICE_AUTOMATION, TaskIntentClassifier.classify("Turn on bluetooth").intent)
         assertEquals(Intent.DEVICE_AUTOMATION, TaskIntentClassifier.classify("Post this on LinkedIn: hello world").intent)
+        // The follow family changes state inside an app: these used to fall through to
+        // KNOWLEDGE_QA and were answered with a chat message instead of being planned.
+        assertEquals(Intent.DEVICE_AUTOMATION, TaskIntentClassifier.classify("unsubscribe from YouTube on LinkedIn").intent)
+        assertEquals(Intent.DEVICE_AUTOMATION, TaskIntentClassifier.classify("Unfollow TechCrunch on LinkedIn").intent)
+        // …but "follow up" is reading and replying, not following an account.
+        org.junit.Assert.assertNotEquals(Intent.DEVICE_AUTOMATION, TaskIntentClassifier.classify("follow up on the invoice email").intent)
     }
 
     @Test

@@ -19,6 +19,12 @@ package com.returngift.agent.agent.mcp
  *
  * Fail-closed direction: an unknown tool is treated as a **write** (ASK), never as a
  * read. Silence is not consent.
+ *
+ * Annotations: the MCP specification says clients **MUST** treat tool annotations as
+ * untrusted unless they come from a trusted server, so `readOnlyHint` is only allowed
+ * to *lower* the risk for a server the user has explicitly trusted. From any other
+ * server it is ignored — a hint can raise the risk (it never does harm to be
+ * cautious) but never make an unrecognised tool look safe.
  */
 object McpToolPolicy {
 
@@ -90,8 +96,10 @@ object McpToolPolicy {
      * name; when they disagree the higher risk wins. A name with no recognisable verb
      * is a WRITE (fail-closed), because we cannot prove it only reads.
      */
-    fun riskOf(tool: McpToolDef): Risk {
-        val annotationRisk = riskFromAnnotations(tool.annotations)
+    fun riskOf(tool: McpToolDef, annotationsTrusted: Boolean = false): Risk {
+        // An untrusted server's hints are data, not evidence: it may claim a tool is
+        // read-only while it deletes rows, so the claim is not consulted at all.
+        val annotationRisk = if (annotationsTrusted) riskFromAnnotations(tool.annotations) else null
         val nameRisk = riskFromName(tool.name, tool.description)
         // Never let an annotation downgrade a name that reads destructive.
         return when {
@@ -152,7 +160,8 @@ object McpToolPolicy {
         }?.let { pattern ->
             return Decision.Deny("'${tool.name}' matches a blocked pattern ($pattern).")
         }
-        val risk = riskOf(tool)
+        val annotationTrusted = current.trustedServers.any { it.equals(tool.serverId, ignoreCase = true) }
+        val risk = riskOf(tool, annotationsTrusted = annotationTrusted)
         val explicitlyAllowed = current.allowedTools.any { pattern ->
             pattern.isNotBlank() && (name.endsWith(pattern.lowercase()) ||
                 qualified.endsWith(pattern.lowercase()))
@@ -162,7 +171,9 @@ object McpToolPolicy {
         if (explicitlyAllowed && risk != Risk.DESTRUCTIVE) return Decision.Allow
         return when (risk) {
             Risk.READ ->
-                if (current.autoApproveReads || current.trustedServers.any { it.equals(tool.serverId, ignoreCase = true) }) {
+                // Trust already bought the classification above; it also buys the
+                // absence of a prompt for reads alone — never for writes.
+                if (current.autoApproveReads || annotationTrusted) {
                     Decision.Allow
                 } else {
                     Decision.Ask("This reads data from ${tool.serverName}. Allow?")

@@ -39,6 +39,10 @@ object TaskIntentClassifier {
     // Verbs that require touching the device UI or device state.
     private val DEVICE_VERBS = Regex(
         "\\b(open|launch|tap|click|swipe|scroll|type into|fill in|install|uninstall|" +
+            // The follow family changes state inside an app, so it is device work —
+            // "unsubscribe from X on Y" used to fall through to a plain chat answer.
+            // "follow up on X" is reading and replying, not following an account.
+            "follow(?! up)|unfollow|subscribe to|unsubscribe|stop following|" +
             "enable|disable|turn on|turn off|toggle|set alarm|set a reminder|call|dial|" +
             "text|send (a )?(message|sms|whatsapp|dm)|post|upload|download|screenshot|" +
             "screen ?shot|record|mute|unmute|volume|brightness|wifi|bluetooth|airplane|" +
@@ -108,6 +112,7 @@ object TaskIntentClassifier {
             KNOWLEDGE_HINTS.containsMatchIn(lower)
         val startsImperative = Regex(
             "^(please )?(open|launch|tap|click|swipe|scroll|type|fill|install|uninstall|" +
+                "follow(?! up)|unfollow|subscribe|unsubscribe|" +
                 "enable|disable|turn|toggle|set|call|dial|text|send|post|upload|download|" +
                 "screenshot|record|mute|unmute|navigate|go|compose|reply|forward|delete|" +
                 "like|comment|share|check)\\b"

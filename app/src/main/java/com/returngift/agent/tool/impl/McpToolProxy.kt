@@ -36,10 +36,16 @@ class McpToolProxy(private val def: McpToolDef) : BaseTool() {
         private val ALLOWED_TYPES = setOf("string", "integer", "number", "boolean", "object", "array")
 
         /**
-         * Seam for tests/hosts: `(question) -> true` approves.
-         * Default answers through the chat clarification card, and treats a timeout
-         * or cancellation as **no**.
+         * Seam for the global "ask before risky actions" switch.
+         *
+         * OWNER DECISION REQUIRED: today a switch-off user silences even an MCP
+         * DESTRUCTIVE call, while the MCP settings screen says such calls always ask.
+         * The behaviour is left exactly as it is (and pinned by a test) until that
+         * policy is chosen; the seam exists so the decision is one line either way.
          */
+        @Volatile
+        var globalAskEnabled: () -> Boolean = { com.returngift.agent.utils.KVUtils.askBeforeRiskyActions() }
+
         @Volatile
         var confirmer: (String) -> Boolean = { question ->
             val answer = try {
@@ -85,7 +91,7 @@ class McpToolProxy(private val def: McpToolDef) : BaseTool() {
 
             is McpToolPolicy.Decision.Ask -> {
                 // Switch off: the policy's verdict is logged, not asked.
-                if (!com.returngift.agent.utils.KVUtils.askBeforeRiskyActions()) {
+                if (!globalAskEnabled()) {
                     XLog.i(TAG, "remote tool '${def.name}' would have asked (switch off, proceeding)")
                 } else if (!confirmer(McpToolPolicy.approvalQuestion(def, preview))) {
                     return ToolResult.error(

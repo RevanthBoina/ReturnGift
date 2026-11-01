@@ -137,6 +137,22 @@ object KVUtils {
 
     fun setAskBeforeRiskyActions(value: Boolean) = putBoolean(KEY_ASK_BEFORE_RISKY_ACTIONS, value)
 
+    private const val KEY_STRICT_PLAN = "agent_strict_plan_mode"
+
+    /**
+     * Strict plan mode — **off by default**.
+     *
+     * Off means the plan is a contract about *completion*: the agent may adapt to a
+     * UI that differs from the plan, and every step still has to be proven before
+     * "done". On means the plan is also a contract about *the next action*, and a
+     * tool call that no step can match (including every remote MCP tool) is refused.
+     * Strict is for people who want the tighter rule; it is not the default because
+     * it turns an unexpected screen into a stopped task.
+     */
+    fun strictPlanMode(): Boolean = getBoolean(KEY_STRICT_PLAN, false)
+
+    fun setStrictPlanMode(value: Boolean) = putBoolean(KEY_STRICT_PLAN, value)
+
     fun isGuideShown(): Boolean = getBoolean(KEY_GUIDE_SHOWN, false)
 
     fun setGuideShown(shown: Boolean) = putBoolean(KEY_GUIDE_SHOWN, shown)
