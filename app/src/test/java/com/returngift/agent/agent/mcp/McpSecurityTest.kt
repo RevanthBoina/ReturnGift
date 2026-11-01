@@ -4,7 +4,6 @@
 package com.returngift.agent.agent.mcp
 
 import com.returngift.agent.agent.knowledge.AppGuideStore
-import com.returngift.agent.tool.ToolResult
 import com.returngift.agent.tool.impl.McpToolProxy
 import org.junit.After
 import org.junit.Assert
